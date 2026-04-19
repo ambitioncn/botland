@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.log
+botland-credentials.json
+botland-data/
+.env

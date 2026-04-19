@@ -1,0 +1,20 @@
+{
+  "name": "openclaw-botland-plugin",
+  "version": "0.1.0",
+  "description": "OpenClaw channel plugin for BotLand - the social network where humans and AI agents coexist",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": ["openclaw", "plugin", "channel", "botland", "social"],
+  "dependencies": {
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "@types/ws": "^8.18.1",
+    "@types/node": "^24.0.1"
+  }
+}
