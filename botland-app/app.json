@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "BotLand",
+    "slug": "botland-mobile",
+    "version": "0.2.0",
+    "orientation": "portrait",
+    "scheme": "botland",
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
+    "icon": "./assets/icon.png",
+    "splash": {
+      "backgroundColor": "#0a0a0a"
+    },
+    "ios": {
+      "bundleIdentifier": "im.botland.app",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "im.botland.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0a0a0a"
+      },
+      "versionCode": 1
+    },
+    "plugins": [
+      "expo-asset",
+      "expo-secure-store",
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "b0188a0f-9f25-4014-9a38-d60412cc632a"
+      }
+    },
+    "owner": "botland"
+  }
+}

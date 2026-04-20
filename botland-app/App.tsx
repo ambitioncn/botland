@@ -1,0 +1,85 @@
+import React, { useEffect, useState } from 'react';
+import { View, Text, Platform } from 'react-native';
+import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { StatusBar } from 'expo-status-bar';
+
+import LoginScreen from './src/screens/LoginScreen';
+import RegisterScreen from './src/screens/RegisterScreen';
+import FriendsScreen from './src/screens/FriendsScreen';
+import FriendRequestsScreen from './src/screens/FriendRequestsScreen';
+import ChatScreen from './src/screens/ChatScreen';
+import DiscoverScreen from './src/screens/DiscoverScreen';
+import MomentsScreen from './src/screens/MomentsScreen';
+import MomentDetailScreen from './src/screens/MomentDetailScreen';
+import ProfileScreen from './src/screens/ProfileScreen';
+import auth from './src/services/auth';
+
+const Stack = createNativeStackNavigator();
+const Tab = createBottomTabNavigator();
+
+const DarkTheme = {
+  ...DefaultTheme,
+  colors: { ...DefaultTheme.colors, background: '#0a0a0a', card: '#111', text: '#fff', border: '#222', primary: '#ff6b35' },
+};
+
+function TabIcon({ label }: { label: string }) {
+  const icons: Record<string, string> = { Friends: '👥', Moments: '📝', Discover: '🔍', Profile: '👤' };
+  return <Text style={{ fontSize: 20 }}>{icons[label] || '•'}</Text>;
+}
+
+function MainTabs({ onLogout }: { onLogout: () => void }) {
+  return (
+    <Tab.Navigator screenOptions={({ route }) => ({
+      tabBarStyle: { backgroundColor: '#111', borderTopColor: '#222' },
+      tabBarActiveTintColor: '#ff6b35',
+      tabBarInactiveTintColor: '#555',
+      headerStyle: { backgroundColor: '#111' },
+      headerTintColor: '#fff',
+      tabBarIcon: () => <TabIcon label={route.name} />,
+    })}>
+      <Tab.Screen name="Friends" component={FriendsScreen} options={{ title: '好友' }} />
+      <Tab.Screen name="Moments" component={MomentsScreen} options={{ title: '动态' }} />
+      <Tab.Screen name="Discover" component={DiscoverScreen} options={{ title: '发现' }} />
+      <Tab.Screen name="Profile" options={{ title: '我的' }}>
+        {() => <ProfileScreen onLogout={onLogout} />}
+      </Tab.Screen>
+    </Tab.Navigator>
+  );
+}
+
+export default function App() {
+  const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    auth.getAccessToken().then((t) => setLoggedIn(!!t));
+  }, []);
+
+  if (loggedIn === null) return <View style={{ flex: 1, backgroundColor: '#0a0a0a' }} />;
+
+  return (
+    <NavigationContainer theme={DarkTheme}>
+      <StatusBar style="light" />
+      {loggedIn ? (
+        <Stack.Navigator screenOptions={{ headerStyle: { backgroundColor: '#111' }, headerTintColor: '#fff' }}>
+          <Stack.Screen name="Main" options={{ headerShown: false }}>
+            {() => <MainTabs onLogout={() => setLoggedIn(false)} />}
+          </Stack.Screen>
+          <Stack.Screen name="Chat" component={ChatScreen} options={({ route }: any) => ({ title: route.params?.friendName || '聊天' })} />
+          <Stack.Screen name="FriendRequests" component={FriendRequestsScreen} options={{ title: '好友请求' }} />
+          <Stack.Screen name="MomentDetail" component={MomentDetailScreen} options={{ title: '动态详情' }} />
+        </Stack.Navigator>
+      ) : (
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="Login">
+            {(props) => <LoginScreen {...props} onLogin={() => setLoggedIn(true)} />}
+          </Stack.Screen>
+          <Stack.Screen name="Register">
+            {(props) => <RegisterScreen {...props} onLogin={() => setLoggedIn(true)} />}
+          </Stack.Screen>
+        </Stack.Navigator>
+      )}
+    </NavigationContainer>
+  );
+}
