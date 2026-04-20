@@ -11,14 +11,32 @@ import (
 	"github.com/nicknnn/botland-server/pkg/protocol"
 )
 
+// PushFunc sends a push notification to a citizen
+type PushFunc func(citizenID, title, body string, data map[string]string) error
+
 type Service struct {
-	db     *sql.DB
-	hub    *ws.Hub
-	logger *slog.Logger
+	db       *sql.DB
+	hub      *ws.Hub
+	logger   *slog.Logger
+	pushFunc PushFunc
 }
 
 func NewService(db *sql.DB, hub *ws.Hub, logger *slog.Logger) *Service {
 	return &Service{db: db, hub: hub, logger: logger}
+}
+
+func (s *Service) SetPushFunc(fn PushFunc) {
+	s.pushFunc = fn
+}
+
+// getSenderName looks up the display name for a citizen
+func (s *Service) getSenderName(citizenID string) string {
+	var name string
+	err := s.db.QueryRow(`SELECT display_name FROM citizens WHERE id=$1`, citizenID).Scan(&name)
+	if err != nil {
+		return "新消息"
+	}
+	return name
 }
 
 // RouteMessage handles an incoming message: deliver in real-time or store offline.
@@ -51,9 +69,31 @@ func (s *Service) RouteMessage(from string, env *protocol.Envelope) {
 		})
 		s.logger.Info("message delivered realtime", "from", from, "to", env.To, "id", env.ID)
 	} else {
-		// Offline: store in relay
+		// Offline: store in relay + send push notification
 		s.storeOffline(from, env)
 		s.logger.Info("message stored offline", "from", from, "to", env.To, "id", env.ID)
+
+		// Send push notification
+		if s.pushFunc != nil {
+			senderName := s.getSenderName(from)
+			// Extract message text for push body
+			pushBody := "发来一条消息"
+			if p, ok := env.Payload.(map[string]interface{}); ok {
+				if text, ok := p["text"].(string); ok && text != "" {
+					if len(text) > 50 {
+						pushBody = text[:50] + "..."
+					} else {
+						pushBody = text
+					}
+				} else if ct, ok := p["content_type"].(string); ok && ct == "image" {
+					pushBody = "[图片]"
+				}
+			}
+			go s.pushFunc(env.To, senderName, pushBody, map[string]string{
+				"type":    "message",
+				"from_id": from,
+			})
+		}
 	}
 }
 
@@ -81,106 +121,91 @@ func (s *Service) DeliverPending(citizenID string) int {
 		citizenID,
 	)
 	if err != nil {
+		s.logger.Error("query pending messages", "error", err)
 		return 0
 	}
 	defer rows.Close()
 
-	var delivered int
+	count := 0
 	var ids []string
 	for rows.Next() {
 		var id string
-		var payloadBytes []byte
-		rows.Scan(&id, &payloadBytes)
+		var payload []byte
+		if err := rows.Scan(&id, &payload); err != nil {
+			continue
+		}
 
-		var stored map[string]interface{}
-		json.Unmarshal(payloadBytes, &stored)
+		var raw map[string]interface{}
+		if err := json.Unmarshal(payload, &raw); err != nil {
+			continue
+		}
 
 		env := &protocol.Envelope{
 			Type:      protocol.TypeMessageReceived,
-			ID:        strVal(stored["id"]),
-			From:      strVal(stored["from"]),
-			To:        citizenID,
-			Timestamp: strVal(stored["timestamp"]),
-			Payload:   stored["payload"],
+			ID:        strVal(raw["id"]),
+			From:      strVal(raw["from"]),
+			To:        strVal(raw["to"]),
+			Timestamp: strVal(raw["timestamp"]),
+			Payload:   raw["payload"],
 		}
 		if s.hub.Send(citizenID, env) {
 			ids = append(ids, id)
-			delivered++
+			count++
 		}
 	}
 
-	// Mark as delivered
+	// Mark delivered
 	for _, id := range ids {
-		s.db.Exec("UPDATE message_relay SET status='delivered', delivered_at=NOW() WHERE id=$1", id)
+		s.db.Exec(`UPDATE message_relay SET status='delivered', delivered_at=NOW() WHERE id=$1`, id)
 	}
 
-	if delivered > 0 {
-		s.logger.Info("delivered pending messages", "citizen_id", citizenID, "count", delivered)
+	if count > 0 {
+		s.logger.Info("delivered pending", "citizen_id", citizenID, "count", count)
 	}
-	return delivered
+	return count
 }
 
-// HandleAck processes message acknowledgements
 func (s *Service) HandleAck(from string, env *protocol.Envelope) {
-	payloadBytes, _ := json.Marshal(env.Payload)
-	var ack protocol.AckPayload
-	json.Unmarshal(payloadBytes, &ack)
-
-	if ack.MessageID == "" {
-		return
+	// Update relay status
+	if env.ID != "" {
+		s.db.Exec(`UPDATE message_relay SET status='read' WHERE id=$1 AND to_id=$2`, env.ID, from)
 	}
 
-	// Forward ack to the original sender (find from relay or just broadcast)
-	// For now, we look up the relay entry
-	var originalFrom string
-	s.db.QueryRow("SELECT from_id FROM message_relay WHERE payload->>'id' = $1", ack.MessageID).Scan(&originalFrom)
-
-	if originalFrom != "" {
-		s.hub.Send(originalFrom, &protocol.Envelope{
+	// Forward read receipt
+	if env.From != "" {
+		s.hub.Send(env.From, &protocol.Envelope{
 			Type: protocol.TypeMessageStatus,
 			Payload: protocol.AckPayload{
-				MessageID: ack.MessageID,
-				Status:    ack.Status,
+				MessageID: env.ID,
+				Status:    "read",
 			},
 		})
 	}
 }
 
-// HandleTyping forwards typing indicators
 func (s *Service) HandleTyping(from string, env *protocol.Envelope) {
-	indicator := &protocol.Envelope{
-		Type: protocol.TypeTypingIndicator,
-		From: from,
-		To:   env.To,
+	if env.To != "" {
+		s.hub.Send(env.To, &protocol.Envelope{
+			Type: env.Type,
+			From: from,
+		})
 	}
-	s.hub.Send(env.To, indicator)
 }
 
-// HandleReaction forwards reactions
 func (s *Service) HandleReaction(from string, env *protocol.Envelope) {
-	reaction := &protocol.Envelope{
-		Type:      "message.reaction.received",
-		ID:        "react_" + auth.NewULID(),
-		From:      from,
-		To:        env.To,
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		Payload:   env.Payload,
+	if env.To != "" {
+		s.hub.Send(env.To, &protocol.Envelope{
+			Type:    env.Type,
+			From:    from,
+			Payload: env.Payload,
+		})
 	}
-	s.hub.Send(env.To, reaction)
-}
-
-// CleanExpired removes messages older than TTL
-func (s *Service) CleanExpired() (int64, error) {
-	res, err := s.db.Exec("DELETE FROM message_relay WHERE created_at < NOW() - (ttl_hours || ' hours')::INTERVAL")
-	if err != nil {
-		return 0, err
-	}
-	return res.RowsAffected()
 }
 
 func strVal(v interface{}) string {
-	if s, ok := v.(string); ok {
-		return s
+	if v == nil {
+		return ""
 	}
-	return ""
+	s, _ := v.(string)
+	return s
 }

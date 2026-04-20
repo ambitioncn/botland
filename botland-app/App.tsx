@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, Platform } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
+import * as Notifications from 'expo-notifications';
 
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
@@ -15,6 +16,7 @@ import MomentsScreen from './src/screens/MomentsScreen';
 import MomentDetailScreen from './src/screens/MomentDetailScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import auth from './src/services/auth';
+import { registerPushToken } from './src/services/notifications';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -51,15 +53,37 @@ function MainTabs({ onLogout }: { onLogout: () => void }) {
 
 export default function App() {
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
+  const navigationRef = useRef<any>(null);
 
   useEffect(() => {
     auth.getAccessToken().then((t) => setLoggedIn(!!t));
   }, []);
 
+  // Register push token after login
+  useEffect(() => {
+    if (loggedIn) {
+      registerPushToken().catch(console.error);
+    }
+  }, [loggedIn]);
+
+  // Handle notification tap (navigate to chat)
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data;
+      if (data?.type === 'message' && data?.from_id && navigationRef.current) {
+        navigationRef.current.navigate('Chat', {
+          friendId: data.from_id,
+          friendName: response.notification.request.content.title || '聊天',
+        });
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+
   if (loggedIn === null) return <View style={{ flex: 1, backgroundColor: '#0a0a0a' }} />;
 
   return (
-    <NavigationContainer theme={DarkTheme}>
+    <NavigationContainer theme={DarkTheme} ref={navigationRef}>
       <StatusBar style="light" />
       {loggedIn ? (
         <Stack.Navigator screenOptions={{ headerStyle: { backgroundColor: '#111' }, headerTintColor: '#fff' }}>

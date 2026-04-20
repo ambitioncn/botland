@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
-  RefreshControl, TextInput, KeyboardAvoidingView, Platform, Alert,
+  RefreshControl, TextInput, KeyboardAvoidingView, Platform, Alert, Image,
 } from 'react-native';
 import api from '../services/api';
 import auth from '../services/auth';
@@ -13,7 +13,7 @@ type Comment = {
 
 type MomentDetail = {
   moment_id: string; author_id: string; content_type: string;
-  content: { text?: string }; visibility: string; created_at: string;
+  content: { text?: string; image_url?: string; images?: string[] }; visibility: string; created_at: string;
   display_name: string; avatar_url: string; citizen_type: string; species: string;
   like_count: number; liked_by_me: boolean; comments: Comment[];
 };
@@ -36,9 +36,7 @@ export default function MomentDetailScreen({ route, navigation }: Props) {
       setMoment(res);
       const me = await api.getMe(token);
       setMyId((me as any).citizen_id || '');
-    } catch (e: any) {
-      Alert.alert('加载失败', e.message);
-    }
+    } catch (e: any) { Alert.alert('加载失败', e.message); }
   }, [momentId]);
 
   useEffect(() => { load(); }, [load]);
@@ -51,10 +49,7 @@ export default function MomentDetailScreen({ route, navigation }: Props) {
     if (!token) return;
     try {
       const res = await api.likeMoment(token, momentId);
-      setMoment(prev => prev ? {
-        ...prev, liked_by_me: res.liked,
-        like_count: res.liked ? prev.like_count + 1 : prev.like_count - 1,
-      } : prev);
+      setMoment(prev => prev ? { ...prev, liked_by_me: res.liked, like_count: res.liked ? prev.like_count + 1 : prev.like_count - 1 } : prev);
     } catch {}
   };
 
@@ -67,11 +62,8 @@ export default function MomentDetailScreen({ route, navigation }: Props) {
       await api.commentMoment(token, momentId, commentText.trim());
       setCommentText('');
       await load();
-    } catch (e: any) {
-      Alert.alert('评论失败', e.message);
-    } finally {
-      setSending(false);
-    }
+    } catch (e: any) { Alert.alert('评论失败', e.message); }
+    finally { setSending(false); }
   };
 
   const handleDelete = async () => {
@@ -79,14 +71,10 @@ export default function MomentDetailScreen({ route, navigation }: Props) {
     if (!token) return;
     Alert.alert('删除动态', '确定要删除这条动态吗？', [
       { text: '取消', style: 'cancel' },
-      {
-        text: '删除', style: 'destructive', onPress: async () => {
-          try {
-            await api.deleteMoment(token, momentId);
-            navigation.goBack();
-          } catch (e: any) { Alert.alert('删除失败', e.message); }
-        },
-      },
+      { text: '删除', style: 'destructive', onPress: async () => {
+        try { await api.deleteMoment(token, momentId); navigation.goBack(); }
+        catch (e: any) { Alert.alert('删除失败', e.message); }
+      }},
     ]);
   };
 
@@ -105,11 +93,11 @@ export default function MomentDetailScreen({ route, navigation }: Props) {
     } catch { return ''; }
   };
 
-  if (!moment) {
-    return <View style={s.container}><Text style={s.loading}>加载中...</Text></View>;
-  }
+  if (!moment) return <View style={s.container}><Text style={s.loading}>加载中...</Text></View>;
 
-  const isMyMoment = moment.author_id === myId;
+  const images: string[] = [];
+  if (moment.content?.image_url) images.push(moment.content.image_url);
+  if (moment.content?.images) images.push(...moment.content.images);
 
   const header = (
     <View style={s.momentCard}>
@@ -118,18 +106,21 @@ export default function MomentDetailScreen({ route, navigation }: Props) {
           <Text style={s.avatarText}>{moment.display_name?.[0] || '?'}</Text>
         </View>
         <View style={s.headerInfo}>
-          <Text style={s.authorName}>
-            {moment.display_name} {moment.citizen_type === 'agent' ? '🤖' : ''}
-          </Text>
+          <Text style={s.authorName}>{moment.display_name} {moment.citizen_type === 'agent' ? '🤖' : ''}</Text>
           <Text style={s.time}>{formatTime(moment.created_at)}</Text>
         </View>
-        {isMyMoment && (
-          <TouchableOpacity onPress={handleDelete}>
-            <Text style={s.deleteBtn}>🗑️</Text>
-          </TouchableOpacity>
+        {moment.author_id === myId && (
+          <TouchableOpacity onPress={handleDelete}><Text style={s.deleteBtn}>🗑️</Text></TouchableOpacity>
         )}
       </View>
       {moment.content?.text && <Text style={s.contentText}>{moment.content.text}</Text>}
+      {images.length > 0 && (
+        <View style={s.imageGrid}>
+          {images.map((uri, i) => (
+            <Image key={i} source={{ uri }} style={images.length === 1 ? s.singleImage : s.gridImage} resizeMode="cover" />
+          ))}
+        </View>
+      )}
       <View style={s.statsRow}>
         <TouchableOpacity style={s.actionBtn} onPress={handleLike}>
           <Text style={s.actionIcon}>{moment.liked_by_me ? '❤️' : '🤍'}</Text>
@@ -137,7 +128,7 @@ export default function MomentDetailScreen({ route, navigation }: Props) {
             {moment.like_count > 0 ? `${moment.like_count} 赞` : '赞'}
           </Text>
         </TouchableOpacity>
-        <Text style={s.commentCountText}>💬 {moment.comments.length} 条评论</Text>
+        <Text style={s.commentCountText}>💬 {moment.comments?.length || 0} 条评论</Text>
       </View>
     </View>
   );
@@ -159,29 +150,16 @@ export default function MomentDetailScreen({ route, navigation }: Props) {
 
   return (
     <KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
-      <FlatList
-        data={moment.comments}
-        keyExtractor={i => i.id}
-        renderItem={renderComment}
+      <FlatList data={moment.comments || []} keyExtractor={i => i.id} renderItem={renderComment}
         ListHeaderComponent={header}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ff6b35" />}
         ListEmptyComponent={<Text style={s.noComments}>暂无评论，来说点什么吧</Text>}
-        contentContainerStyle={{ paddingBottom: 80 }}
-      />
+        contentContainerStyle={{ paddingBottom: 80 }} />
       <View style={s.inputBar}>
-        <TextInput
-          style={s.input}
-          placeholder="写评论..."
-          placeholderTextColor="#555"
-          value={commentText}
-          onChangeText={setCommentText}
-          maxLength={500}
-        />
-        <TouchableOpacity
-          style={[s.sendBtn, !commentText.trim() && s.sendDisabled]}
-          onPress={handleComment}
-          disabled={sending || !commentText.trim()}
-        >
+        <TextInput style={s.input} placeholder="写评论..." placeholderTextColor="#555"
+          value={commentText} onChangeText={setCommentText} maxLength={500} />
+        <TouchableOpacity style={[s.sendBtn, !commentText.trim() && s.sendDisabled]}
+          onPress={handleComment} disabled={sending || !commentText.trim()}>
           <Text style={s.sendText}>{sending ? '...' : '发送'}</Text>
         </TouchableOpacity>
       </View>
@@ -202,6 +180,9 @@ const s = StyleSheet.create({
   time: { color: '#555', fontSize: 12, marginTop: 1 },
   deleteBtn: { fontSize: 18, padding: 4 },
   contentText: { color: '#ddd', fontSize: 16, lineHeight: 24, marginBottom: 12 },
+  imageGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 12 },
+  singleImage: { width: '100%', height: 280, borderRadius: 8 },
+  gridImage: { width: '32%', aspectRatio: 1, borderRadius: 6 },
   statsRow: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#1a1a1a', paddingTop: 10 },
   actionBtn: { flexDirection: 'row', alignItems: 'center', marginRight: 20 },
   actionIcon: { fontSize: 18 },
@@ -217,12 +198,7 @@ const s = StyleSheet.create({
   commentTime: { color: '#555', fontSize: 11 },
   commentContent: { color: '#ccc', fontSize: 14, lineHeight: 20 },
   noComments: { color: '#555', textAlign: 'center', marginTop: 30, fontSize: 14 },
-  inputBar: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#111', borderTopWidth: 1, borderTopColor: '#222',
-    padding: 8, paddingHorizontal: 12,
-  },
+  inputBar: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', backgroundColor: '#111', borderTopWidth: 1, borderTopColor: '#222', padding: 8, paddingHorizontal: 12 },
   input: { flex: 1, backgroundColor: '#1a1a1a', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, color: '#fff', fontSize: 14 },
   sendBtn: { marginLeft: 8, backgroundColor: '#ff6b35', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8 },
   sendDisabled: { opacity: 0.4 },

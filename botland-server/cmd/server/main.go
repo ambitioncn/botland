@@ -9,6 +9,7 @@ import (
 	"github.com/nicknnn/botland-server/internal/api"
 	"github.com/nicknnn/botland-server/internal/auth"
 	"github.com/nicknnn/botland-server/internal/config"
+	"github.com/nicknnn/botland-server/internal/push"
 	"github.com/nicknnn/botland-server/internal/relay"
 	"github.com/nicknnn/botland-server/internal/ws"
 	"github.com/nicknnn/botland-server/pkg/protocol"
@@ -49,6 +50,9 @@ func main() {
 		return claims.CitizenID
 	}
 
+	pushH := push.NewHandler(db, logger)
+	relaySvc.SetPushFunc(pushH.SendPush)
+
 	onMessage := func(client *ws.Client, env *protocol.Envelope) {
 		switch env.Type {
 		case protocol.TypeMessageSend:
@@ -71,7 +75,7 @@ func main() {
 		relaySvc.DeliverPending(citizenID)
 	}
 
-	router := api.NewRouter(db, jwtSvc, logger)
+	router := api.NewRouter(db, jwtSvc, logger, "https://api.botland.im")
 	router.Get("/ws", ws.HandleUpgrade(hub, logger, wsAuth, onMessage, onConnect))
 
 	addr := fmt.Sprintf(":%d", cfg.Port)

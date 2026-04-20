@@ -11,12 +11,14 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/nicknnn/botland-server/internal/auth"
 	"github.com/nicknnn/botland-server/internal/citizen"
+	"github.com/nicknnn/botland-server/internal/media"
+	"github.com/nicknnn/botland-server/internal/push"
 	mw "github.com/nicknnn/botland-server/internal/middleware"
 	"github.com/nicknnn/botland-server/internal/moment"
 	"github.com/nicknnn/botland-server/internal/relationship"
 )
 
-func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, logger *slog.Logger) *chi.Mux {
+func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, logger *slog.Logger, baseURL string) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
 	r.Use(mw.CORS)
@@ -28,6 +30,11 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, logger *slog.Logger) *chi.Mu
 	relH := relationship.NewHandler(db, logger)
 	citizenH := citizen.NewHandler(db, logger)
 	momentH := moment.NewHandler(db, logger)
+	mediaH := media.NewHandler(logger, baseURL)
+	pushH := push.NewHandler(db, logger)
+
+	// Serve uploaded files
+	r.Handle("/uploads/*", http.StripPrefix("/uploads", http.FileServer(http.Dir(media.UploadDir))))
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -35,7 +42,7 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, logger *slog.Logger) *chi.Mu
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
-		// Public auth endpoints — rate limited by IP
+		// Public auth endpoints
 		r.Group(func(r chi.Router) {
 			r.Use(mw.RateLimit(mw.ChallengeLimiter))
 			r.Post("/auth/challenge", authH.StartChallenge)
@@ -49,7 +56,7 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, logger *slog.Logger) *chi.Mu
 			r.Post("/auth/refresh", ph("refresh"))
 		})
 
-		// Authenticated endpoints — rate limited + optional request signing
+		// Authenticated endpoints
 		r.Group(func(r chi.Router) {
 			r.Use(mw.AuthRequired(jwtSvc))
 			r.Use(mw.RateLimitByCitizen(mw.GeneralLimiter))
@@ -88,7 +95,13 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, logger *slog.Logger) *chi.Mu
 			r.Post("/moments/{momentID}/like", momentH.LikeMoment)
 			r.Post("/moments/{momentID}/comments", momentH.CommentMoment)
 
-			r.Post("/media/upload-url", ph("upload_url"))
+			// Media upload
+			r.Post("/media/upload", mediaH.Upload)
+
+			// Push notifications
+			r.Post("/push/register", pushH.RegisterToken)
+			r.Post("/push/unregister", pushH.UnregisterToken)
+
 			r.Post("/reports", ph("create_report"))
 		})
 	})

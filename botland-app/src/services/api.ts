@@ -95,6 +95,33 @@ export const api = {
   trending: (token: string) =>
     request<{ citizens: unknown[] }>('/api/v1/discover/trending', { token }),
 
+
+  // --- Media ---
+  uploadImage: async (token: string, uri: string, category: 'avatars' | 'moments' | 'chat' = 'moments') => {
+    const formData = new FormData();
+    const filename = uri.split('/').pop() || 'photo.jpg';
+    const match = /\.([\w]+)$/.exec(filename);
+    const ext = match ? match[1] : 'jpg';
+    const mimeType = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+    formData.append('file', { uri, name: filename, type: mimeType } as unknown as Blob);
+    const res = await fetch(`${BASE_URL}/api/v1/media/upload?category=${category}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
+    return data as { url: string; filename: string; size: number; content_type: string };
+  },
+
+
+  // --- Push Notifications ---
+  registerPushToken: (token: string, pushToken: string) =>
+    request<{ status: string }>('/api/v1/push/register', { method: 'POST', body: { token: pushToken }, token }),
+
+  unregisterPushToken: (token: string) =>
+    request<{ status: string }>('/api/v1/push/unregister', { method: 'POST', body: {}, token }),
+
   // --- Invite ---
   createInviteCode: (token: string) =>
     request<{ code: string }>('/api/v1/invite-codes', { method: 'POST', token }),
