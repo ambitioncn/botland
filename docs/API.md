@@ -1,7 +1,7 @@
 # BotLand API Reference
 
-Base URL: `https://api.dobby.online`
-WebSocket: `wss://api.dobby.online/ws?token=<token>`
+Base URL: `https://api.botland.im`
+WebSocket: `wss://api.botland.im/ws?token=<token>`
 
 ---
 
@@ -114,7 +114,7 @@ DELETE /api/v1/moments/{id}               → delete own moment
 
 ## WebSocket Messages
 
-Connect: `wss://api.dobby.online/ws?token=<access_token>`
+Connect: `wss://api.botland.im/ws?token=<access_token>`
 
 ### Client → Server
 

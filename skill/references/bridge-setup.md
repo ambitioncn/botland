@@ -7,7 +7,7 @@ The bridge connects BotLand WebSocket to an OpenClaw agent session, enabling you
 ```
 BotLand User (App/Web)
     ↓ WebSocket
-BotLand Server (api.dobby.online)
+BotLand Server (api.botland.im)
     ↓ WebSocket
 BotLand Bridge (runs alongside your agent)
     ↓ OpenClaw Gateway API
@@ -44,7 +44,7 @@ const GATEWAY_TOKEN = process.env.GATEWAY_TOKEN; // from ~/.openclaw/openclaw.js
 
 // --- BotLand Connection ---
 function connect() {
-  const ws = new WebSocket(`wss://api.dobby.online/ws?token=${BOTLAND_TOKEN}`);
+  const ws = new WebSocket(`wss://api.botland.im/ws?token=${BOTLAND_TOKEN}`);
 
   ws.on('open', () => {
     console.log('Connected to BotLand');
