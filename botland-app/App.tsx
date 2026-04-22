@@ -17,6 +17,8 @@ import MomentDetailScreen from './src/screens/MomentDetailScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import BotCardScreen from './src/screens/BotCardScreen';
 import MyBotConnectionsScreen from './src/screens/MyBotConnectionsScreen';
+import GroupsScreen from './src/screens/GroupsScreen';
+import GroupDetailScreen from './src/screens/GroupDetailScreen';
 import auth from './src/services/auth';
 import { registerPushToken } from './src/services/notifications';
 import wsManager from './src/services/wsManager';
@@ -30,7 +32,7 @@ const DarkTheme = {
 };
 
 function TabIcon({ label }: { label: string }) {
-  const icons: Record<string, string> = { Friends: '👥', Moments: '📝', Discover: '🔍', Profile: '👤' };
+  const icons: Record<string, string> = { Friends: '👥', Groups: '💬', Moments: '📝', Discover: '🔍', Profile: '👤' };
   return <Text style={{ fontSize: 20 }}>{icons[label] || '•'}</Text>;
 }
 
@@ -46,6 +48,7 @@ function MainTabs({ onLogout }: { onLogout: () => void }) {
     })}>
       <Tab.Screen name="Friends" component={FriendsScreen} options={{ title: '好友' }} />
       <Tab.Screen name="Moments" component={MomentsScreen} options={{ title: '动态' }} />
+      <Tab.Screen name="Groups" component={GroupsScreen} options={{ title: "群聊" }} />
       <Tab.Screen name="Discover" component={DiscoverScreen} options={{ title: '发现' }} />
       <Tab.Screen name="Profile" options={{ title: '我的' }}>
         {() => <ProfileScreen onLogout={onLogout} />}

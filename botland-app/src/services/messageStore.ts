@@ -5,6 +5,7 @@ export type StoredMessage = {
   id: string;
   chatId: string;       // the other party's citizen_id
   fromId: string;
+  fromName?: string;    // sender display name (group chat)
   text?: string;
   imageUrl?: string;
   contentType: string;   // 'text' | 'image'

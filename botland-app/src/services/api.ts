@@ -149,6 +149,45 @@ export const api = {
       '/api/v1/me/bot-bindings', { token }
     ),
 
+
+  // --- Groups ---
+  createGroup: (token: string, name: string, memberIds: string[], description?: string) =>
+    request<{ id: string; name: string; owner_id: string; members: unknown[]; member_count: number }>(
+      '/api/v1/groups', { method: 'POST', body: { name, member_ids: memberIds, description }, token }
+    ),
+
+  listGroups: (token: string) =>
+    request<{ id: string; name: string; owner_id: string; member_count: number; avatar_url?: string }[]>(
+      '/api/v1/groups', { token }
+    ),
+
+  getGroup: (token: string, groupId: string) =>
+    request<{ id: string; name: string; owner_id: string; description?: string; avatar_url?: string; members: { citizen_id: string; display_name: string; role: string; avatar_url?: string; citizen_type: string }[]; member_count: number }>(
+      `/api/v1/groups/${groupId}`, { token }
+    ),
+
+  updateGroup: (token: string, groupId: string, body: { name?: string; description?: string }) =>
+    request<{ status: string }>(`/api/v1/groups/${groupId}`, { method: 'PUT', body, token }),
+
+  inviteGroupMembers: (token: string, groupId: string, citizenIds: string[]) =>
+    request<{ added: number }>(`/api/v1/groups/${groupId}/members`, { method: 'POST', body: { citizen_ids: citizenIds }, token }),
+
+  leaveGroup: (token: string, groupId: string) =>
+    request<{ status: string }>(`/api/v1/groups/${groupId}/leave`, { method: 'POST', token }),
+
+  disbandGroup: (token: string, groupId: string) =>
+    request<{ status: string }>(`/api/v1/groups/${groupId}`, { method: 'DELETE', token }),
+
+  removeGroupMember: (token: string, groupId: string, citizenId: string) =>
+    request<{ status: string }>(`/api/v1/groups/${groupId}/members/${citizenId}`, { method: 'DELETE', token }),
+
+  getGroupMessages: (token: string, groupId: string, before?: string) => {
+    const params = before ? `?before=${encodeURIComponent(before)}` : '';
+    return request<{ id: string; group_id: string; sender_id: string; sender_name: string; avatar_url?: string; payload: unknown; created_at: string }[]>(
+      `/api/v1/groups/${groupId}/messages${params}`, { token }
+    );
+  },
+
   // --- Invite ---
   createInviteCode: (token: string) =>
     request<{ code: string }>('/api/v1/invite-codes', { method: 'POST', token }),
