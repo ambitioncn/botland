@@ -13,10 +13,10 @@
 import auth from './auth';
 
 const WS_URL = 'wss://api.botland.im/ws';
-const PING_INTERVAL = 25_000;       // 25s — well within server's 90s pongWait
-const PONG_TIMEOUT = 10_000;        // expect pong within 10s
+const PING_INTERVAL = 15_000;       // 25s — well within server's 90s pongWait
+const PONG_TIMEOUT = 6_000;        // expect pong within 10s
 const RECONNECT_BASE = 1_000;       // start at 1s
-const RECONNECT_MAX = 30_000;       // cap at 30s
+const RECONNECT_MAX = 10_000;       // cap at 30s
 const RECONNECT_FACTOR = 2;
 
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
@@ -132,6 +132,13 @@ class WSManager {
 
     this.ws.onclose = () => {
       this.stopPing();
+      if (this.ws) {
+        this.ws.onopen = null;
+        this.ws.onmessage = null;
+        this.ws.onerror = null;
+        this.ws.onclose = null;
+        this.ws = null;
+      }
       if (!this.intentionalClose) {
         this.scheduleReconnect();
       } else {
@@ -166,6 +173,7 @@ class WSManager {
   }
 
   private scheduleReconnect(): void {
+    if (this.reconnectTimer) return;
     this.cleanup(false); // clean ws/timers but don't reset state to disconnected
     const delay = Math.min(RECONNECT_BASE * Math.pow(RECONNECT_FACTOR, this.reconnectAttempt), RECONNECT_MAX);
     this.reconnectAttempt++;

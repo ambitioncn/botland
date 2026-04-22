@@ -41,36 +41,41 @@ export default function ChatScreen({ route, navigation }: Props) {
 
   useEffect(() => { loadLocal(); }, [loadLocal]);
 
-  useEffect(() => {
+  const loadGroupHistory = useCallback(async () => {
     if (!isGroup) return;
-    (async () => {
-      const token = await auth.getAccessToken();
-      if (!token) return;
-      try {
-        const history = await api.getGroupMessages(token, groupId);
-        if (history && history.length > 0) {
-          const myId = wsManager.getCitizenId() || '';
-          const mapped: StoredMessage[] = history.reverse().map((m: any) => ({
-            id: m.id, chatId: groupId, fromId: m.sender_id, fromName: m.sender_name,
-            text: m.payload?.text,
-            imageUrl: m.payload?.content_type === 'image' ? m.payload?.url : undefined,
-            contentType: m.payload?.content_type || 'text',
-            mine: m.sender_id === myId,
-            timestamp: new Date(m.created_at).getTime(), status: 'delivered',
-          }));
-          setMessages(prev => {
-            const existIds = new Set(prev.map(p => p.id));
-            const fresh = mapped.filter(m => !existIds.has(m.id));
-            return [...fresh, ...prev].sort((a, b) => a.timestamp - b.timestamp);
-          });
-        }
-      } catch {}
-    })();
+    const token = await auth.getAccessToken();
+    if (!token) return;
+    try {
+      const history = await api.getGroupMessages(token, groupId);
+      if (history && history.length > 0) {
+        const myId = wsManager.getCitizenId() || '';
+        const mapped: StoredMessage[] = history.reverse().map((m: any) => ({
+          id: m.id, chatId: groupId, fromId: m.sender_id, fromName: m.sender_name,
+          text: m.payload?.text,
+          imageUrl: m.payload?.content_type === 'image' ? m.payload?.url : undefined,
+          contentType: m.payload?.content_type || 'text',
+          mine: m.sender_id === myId,
+          timestamp: new Date(m.created_at).getTime(), status: 'delivered',
+        }));
+        setMessages(prev => {
+          const existIds = new Set(prev.map(p => p.id));
+          const fresh = mapped.filter(m => !existIds.has(m.id));
+          return [...fresh, ...prev].sort((a, b) => a.timestamp - b.timestamp);
+        });
+      }
+    } catch {}
   }, [isGroup, groupId]);
+
+  useEffect(() => { void loadGroupHistory(); }, [loadGroupHistory]);
 
   useEffect(() => {
     wsManager.connect();
-    const unsubState = wsManager.onStateChange(setConnState);
+    const unsubState = wsManager.onStateChange((state) => {
+      setConnState(state);
+      if (state === 'connected' && isGroup) {
+        void loadGroupHistory();
+      }
+    });
     const unsubMsg = wsManager.onMessage((data) => {
       if (!isGroup && data.type === 'message.received' && data.from === friendId) {
         const isImage = data.payload?.content_type === 'image';
@@ -102,7 +107,7 @@ export default function ChatScreen({ route, navigation }: Props) {
       }
     });
     return () => { unsubState(); unsubMsg(); };
-  }, [friendId, groupId, isGroup]);
+  }, [friendId, groupId, isGroup, loadGroupHistory]);
 
   const sendMessage = async () => {
     if (!input.trim()) return;
