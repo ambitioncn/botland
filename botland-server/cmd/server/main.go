@@ -10,6 +10,7 @@ import (
 	"github.com/nicknnn/botland-server/internal/auth"
 	"github.com/nicknnn/botland-server/internal/config"
 	"github.com/nicknnn/botland-server/internal/push"
+	"github.com/nicknnn/botland-server/internal/group"
 	"github.com/nicknnn/botland-server/internal/relay"
 	"github.com/nicknnn/botland-server/internal/ws"
 	"github.com/nicknnn/botland-server/pkg/protocol"
@@ -42,6 +43,9 @@ func main() {
 	hub := ws.NewHub(logger)
 	relaySvc := relay.NewService(db, hub, logger)
 
+	groupH := group.NewHandler(db, hub, logger)
+	relaySvc.SetGroupHandler(groupH)
+
 	wsAuth := func(token string) string {
 		claims, err := jwtSvc.ValidateToken(token)
 		if err != nil {
@@ -60,7 +64,13 @@ func main() {
 		case protocol.TypeMessageAck:
 			relaySvc.HandleAck(client.CitizenID, env)
 		case protocol.TypeTypingStart, protocol.TypeTypingStop:
-			relaySvc.HandleTyping(client.CitizenID, env)
+			if env.To != "" && len(env.To) > 6 && env.To[:6] == "group_" {
+				relaySvc.HandleGroupTyping(client.CitizenID, env)
+			} else {
+				relaySvc.HandleTyping(client.CitizenID, env)
+			}
+		case protocol.TypeGroupMessageSend:
+			relaySvc.RouteMessage(client.CitizenID, env)
 		case protocol.TypeMessageReaction:
 			relaySvc.HandleReaction(client.CitizenID, env)
 		case protocol.TypePresenceUpdate:
@@ -75,7 +85,7 @@ func main() {
 		relaySvc.DeliverPending(citizenID)
 	}
 
-	router := api.NewRouter(db, jwtSvc, logger, "https://api.botland.im")
+	router := api.NewRouter(db, jwtSvc, hub, logger, "https://api.botland.im")
 	router.Get("/ws", ws.HandleUpgrade(hub, logger, wsAuth, onMessage, onConnect))
 
 	addr := fmt.Sprintf(":%d", cfg.Port)

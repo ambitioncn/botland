@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/nicknnn/botland-server/internal/auth"
@@ -15,14 +16,25 @@ import (
 type PushFunc func(citizenID, title, body string, data map[string]string) error
 
 type Service struct {
-	db       *sql.DB
-	hub      *ws.Hub
-	logger   *slog.Logger
-	pushFunc PushFunc
+	db           *sql.DB
+	hub          *ws.Hub
+	logger       *slog.Logger
+	pushFunc     PushFunc
+	groupHandler GroupHandler
+}
+
+// GroupHandler interface for group operations (avoid circular import)
+type GroupHandler interface {
+	GetGroupMembers(groupID string) []string
+	StoreGroupMessage(msgID, groupID, senderID string, payload interface{}) error
 }
 
 func NewService(db *sql.DB, hub *ws.Hub, logger *slog.Logger) *Service {
 	return &Service{db: db, hub: hub, logger: logger}
+}
+
+func (s *Service) SetGroupHandler(gh GroupHandler) {
+	s.groupHandler = gh
 }
 
 func (s *Service) SetPushFunc(fn PushFunc) {
@@ -41,6 +53,11 @@ func (s *Service) getSenderName(citizenID string) string {
 
 // RouteMessage handles an incoming message: deliver in real-time or store offline.
 func (s *Service) RouteMessage(from string, env *protocol.Envelope) {
+	// Route to group if target is a group ID
+	if strings.HasPrefix(env.To, "group_") {
+		s.RouteGroupMessage(from, env)
+		return
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	if env.Timestamp == "" {
 		env.Timestamp = now
@@ -95,6 +112,98 @@ func (s *Service) RouteMessage(from string, env *protocol.Envelope) {
 			})
 		}
 	}
+}
+
+
+// RouteGroupMessage broadcasts a message to all group members.
+func (s *Service) RouteGroupMessage(from string, env *protocol.Envelope) {
+	if s.groupHandler == nil {
+		s.logger.Error("group handler not set")
+		return
+	}
+
+	groupID := env.To
+	now := time.Now().UTC().Format(time.RFC3339)
+	if env.Timestamp == "" {
+		env.Timestamp = now
+	}
+	if env.ID == "" {
+		env.ID = "msg_" + auth.NewULID()
+	}
+
+	// Verify sender is a member
+	members := s.groupHandler.GetGroupMembers(groupID)
+	isMember := false
+	for _, m := range members {
+		if m == from {
+			isMember = true
+			break
+		}
+	}
+	if !isMember {
+		s.hub.Send(from, &protocol.Envelope{
+			Type: protocol.TypeError,
+			Payload: protocol.ErrorPayload{
+				Code:    "not_member",
+				Message: "you are not a member of this group",
+			},
+		})
+		return
+	}
+
+	// Store message
+	s.groupHandler.StoreGroupMessage(env.ID, groupID, from, env.Payload)
+
+	// Get sender name
+	senderName := s.getSenderName(from)
+
+	// Broadcast to all members except sender
+	delivered := &protocol.Envelope{
+		Type:      protocol.TypeGroupMessageReceived,
+		ID:        env.ID,
+		From:      from,
+		To:        groupID,
+		Timestamp: env.Timestamp,
+		Payload:   env.Payload,
+	}
+
+	onlineCount := 0
+	for _, mid := range members {
+		if mid == from {
+			continue
+		}
+		if s.hub.Send(mid, delivered) {
+			onlineCount++
+		} else if s.pushFunc != nil {
+			// Send push to offline members
+			pushBody := "发来一条消息"
+			if p, ok := env.Payload.(map[string]interface{}); ok {
+				if text, ok := p["text"].(string); ok && text != "" {
+					if len(text) > 50 {
+						pushBody = text[:50] + "..."
+					} else {
+						pushBody = text
+					}
+				}
+			}
+			go s.pushFunc(mid, senderName, pushBody, map[string]string{
+				"type":     "group_message",
+				"group_id": groupID,
+				"from_id":  from,
+			})
+		}
+	}
+
+	// ACK to sender
+	s.hub.Send(from, &protocol.Envelope{
+		Type: protocol.TypeMessageStatus,
+		Payload: protocol.AckPayload{
+			MessageID: env.ID,
+			Status:    "delivered",
+		},
+	})
+
+	s.logger.Info("group message delivered", "group", groupID, "from", from, "id", env.ID, "online", onlineCount, "total", len(members)-1)
 }
 
 func (s *Service) storeOffline(from string, env *protocol.Envelope) {
@@ -202,6 +311,25 @@ func (s *Service) HandleReaction(from string, env *protocol.Envelope) {
 	}
 }
 
+
+// HandleGroupTyping broadcasts typing indicators to group members.
+func (s *Service) HandleGroupTyping(from string, env *protocol.Envelope) {
+	if s.groupHandler == nil || !strings.HasPrefix(env.To, "group_") {
+		return
+	}
+	members := s.groupHandler.GetGroupMembers(env.To)
+	broadcast := &protocol.Envelope{
+		Type: env.Type,
+		From: from,
+		To:   env.To,
+	}
+	for _, mid := range members {
+		if mid == from {
+			continue
+		}
+		s.hub.Send(mid, broadcast)
+	}
+}
 func strVal(v interface{}) string {
 	if v == nil {
 		return ""

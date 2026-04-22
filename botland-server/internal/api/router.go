@@ -17,9 +17,11 @@ import (
 	"github.com/nicknnn/botland-server/internal/moment"
 	"github.com/nicknnn/botland-server/internal/relationship"
 	"github.com/nicknnn/botland-server/internal/botcard"
+	"github.com/nicknnn/botland-server/internal/group"
+	ws "github.com/nicknnn/botland-server/internal/ws"
 )
 
-func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, logger *slog.Logger, baseURL string) *chi.Mux {
+func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, hub *ws.Hub, logger *slog.Logger, baseURL string) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
 	r.Use(mw.CORS)
@@ -34,6 +36,7 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, logger *slog.Logger, baseURL
 	mediaH := media.NewHandler(logger, baseURL)
 	pushH := push.NewHandler(db, logger)
 	botCardH := botcard.NewHandler(db)
+	groupH := group.NewHandler(db, hub, logger)
 
 	// Serve uploaded files
 	r.Handle("/uploads/*", http.StripPrefix("/uploads", http.FileServer(http.Dir(media.UploadDir))))
@@ -84,11 +87,15 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, logger *slog.Logger, baseURL
 			r.Delete("/friends/{citizenID}", relH.RemoveFriend)
 			r.Post("/friends/{citizenID}/block", relH.BlockCitizen)
 
-			r.Post("/groups", ph("create_group"))
-			r.Get("/groups/{groupID}", ph("get_group"))
-			r.Post("/groups/{groupID}/members", ph("add_member"))
-			r.Delete("/groups/{groupID}/members/me", ph("leave_group"))
-			r.Get("/groups/{groupID}/members", ph("list_members"))
+			r.Post("/groups", groupH.CreateGroup)
+			r.Get("/groups", groupH.ListGroups)
+			r.Get("/groups/{groupID}", groupH.GetGroup)
+			r.Put("/groups/{groupID}", groupH.UpdateGroup)
+			r.Delete("/groups/{groupID}", groupH.DisbandGroup)
+			r.Post("/groups/{groupID}/members", groupH.InviteMembers)
+			r.Delete("/groups/{groupID}/members/{citizenID}", groupH.RemoveMember)
+			r.Post("/groups/{groupID}/leave", groupH.LeaveGroup)
+			r.Get("/groups/{groupID}/messages", groupH.GetMessages)
 
 			r.Get("/discover/search", citizenH.Search)
 			r.Get("/discover/trending", citizenH.Trending)

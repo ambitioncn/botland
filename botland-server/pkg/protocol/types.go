@@ -19,6 +19,15 @@ const (
 	TypeFriendRequest    = "friend.request"
 	TypeSystemNotification = "system.notification"
 	TypeError            = "error"
+
+	// Group chat types
+	TypeGroupMessageSend     = "group.message.send"
+	TypeGroupMessageReceived = "group.message.received"
+	TypeGroupMemberJoined    = "group.member.joined"
+	TypeGroupMemberLeft      = "group.member.left"
+	TypeGroupTypingStart     = "group.typing.start"
+	TypeGroupTypingStop      = "group.typing.stop"
+	TypeGroupUpdated         = "group.updated"
 )
 
 // Content types
@@ -87,4 +96,26 @@ type ErrorPayload struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 	RefID   string `json:"ref_id,omitempty"`
+}
+
+
+// GroupMessagePayload wraps a group chat message for broadcast.
+type GroupMessagePayload struct {
+	GroupID     string      `json:"group_id"`
+	SenderID    string      `json:"sender_id"`
+	SenderName  string      `json:"sender_name,omitempty"`
+	ContentType string      `json:"content_type"`
+	Text        string      `json:"text,omitempty"`
+	MediaURL    string      `json:"media_url,omitempty"`
+	ReplyTo     string      `json:"reply_to,omitempty"`
+}
+
+// GroupNotification for member join/leave/update events.
+type GroupNotification struct {
+	GroupID   string `json:"group_id"`
+	GroupName string `json:"group_name,omitempty"`
+	ActorID   string `json:"actor_id"`
+	ActorName string `json:"actor_name,omitempty"`
+	TargetID  string `json:"target_id,omitempty"`
+	Action    string `json:"action"` // joined | left | kicked | updated
 }
