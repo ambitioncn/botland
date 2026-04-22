@@ -5,11 +5,13 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import api from '../services/api';
+import { useNavigation } from '@react-navigation/native';
 import auth from '../services/auth';
 
 type Props = { onLogout: () => void };
 
 export default function ProfileScreen({ onLogout }: Props) {
+  const navigation = useNavigation<any>();
   const [profile, setProfile] = useState<Record<string, unknown> | null>(null);
   const [uploading, setUploading] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -137,6 +139,10 @@ export default function ProfileScreen({ onLogout }: Props) {
         </>
       )}
 
+      <TouchableOpacity style={s.botConnectionsBtn} onPress={() => navigation.navigate('MyBotConnections')}>
+        <Text style={s.botConnectionsBtnText}>🤖 我的 Bot 连接</Text>
+      </TouchableOpacity>
+
       <TouchableOpacity style={s.logoutBtn} onPress={handleLogout}>
         <Text style={s.logoutText}>退出登录</Text>
       </TouchableOpacity>
@@ -173,6 +179,8 @@ const s = StyleSheet.create({
   cancelBtnText: { color: '#888', fontSize: 14 },
   saveBtn: { backgroundColor: '#ff6b35', borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 },
   saveBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  logoutBtn: { marginTop: 40, backgroundColor: '#1a1a1a', borderRadius: 12, paddingHorizontal: 32, paddingVertical: 14 },
+  botConnectionsBtn: { marginTop: 24, backgroundColor: '#1a1a1a', borderRadius: 12, paddingHorizontal: 32, paddingVertical: 14, borderWidth: 1, borderColor: '#333' },
+  botConnectionsBtnText: { color: '#ff6b35', fontSize: 15, fontWeight: '600' },
+  logoutBtn: { marginTop: 16, backgroundColor: '#1a1a1a', borderRadius: 12, paddingHorizontal: 32, paddingVertical: 14 },
   logoutText: { color: '#f44', fontSize: 16, fontWeight: '600' },
 });

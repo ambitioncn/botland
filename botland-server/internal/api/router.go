@@ -16,6 +16,7 @@ import (
 	mw "github.com/nicknnn/botland-server/internal/middleware"
 	"github.com/nicknnn/botland-server/internal/moment"
 	"github.com/nicknnn/botland-server/internal/relationship"
+	"github.com/nicknnn/botland-server/internal/botcard"
 )
 
 func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, logger *slog.Logger, baseURL string) *chi.Mux {
@@ -32,6 +33,7 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, logger *slog.Logger, baseURL
 	momentH := moment.NewHandler(db, logger)
 	mediaH := media.NewHandler(logger, baseURL)
 	pushH := push.NewHandler(db, logger)
+	botCardH := botcard.NewHandler(db)
 
 	// Serve uploaded files
 	r.Handle("/uploads/*", http.StripPrefix("/uploads", http.FileServer(http.Dir(media.UploadDir))))
@@ -55,6 +57,10 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, logger *slog.Logger, baseURL
 			r.Post("/auth/login", authH.Login)
 			r.Post("/auth/refresh", ph("refresh"))
 		})
+
+		// Public bot-cards endpoints
+		r.Post("/bot-cards/resolve", botCardH.Resolve)
+		r.Get("/bot-cards/{slug}", botCardH.GetCard)
 
 		// Authenticated endpoints
 		r.Group(func(r chi.Router) {
@@ -101,6 +107,10 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, logger *slog.Logger, baseURL
 			// Push notifications
 			r.Post("/push/register", pushH.RegisterToken)
 			r.Post("/push/unregister", pushH.UnregisterToken)
+
+			// Bot Card bindings
+			r.Post("/bot-cards/bind", botCardH.Bind)
+			r.Get("/me/bot-bindings", botCardH.ListBindings)
 
 			r.Post("/reports", ph("create_report"))
 		})

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, Platform } from 'react-native';
+import { View, Text, AppState, Platform } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -15,8 +15,11 @@ import DiscoverScreen from './src/screens/DiscoverScreen';
 import MomentsScreen from './src/screens/MomentsScreen';
 import MomentDetailScreen from './src/screens/MomentDetailScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import BotCardScreen from './src/screens/BotCardScreen';
+import MyBotConnectionsScreen from './src/screens/MyBotConnectionsScreen';
 import auth from './src/services/auth';
 import { registerPushToken } from './src/services/notifications';
+import wsManager from './src/services/wsManager';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -59,6 +62,32 @@ export default function App() {
     auth.getAccessToken().then((t) => setLoggedIn(!!t));
   }, []);
 
+  // Global WebSocket lifecycle — connect on login, disconnect on logout
+  useEffect(() => {
+    if (loggedIn) {
+      wsManager.connect();
+    } else if (loggedIn === false) {
+      wsManager.disconnect();
+    }
+  }, [loggedIn]);
+
+  // Reconnect when app comes back to foreground (mobile)
+  useEffect(() => {
+    if (!loggedIn) return;
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        // App foregrounded — ensure WS is alive
+        wsManager.connect();
+      }
+      // Note: we do NOT disconnect on background — push notifications
+      // handle offline delivery. The server's pongWait will eventually
+      // clean up stale connections.
+    });
+
+    return () => subscription.remove();
+  }, [loggedIn]);
+
   // Register push token after login
   useEffect(() => {
     if (loggedIn) {
@@ -82,17 +111,25 @@ export default function App() {
 
   if (loggedIn === null) return <View style={{ flex: 1, backgroundColor: '#0a0a0a' }} />;
 
+  const handleLogout = () => {
+    wsManager.disconnect();
+    auth.clear();
+    setLoggedIn(false);
+  };
+
   return (
     <NavigationContainer theme={DarkTheme} ref={navigationRef}>
       <StatusBar style="light" />
       {loggedIn ? (
         <Stack.Navigator screenOptions={{ headerStyle: { backgroundColor: '#111' }, headerTintColor: '#fff' }}>
           <Stack.Screen name="Main" options={{ headerShown: false }}>
-            {() => <MainTabs onLogout={() => setLoggedIn(false)} />}
+            {() => <MainTabs onLogout={handleLogout} />}
           </Stack.Screen>
           <Stack.Screen name="Chat" component={ChatScreen} options={({ route }: any) => ({ title: route.params?.friendName || '聊天' })} />
           <Stack.Screen name="FriendRequests" component={FriendRequestsScreen} options={{ title: '好友请求' }} />
           <Stack.Screen name="MomentDetail" component={MomentDetailScreen} options={{ title: '动态详情' }} />
+          <Stack.Screen name="BotCard" component={BotCardScreen} options={{ title: 'Bot 名片' }} />
+          <Stack.Screen name="MyBotConnections" component={MyBotConnectionsScreen} options={{ title: '我的 Bot 连接' }} />
         </Stack.Navigator>
       ) : (
         <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -102,6 +139,7 @@ export default function App() {
           <Stack.Screen name="Register">
             {(props) => <RegisterScreen {...props} onLogin={() => setLoggedIn(true)} />}
           </Stack.Screen>
+          <Stack.Screen name="BotCard" component={BotCardScreen} options={{ title: 'Bot 名片', headerShown: true, headerStyle: { backgroundColor: '#111' }, headerTintColor: '#fff' }} />
         </Stack.Navigator>
       )}
     </NavigationContainer>

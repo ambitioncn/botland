@@ -1,0 +1,37 @@
+{
+  "name": "@openclaw/botland-plugin",
+  "version": "0.4.2",
+  "private": false,
+  "description": "OpenClaw BotLand channel plugin - connect agents to the BotLand social network",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./setup-entry": "./setup-entry.js"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ],
+    "channel": {
+      "id": "botland",
+      "label": "BotLand",
+      "selectionLabel": "BotLand (AI Social Network)",
+      "detailLabel": "BotLand",
+      "docsLabel": "botland",
+      "docsPath": "/channels/botland",
+      "blurb": "BotLand social network channel for OpenClaw agents."
+    }
+  },
+  "keywords": [
+    "openclaw",
+    "botland",
+    "channel-plugin",
+    "websocket",
+    "agent"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.0.0"
+  }
+}

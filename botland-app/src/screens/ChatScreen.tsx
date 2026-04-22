@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet,
-  KeyboardAvoidingView, Platform, Image, Alert,
+  KeyboardAvoidingView, Platform, Image, Alert, ActivityIndicator,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { createWebSocket } from '../services/api';
 import api from '../services/api';
 import auth from '../services/auth';
 import messageStore, { StoredMessage } from '../services/messageStore';
+import wsManager, { ConnectionState } from '../services/wsManager';
 
 type Props = { route: any };
 
@@ -16,8 +16,7 @@ export default function ChatScreen({ route }: Props) {
   const [messages, setMessages] = useState<StoredMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
-  const myIdRef = useRef<string>('');
+  const [connState, setConnState] = useState<ConnectionState>('disconnected');
   const flatRef = useRef<FlatList>(null);
 
   // Load local messages on mount
@@ -28,74 +27,77 @@ export default function ChatScreen({ route }: Props) {
     }
   }, [friendId]);
 
+  useEffect(() => { loadLocal(); }, [loadLocal]);
+
+  // Connect wsManager and subscribe to messages
   useEffect(() => {
-    loadLocal();
-  }, [loadLocal]);
+    // Ensure connected
+    wsManager.connect();
 
-  useEffect(() => {
-    let ws: WebSocket;
-    (async () => {
-      const token = await auth.getAccessToken();
-      const myId = await auth.getCitizenId();
-      if (!token || !myId) return;
-      myIdRef.current = myId;
+    // Subscribe to connection state
+    const unsubState = wsManager.onStateChange(setConnState);
 
-      ws = createWebSocket(token);
-      wsRef.current = ws;
+    // Subscribe to inbound messages
+    const unsubMsg = wsManager.onMessage((data) => {
+      if (data.type === 'message.received' && data.from === friendId) {
+        const isImage = data.payload?.content_type === 'image';
+        const msg: StoredMessage = {
+          id: data.id || `r_${Date.now()}`,
+          chatId: friendId,
+          fromId: data.from,
+          text: data.payload?.text,
+          imageUrl: isImage ? data.payload?.url : undefined,
+          contentType: isImage ? 'image' : 'text',
+          mine: false,
+          timestamp: Date.now(),
+          status: 'delivered',
+        };
+        setMessages(prev => [...prev, msg]);
+        messageStore.save(msg);
+      }
 
-      ws.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data);
-          if (data.type === 'message.received' && data.from === friendId) {
-            const isImage = data.payload?.content_type === 'image';
-            const msg: StoredMessage = {
-              id: data.id || `r_${Date.now()}`,
-              chatId: friendId,
-              fromId: data.from,
-              text: data.payload?.text,
-              imageUrl: isImage ? data.payload?.url : undefined,
-              contentType: isImage ? 'image' : 'text',
-              mine: false,
-              timestamp: Date.now(),
-              status: 'delivered',
-            };
-            setMessages(prev => [...prev, msg]);
-            messageStore.save(msg);
-          }
-          if (data.type === 'message.status') {
-            const status = data.payload?.status;
-            const msgId = data.payload?.message_id;
-            if (msgId && (status === 'delivered' || status === 'read')) {
-              setMessages(prev => prev.map(m =>
-                m.id === msgId ? { ...m, status } : m
-              ));
-              messageStore.updateStatus(msgId, status);
-            }
-          }
-        } catch {}
-      };
-    })();
+      if (data.type === 'message.status') {
+        const status = data.payload?.status;
+        const msgId = data.payload?.message_id;
+        if (msgId && (status === 'delivered' || status === 'read')) {
+          setMessages(prev => prev.map(m =>
+            m.id === msgId ? { ...m, status } : m
+          ));
+          messageStore.updateStatus(msgId, status);
+        }
+      }
+    });
 
-    return () => { ws?.close(); };
+    return () => {
+      unsubState();
+      unsubMsg();
+      // Don't disconnect wsManager here — it's shared globally
+    };
   }, [friendId]);
 
   const sendMessage = async () => {
-    if (!input.trim() || !wsRef.current) return;
+    if (!input.trim()) return;
+    const myId = wsManager.getCitizenId();
+    if (!myId) return;
+
     const id = `msg_${Date.now()}`;
     const msg: StoredMessage = {
       id,
       chatId: friendId,
-      fromId: myIdRef.current,
+      fromId: myId,
       text: input,
       contentType: 'text',
       mine: true,
       timestamp: Date.now(),
       status: 'sent',
     };
-    wsRef.current.send(JSON.stringify({
+
+    // Use wsManager.send — it queues if disconnected
+    wsManager.send({
       type: 'message.send', id, to: friendId,
       payload: { content_type: 'text', text: input },
-    }));
+    });
+
     setMessages(prev => [...prev, msg]);
     messageStore.save(msg);
     setInput('');
@@ -110,18 +112,21 @@ export default function ChatScreen({ route }: Props) {
 
     setSending(true);
     const token = await auth.getAccessToken();
-    if (!token || !wsRef.current) return;
+    const myId = wsManager.getCitizenId();
+    if (!token || !myId) return;
     try {
       const upload = await api.uploadImage(token, result.assets[0].uri, 'chat');
       const id = `msg_${Date.now()}`;
-      wsRef.current.send(JSON.stringify({
+
+      wsManager.send({
         type: 'message.send', id, to: friendId,
         payload: { content_type: 'image', url: upload.url },
-      }));
+      });
+
       const msg: StoredMessage = {
         id,
         chatId: friendId,
-        fromId: myIdRef.current,
+        fromId: myId,
         imageUrl: upload.url,
         contentType: 'image',
         mine: true,
@@ -156,8 +161,24 @@ export default function ChatScreen({ route }: Props) {
     </View>
   );
 
+  const connBanner = connState !== 'connected' ? (
+    <View style={s.banner}>
+      {connState === 'reconnecting' || connState === 'connecting' ? (
+        <>
+          <ActivityIndicator size="small" color="#ff6b35" />
+          <Text style={s.bannerText}>
+            {connState === 'reconnecting' ? '重新连接中...' : '连接中...'}
+          </Text>
+        </>
+      ) : (
+        <Text style={s.bannerText}>未连接 · 消息将在重连后发送</Text>
+      )}
+    </View>
+  ) : null;
+
   return (
     <KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
+      {connBanner}
       <FlatList ref={flatRef} data={messages} keyExtractor={(i) => i.id} renderItem={renderItem}
         contentContainerStyle={s.list} onContentSizeChange={() => flatRef.current?.scrollToEnd({ animated: true })} />
       <View style={s.inputRow}>
@@ -176,6 +197,11 @@ export default function ChatScreen({ route }: Props) {
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0a0a0a' },
+  banner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 6, backgroundColor: '#1a1a1a', gap: 8,
+  },
+  bannerText: { color: '#aaa', fontSize: 12 },
   list: { padding: 12, paddingBottom: 8 },
   bubble: { maxWidth: '75%', padding: 12, borderRadius: 16, marginBottom: 8 },
   mine: { alignSelf: 'flex-end', backgroundColor: '#ff6b35', borderBottomRightRadius: 4 },

@@ -38,6 +38,9 @@ export const api = {
   login: (body: { handle: string; password: string }) =>
     request<{ citizen_id: string; access_token: string; refresh_token: string }>('/api/v1/auth/login', { method: 'POST', body }),
 
+  refresh: (refreshToken: string) =>
+    request<{ access_token: string; refresh_token?: string }>('/api/v1/auth/refresh', { method: 'POST', body: { refresh_token: refreshToken } }),
+
   // --- User ---
   getMe: (token: string) =>
     request<Record<string, unknown>>('/api/v1/me', { token }),
@@ -63,6 +66,9 @@ export const api = {
 
   rejectFriendRequest: (token: string, requestId: string) =>
     request<{ status: string }>(`/api/v1/friends/requests/${requestId}/reject`, { method: 'POST', token }),
+
+  removeFriend: (token: string, friendId: string) =>
+    request<{ status: string }>(`/api/v1/friends/${friendId}`, { method: 'DELETE', token }),
 
   // --- Moments ---
   createMoment: (token: string, body: { content_type: string; content: Record<string, unknown>; visibility: string }) =>
@@ -121,6 +127,27 @@ export const api = {
 
   unregisterPushToken: (token: string) =>
     request<{ status: string }>('/api/v1/push/unregister', { method: 'POST', body: {}, token }),
+
+  // --- Bot Cards ---
+  resolveBotCard: (input: string) =>
+    request<{ card: { id: string; slug: string; code: string; bot: { id: string; slug?: string; name: string; avatar?: string; summary?: string }; human_url: string; agent_url?: string; skill_slug?: string; status: string } }>(
+      '/api/v1/bot-cards/resolve', { method: 'POST', body: { input } }
+    ),
+
+  getBotCard: (slug: string) =>
+    request<{ card: { id: string; slug: string; code: string; bot: { id: string; slug?: string; name: string; avatar?: string; summary?: string }; human_url: string; agent_url?: string; skill_slug?: string; status: string }; metadata?: Record<string, string> }>(
+      `/api/v1/bot-cards/${slug}`
+    ),
+
+  bindBotCard: (token: string, cardId: string, source: string = 'manual') =>
+    request<{ binding: { id: string; card_id: string; citizen_id: string; status: string; bot: { id: string; name: string; slug: string }; created_at: string } }>(
+      '/api/v1/bot-cards/bind', { method: 'POST', body: { card_id: cardId, source }, token }
+    ),
+
+  getMyBotBindings: (token: string) =>
+    request<{ bindings: { id: string; card_id: string; status: string; bot: { name: string; slug: string; avatar?: string }; created_at: string }[] }>(
+      '/api/v1/me/bot-bindings', { token }
+    ),
 
   // --- Invite ---
   createInviteCode: (token: string) =>

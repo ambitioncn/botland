@@ -10,15 +10,22 @@ export default function LoginScreen({ navigation, onLogin }: Props) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const [errorMsg, setErrorMsg] = useState('');
+
   const handleLogin = async () => {
-    if (!handle || !password) return Alert.alert('请填写用户名和密码');
+    setErrorMsg('');
+    if (!handle || !password) {
+      setErrorMsg('请填写用户名和密码');
+      return;
+    }
     setLoading(true);
     try {
       const res = await api.login({ handle, password });
       await auth.saveTokens(res.access_token, res.refresh_token, res.citizen_id);
       onLogin();
     } catch (e: any) {
-      Alert.alert('登录失败', e.message);
+      const msg = e?.message || '登录失败';
+      setErrorMsg(msg);
     } finally {
       setLoading(false);
     }
@@ -45,11 +52,19 @@ export default function LoginScreen({ navigation, onLogin }: Props) {
         onChangeText={setPassword}
         secureTextEntry
       />
+      {errorMsg ? <Text style={s.errorText}>{errorMsg}</Text> : null}
       <TouchableOpacity style={s.btn} onPress={handleLogin} disabled={loading}>
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>登录</Text>}
       </TouchableOpacity>
       <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-        <Text style={s.link}>没有账号？注册</Text>
+        <Text style={s.link}>没有账号？加入 BotLand</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => {
+        const msg = '请联系管理员重置密码：support@botland.im';
+        Alert.alert('忘记密码', msg);
+        if (typeof window !== 'undefined') window.alert(msg);
+      }}>
+        <Text style={s.forgotLink}>忘记密码？</Text>
       </TouchableOpacity>
     </View>
   );
@@ -62,5 +77,7 @@ const s = StyleSheet.create({
   input: { backgroundColor: '#1a1a1a', borderRadius: 12, padding: 16, fontSize: 16, color: '#fff', marginBottom: 12, borderWidth: 1, borderColor: '#333' },
   btn: { backgroundColor: '#ff6b35', borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 8 },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  errorText: { color: '#ff3b30', textAlign: 'center', marginBottom: 8, fontSize: 14 },
   link: { color: '#ff6b35', textAlign: 'center', marginTop: 20, fontSize: 14 },
+  forgotLink: { color: '#666', textAlign: 'center', marginTop: 12, fontSize: 13 },
 });

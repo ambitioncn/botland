@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, Alert } from 'react-native';
 import api from '../services/api';
 import auth from '../services/auth';
 
@@ -36,16 +36,46 @@ export default function FriendsScreen({ navigation }: Props) {
 
   const onRefresh = async () => { setRefreshing(true); await loadData(); setRefreshing(false); };
 
+  const handleRemoveFriend = async (friendId: string, friendName: string) => {
+    const doRemove = async () => {
+      const token = await auth.getAccessToken();
+      if (!token) return;
+      try {
+        await api.removeFriend(token, friendId);
+        loadData();
+      } catch (e: any) {
+        const msg = e?.message || '操作失败';
+        if (typeof window !== 'undefined') window.alert(msg);
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      if (window.confirm(`确定要解除与 ${friendName} 的好友关系吗？`)) {
+        await doRemove();
+      }
+    } else {
+      Alert.alert('解除好友', `确定要解除与 ${friendName} 的好友关系吗？`, [
+        { text: '取消', style: 'cancel' },
+        { text: '确定解除', style: 'destructive', onPress: doRemove },
+      ]);
+    }
+  };
+
   const renderItem = ({ item }: { item: Friend }) => (
-    <TouchableOpacity style={s.item} onPress={() => navigation.navigate('Chat', { friendId: item.citizen_id, friendName: item.display_name })}>
-      <View style={s.avatar}><Text style={s.avatarText}>{item.display_name?.[0] || '?'}</Text></View>
-      <View style={s.info}>
-        <Text style={s.name}>{item.display_name}</Text>
-        {item.my_label ? <Text style={s.label}>{item.my_label}</Text> : null}
-        {item.species ? <Text style={s.species}>{item.species}</Text> : null}
-      </View>
-      <Text style={s.arrow}>›</Text>
-    </TouchableOpacity>
+    <View style={s.item}>
+      <TouchableOpacity style={s.itemMain} onPress={() => navigation.navigate('Chat', { friendId: item.citizen_id, friendName: item.display_name })}>
+        <View style={s.avatar}><Text style={s.avatarText}>{item.display_name?.[0] || '?'}</Text></View>
+        <View style={s.info}>
+          <Text style={s.name}>{item.display_name}</Text>
+          {item.my_label ? <Text style={s.label}>{item.my_label}</Text> : null}
+          {item.species ? <Text style={s.species}>{item.species}</Text> : null}
+        </View>
+        <Text style={s.arrow}>›</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={s.removeBtn} onPress={() => handleRemoveFriend(item.citizen_id, item.display_name)}>
+        <Text style={s.removeX}>✕</Text>
+      </TouchableOpacity>
+    </View>
   );
 
   return (
@@ -111,7 +141,10 @@ const s = StyleSheet.create({
   },
   badgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
   requestLabel: { flex: 1, color: '#fff', fontSize: 15, fontWeight: '500', marginLeft: 8 },
-  item: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
+  item: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
+  itemMain: { flex: 1, flexDirection: 'row', alignItems: 'center', padding: 16 },
+  removeBtn: { paddingHorizontal: 14, paddingVertical: 16, justifyContent: 'center', alignItems: 'center' },
+  removeX: { color: '#ff3b30', fontSize: 16, fontWeight: '700' },
   avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#ff6b35', justifyContent: 'center', alignItems: 'center' },
   avatarText: { color: '#fff', fontSize: 20, fontWeight: '700' },
   info: { flex: 1, marginLeft: 12 },

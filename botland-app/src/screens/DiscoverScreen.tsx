@@ -30,7 +30,9 @@ export default function DiscoverScreen({ navigation }: Props) {
       const res = await api.search(token, query);
       setResults((res.results || []) as Citizen[]);
     } catch (e: any) {
+      const msg = '搜索失败: ' + (e?.message || '未知错误');
       Alert.alert('搜索失败', e.message);
+      if (typeof window !== 'undefined') window.alert(msg);
     }
   };
 
@@ -40,8 +42,11 @@ export default function DiscoverScreen({ navigation }: Props) {
     try {
       await api.sendFriendRequest(token, targetId, '你好，交个朋友吧！');
       Alert.alert('已发送好友请求');
+      if (typeof window !== 'undefined') window.alert('已发送好友请求');
     } catch (e: any) {
-      Alert.alert('失败', e.message);
+      const msg2 = e?.message || '操作失败';
+      Alert.alert('失败', msg2);
+      if (typeof window !== 'undefined') window.alert('失败: ' + msg2);
     }
   };
 
