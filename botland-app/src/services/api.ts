@@ -166,7 +166,7 @@ export const api = {
       `/api/v1/groups/${groupId}`, { token }
     ),
 
-  updateGroup: (token: string, groupId: string, body: { name?: string; description?: string }) =>
+  updateGroup: (token: string, groupId: string, body: { name?: string; description?: string; avatar_url?: string }) =>
     request<{ status: string }>(`/api/v1/groups/${groupId}`, { method: 'PUT', body, token }),
 
   inviteGroupMembers: (token: string, groupId: string, citizenIds: string[]) =>

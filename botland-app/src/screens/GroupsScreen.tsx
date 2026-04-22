@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, TextInput, Alert } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, TextInput, Alert, Image } from 'react-native';
 import api from '../services/api';
 import auth from '../services/auth';
 
@@ -135,9 +135,13 @@ export default function GroupsScreen({ navigation }: Props) {
       style={s.groupItem}
       onPress={() => navigation.navigate('Chat', { groupId: item.id, groupName: item.name, chatType: 'group' })}
     >
-      <View style={s.groupAvatar}>
-        <Text style={s.groupAvatarText}>{item.name?.[0] || '群'}</Text>
-      </View>
+      {item.avatar_url ? (
+        <Image source={{ uri: item.avatar_url }} style={s.groupAvatarImg} />
+      ) : (
+        <View style={s.groupAvatar}>
+          <Text style={s.groupAvatarText}>{item.name?.[0] || '群'}</Text>
+        </View>
+      )}
       <View style={s.groupInfo}>
         <Text style={s.groupName}>{item.name}</Text>
         <Text style={s.groupMeta}>{item.member_count} 人</Text>
@@ -173,6 +177,7 @@ const s = StyleSheet.create({
   arrow: { color: '#555', fontSize: 24 },
   groupItem: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
   groupAvatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#3b82f6', justifyContent: 'center', alignItems: 'center' },
+  groupAvatarImg: { width: 48, height: 48, borderRadius: 24 },
   groupAvatarText: { color: '#fff', fontSize: 20, fontWeight: '700' },
   groupInfo: { flex: 1, marginLeft: 12 },
   groupName: { color: '#fff', fontSize: 16, fontWeight: '600' },
