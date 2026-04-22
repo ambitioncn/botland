@@ -381,6 +381,70 @@ func (h *Handler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "removed"})
 }
 
+// UpdateMemberRole PUT /groups/:id/members/:cid/role
+func (h *Handler) UpdateMemberRole(w http.ResponseWriter, r *http.Request) {
+	citizenID := r.Context().Value("citizen_id").(string)
+	groupID := chi.URLParam(r, "groupID")
+	targetID := chi.URLParam(r, "citizenID")
+
+	if h.getMemberRole(groupID, citizenID) != "owner" {
+		writeJSON(w, http.StatusForbidden, ErrorResponse{Error: "only owner can manage admins"})
+		return
+	}
+	if targetID == citizenID {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "cannot change your own role"})
+		return
+	}
+
+	var req struct { Role string `json:"role"` }
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+		return
+	}
+	if req.Role != "admin" && req.Role != "member" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "role must be admin or member"})
+		return
+	}
+	if h.getMemberRole(groupID, targetID) == "owner" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "cannot change owner role"})
+		return
+	}
+
+	if _, err := h.db.Exec(`UPDATE group_members SET role=$1 WHERE group_id=$2 AND citizen_id=$3`, req.Role, groupID, targetID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "db error"})
+		return
+	}
+
+	actorName := h.getCitizenName(citizenID)
+	targetName := h.getCitizenName(targetID)
+	actionText := targetName + " 被设为管理员"
+	event := "member_promoted"
+	if req.Role == "member" {
+		actionText = targetName + " 被取消管理员"
+		event = "member_demoted"
+	}
+	msgID := h.storeSystemMessage(groupID, map[string]interface{}{
+		"content_type": "system",
+		"event": event,
+		"text": actionText,
+		"actor_id": citizenID,
+		"actor_name": actorName,
+		"target_id": targetID,
+		"target_name": targetName,
+	})
+	h.broadcastSystemMessage(groupID, msgID, map[string]interface{}{
+		"content_type": "system",
+		"event": event,
+		"text": actionText,
+		"actor_id": citizenID,
+		"actor_name": actorName,
+		"target_id": targetID,
+		"target_name": targetName,
+	})
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
 // LeaveGroup POST /groups/:id/leave
 func (h *Handler) LeaveGroup(w http.ResponseWriter, r *http.Request) {
 	citizenID := r.Context().Value("citizen_id").(string)

@@ -166,6 +166,14 @@ export default function GroupDetailScreen({ route, navigation }: Props) {
       catch (e: any) { if (typeof window !== 'undefined') window.alert(e?.message || '操作失败'); }
     });
 
+  const handleToggleAdmin = (memberId: string, memberName: string, makeAdmin: boolean) =>
+    confirm(makeAdmin ? '设为管理员' : '取消管理员', `${makeAdmin ? '确定将' : '确定取消'} ${memberName} ${makeAdmin ? '设为' : '的'}管理员？`, async () => {
+      const token = await auth.getAccessToken();
+      if (!token) return;
+      try { await api.updateGroupMemberRole(token, groupId, memberId, makeAdmin ? 'admin' : 'member'); load(); }
+      catch (e: any) { if (typeof window !== 'undefined') window.alert(e?.message || '操作失败'); }
+    });
+
 
   if (showInvite) {
     return (
@@ -277,6 +285,11 @@ export default function GroupDetailScreen({ route, navigation }: Props) {
               </Text>
               {roleLabel(item.role) ? <Text style={s.roleTag}>{roleLabel(item.role)}</Text> : null}
             </View>
+            {isOwner && item.citizen_id !== myId && item.role !== 'owner' && (
+              <TouchableOpacity onPress={() => handleToggleAdmin(item.citizen_id, item.display_name, item.role !== 'admin')}>
+                <Text style={s.adminBtn}>{item.role === 'admin' ? '取消管理' : '设管理'}</Text>
+              </TouchableOpacity>
+            )}
             {isAdmin && item.citizen_id !== myId && item.role !== 'owner' && (
               <TouchableOpacity onPress={() => handleKick(item.citizen_id, item.display_name)}>
                 <Text style={s.kickBtn}>移除</Text>
@@ -336,6 +349,7 @@ const s = StyleSheet.create({
   memberName: { color: '#fff', fontSize: 15, fontWeight: '500' },
   roleTag: { color: '#ff6b35', fontSize: 11, marginTop: 2 },
   kickBtn: { color: '#ff3b30', fontSize: 13, fontWeight: '600', paddingHorizontal: 10 },
+  adminBtn: { color: '#4f8cff', fontSize: 13, fontWeight: '600', paddingHorizontal: 10 },
 
   // Actions
   actions: { padding: 20, borderTopWidth: 1, borderTopColor: '#222' },

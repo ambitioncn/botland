@@ -181,6 +181,9 @@ export const api = {
   removeGroupMember: (token: string, groupId: string, citizenId: string) =>
     request<{ status: string }>(`/api/v1/groups/${groupId}/members/${citizenId}`, { method: 'DELETE', token }),
 
+  updateGroupMemberRole: (token: string, groupId: string, citizenId: string, role: 'admin' | 'member') =>
+    request<{ status: string }>(`/api/v1/groups/${groupId}/members/${citizenId}/role`, { method: 'PUT', body: { role }, token }),
+
   getGroupMessages: (token: string, groupId: string, before?: string) => {
     const params = before ? `?before=${encodeURIComponent(before)}` : '';
     return request<{ id: string; group_id: string; sender_id: string; sender_name: string; avatar_url?: string; payload: unknown; created_at: string }[]>(
