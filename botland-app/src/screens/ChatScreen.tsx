@@ -11,6 +11,21 @@ import wsManager, { ConnectionState } from '../services/wsManager';
 
 type Props = { route: any; navigation: any };
 
+
+function extractMentions(text: string, members: {citizen_id:string;display_name:string}[]): {citizen_id:string;display_name:string;offset:number}[] {
+  const result: {citizen_id:string;display_name:string;offset:number}[] = [];
+  for (const m of members) {
+    let idx = 0;
+    while (true) {
+      const found = text.indexOf('@' + m.display_name, idx);
+      if (found < 0) break;
+      result.push({ citizen_id: m.citizen_id, display_name: m.display_name, offset: found });
+      idx = found + 1;
+    }
+  }
+  return result;
+}
+
 export default function ChatScreen({ route, navigation }: Props) {
   const { friendId, friendName, groupId, groupName, chatType } = route.params || {};
   const isGroup = chatType === 'group';
@@ -264,6 +279,7 @@ const s = StyleSheet.create({
   mentionDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ff6b35', marginRight: 10 },
   mentionName: { color: '#fff', fontSize: 15 },
   mentionEmpty: { color: '#555', textAlign: 'center', paddingVertical: 12, fontSize: 13 },
+  mentionHighlight: { color: '#ff6b35', fontWeight: '600' },
   systemRow: { alignItems: 'center', marginVertical: 8 },
   systemText: { color: '#888', fontSize: 12, backgroundColor: '#141414', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, overflow: 'hidden' },
 });

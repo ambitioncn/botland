@@ -157,6 +157,26 @@ func (s *Service) RouteGroupMessage(from string, env *protocol.Envelope) {
 	// Get sender name
 	senderName := s.getSenderName(from)
 
+	// Enrich payload for clients/plugin
+	payload := map[string]interface{}{}
+	switch p := env.Payload.(type) {
+	case map[string]interface{}:
+		for k, v := range p {
+			payload[k] = v
+		}
+	default:
+		payload["raw"] = p
+	}
+	payload["sender_name"] = senderName
+	payload["group_id"] = groupID
+
+	// Best-effort group name lookup
+	var groupName string
+	_ = s.db.QueryRow(`SELECT name FROM groups WHERE id=$1`, groupID).Scan(&groupName)
+	if groupName != "" {
+		payload["group_name"] = groupName
+	}
+
 	// Broadcast to all members except sender
 	delivered := &protocol.Envelope{
 		Type:      protocol.TypeGroupMessageReceived,
@@ -164,7 +184,19 @@ func (s *Service) RouteGroupMessage(from string, env *protocol.Envelope) {
 		From:      from,
 		To:        groupID,
 		Timestamp: env.Timestamp,
-		Payload:   env.Payload,
+		Payload:   payload,
+	}
+
+	// Extract mentions from payload for targeted notifications
+	mentionedIDs := map[string]bool{}
+	if mentions, ok := payload["mentions"].([]interface{}); ok {
+		for _, m := range mentions {
+			if mm, ok := m.(map[string]interface{}); ok {
+				if id, ok := mm["citizen_id"].(string); ok {
+					mentionedIDs[id] = true
+				}
+			}
+		}
 	}
 
 	onlineCount := 0
@@ -175,8 +207,11 @@ func (s *Service) RouteGroupMessage(from string, env *protocol.Envelope) {
 		if s.hub.Send(mid, delivered) {
 			onlineCount++
 		} else if s.pushFunc != nil {
-			// Send push to offline members
+			// Send push to offline members — mention gets special text
 			pushBody := "发来一条消息"
+			if mentionedIDs[mid] {
+				pushBody = "在群里@了你"
+			}
 			if p, ok := env.Payload.(map[string]interface{}); ok {
 				if text, ok := p["text"].(string); ok && text != "" {
 					if len(text) > 50 {
