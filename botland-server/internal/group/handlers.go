@@ -108,6 +108,23 @@ func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("group created", "id", groupID, "name", req.Name, "owner", citizenID, "members", len(req.MemberIDs)+1)
 
+	msgID := h.storeSystemMessage(groupID, map[string]interface{}{
+		"content_type": "system",
+		"event": "group_created",
+		"text": ownerName + " 创建了群聊「" + req.Name + "」",
+		"actor_id": citizenID,
+		"actor_name": ownerName,
+		"group_name": req.Name,
+	})
+	h.broadcastSystemMessage(groupID, msgID, map[string]interface{}{
+		"content_type": "system",
+		"event": "group_created",
+		"text": ownerName + " 创建了群聊「" + req.Name + "」",
+		"actor_id": citizenID,
+		"actor_name": ownerName,
+		"group_name": req.Name,
+	})
+
 	// Return created group
 	grp := h.getGroupWithMembers(groupID)
 	if grp != nil {
@@ -259,6 +276,27 @@ func (h *Handler) InviteMembers(w http.ResponseWriter, r *http.Request) {
 		)
 		if err == nil {
 			added++
+			targetName := h.getCitizenName(cid)
+			msgID := h.storeSystemMessage(groupID, map[string]interface{}{
+				"content_type": "system",
+				"event": "member_joined",
+				"text": targetName + " 加入了群聊",
+				"actor_id": citizenID,
+				"actor_name": actorName,
+				"target_id": cid,
+				"target_name": targetName,
+				"group_name": groupName,
+			})
+			h.broadcastSystemMessage(groupID, msgID, map[string]interface{}{
+				"content_type": "system",
+				"event": "member_joined",
+				"text": targetName + " 加入了群聊",
+				"actor_id": citizenID,
+				"actor_name": actorName,
+				"target_id": cid,
+				"target_name": targetName,
+				"group_name": groupName,
+			})
 			// Notify the new member
 			h.hub.Send(cid, &protocol.Envelope{
 				Type: protocol.TypeGroupMemberJoined,
@@ -308,7 +346,27 @@ func (h *Handler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	targetName := h.getCitizenName(targetID)
+	actorName := h.getCitizenName(citizenID)
 	h.db.Exec(`DELETE FROM group_members WHERE group_id=$1 AND citizen_id=$2`, groupID, targetID)
+	msgID := h.storeSystemMessage(groupID, map[string]interface{}{
+		"content_type": "system",
+		"event": "member_removed",
+		"text": targetName + " 被移出了群聊",
+		"actor_id": citizenID,
+		"actor_name": actorName,
+		"target_id": targetID,
+		"target_name": targetName,
+	})
+	h.broadcastSystemMessage(groupID, msgID, map[string]interface{}{
+		"content_type": "system",
+		"event": "member_removed",
+		"text": targetName + " 被移出了群聊",
+		"actor_id": citizenID,
+		"actor_name": actorName,
+		"target_id": targetID,
+		"target_name": targetName,
+	})
 
 	h.broadcastToGroup(groupID, "", &protocol.Envelope{
 		Type: protocol.TypeGroupMemberLeft,
@@ -338,7 +396,22 @@ func (h *Handler) LeaveGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	actorName := h.getCitizenName(citizenID)
 	h.db.Exec(`DELETE FROM group_members WHERE group_id=$1 AND citizen_id=$2`, groupID, citizenID)
+	msgID := h.storeSystemMessage(groupID, map[string]interface{}{
+		"content_type": "system",
+		"event": "member_left",
+		"text": actorName + " 退出了群聊",
+		"actor_id": citizenID,
+		"actor_name": actorName,
+	})
+	h.broadcastSystemMessage(groupID, msgID, map[string]interface{}{
+		"content_type": "system",
+		"event": "member_left",
+		"text": actorName + " 退出了群聊",
+		"actor_id": citizenID,
+		"actor_name": actorName,
+	})
 
 	h.broadcastToGroup(groupID, "", &protocol.Envelope{
 		Type: protocol.TypeGroupMemberLeft,
@@ -363,6 +436,25 @@ func (h *Handler) DisbandGroup(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, ErrorResponse{Error: "only owner can disband"})
 		return
 	}
+
+	actorName := h.getCitizenName(citizenID)
+	groupName := h.getGroupName(groupID)
+	msgID := h.storeSystemMessage(groupID, map[string]interface{}{
+		"content_type": "system",
+		"event": "group_disbanded",
+		"text": actorName + " 解散了群聊「" + groupName + "」",
+		"actor_id": citizenID,
+		"actor_name": actorName,
+		"group_name": groupName,
+	})
+	h.broadcastSystemMessage(groupID, msgID, map[string]interface{}{
+		"content_type": "system",
+		"event": "group_disbanded",
+		"text": actorName + " 解散了群聊「" + groupName + "」",
+		"actor_id": citizenID,
+		"actor_name": actorName,
+		"group_name": groupName,
+	})
 
 	h.broadcastToGroup(groupID, "", &protocol.Envelope{
 		Type: protocol.TypeGroupUpdated,
@@ -542,6 +634,24 @@ func (h *Handler) broadcastToGroup(groupID, excludeID string, env *protocol.Enve
 		}
 		h.hub.Send(mid, env)
 	}
+}
+
+
+func (h *Handler) storeSystemMessage(groupID string, payload map[string]interface{}) string {
+	msgID := "msg_" + auth.NewULID()
+	payloadBytes, _ := json.Marshal(payload)
+	_, _ = h.db.Exec(`INSERT INTO group_messages (id, group_id, sender_id, payload) VALUES ($1, $2, $3, $4)`, msgID, groupID, "system", payloadBytes)
+	return msgID
+}
+
+func (h *Handler) broadcastSystemMessage(groupID, msgID string, payload map[string]interface{}) {
+	h.broadcastToGroup(groupID, "", &protocol.Envelope{
+		Type:      protocol.TypeGroupMessageReceived,
+		ID:        msgID,
+		From:      "system",
+		To:        groupID,
+		Payload:   payload,
+	})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {

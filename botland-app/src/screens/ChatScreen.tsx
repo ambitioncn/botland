@@ -54,7 +54,7 @@ export default function ChatScreen({ route, navigation }: Props) {
           text: m.payload?.text,
           imageUrl: m.payload?.content_type === 'image' ? m.payload?.url : undefined,
           contentType: m.payload?.content_type || 'text',
-          mine: m.sender_id === myId,
+          mine: m.sender_id !== 'system' && m.sender_id === myId,
           timestamp: new Date(m.created_at).getTime(), status: 'delivered',
         }));
         setMessages(prev => {
@@ -82,7 +82,7 @@ export default function ChatScreen({ route, navigation }: Props) {
         const msg: StoredMessage = {
           id: data.id || `r_${Date.now()}`, chatId: friendId, fromId: data.from,
           text: data.payload?.text, imageUrl: isImage ? data.payload?.url : undefined,
-          contentType: isImage ? 'image' : 'text', mine: false, timestamp: Date.now(), status: 'delivered',
+          contentType: isImage ? 'image' : 'text', mine: data.from !== 'system' && false, timestamp: Date.now(), status: 'delivered',
         };
         setMessages(prev => [...prev, msg]);
         messageStore.save(msg);
@@ -149,6 +149,14 @@ export default function ChatScreen({ route, navigation }: Props) {
 
   const renderMsg = ({ item }: { item: StoredMessage }) => {
     const isImage = item.contentType === 'image' && item.imageUrl;
+    const isSystem = item.contentType === 'system' || item.fromId === 'system';
+    if (isSystem) {
+      return (
+        <View style={s.systemRow}>
+          <Text style={s.systemText}>{item.text}</Text>
+        </View>
+      );
+    }
     return (
       <View style={[s.row, item.mine ? s.rowMine : s.rowTheirs]}>
         {!item.mine && isGroup && (
@@ -207,4 +215,6 @@ const s = StyleSheet.create({
   input: { flex: 1, backgroundColor: '#1a1a1a', color: '#fff', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, fontSize: 15, marginHorizontal: 8 },
   sendBtn: { backgroundColor: '#ff6b35', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
   sendText: { color: '#fff', fontWeight: '600', fontSize: 14 },
+  systemRow: { alignItems: 'center', marginVertical: 8 },
+  systemText: { color: '#888', fontSize: 12, backgroundColor: '#141414', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, overflow: 'hidden' },
 });

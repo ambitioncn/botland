@@ -215,6 +215,8 @@ async function connectBotland(params) {
             const isGroup = msg.type === "group.message.received" && msg.from && msg.to;
             if (!isDirect && !isGroup) return;
 
+            const contentType = msg.payload?.content_type ?? "text";
+            if (contentType === "system") return;
             const text = msg.payload?.text ?? "";
             if (!text.trim()) return;
 
