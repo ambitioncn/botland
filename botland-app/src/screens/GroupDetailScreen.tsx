@@ -15,6 +15,12 @@ export default function GroupDetailScreen({ route, navigation }: Props) {
   const [editingName, setEditingName] = useState(false);
   const [newName, setNewName] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [newDesc, setNewDesc] = useState('');
+  const [showInvite, setShowInvite] = useState(false);
+  const [friends, setFriends] = useState<{citizen_id:string;display_name:string}[]>([]);
+  const [selectedInvite, setSelectedInvite] = useState<Set<string>>(new Set());
+  const [inviting, setInviting] = useState(false);
 
   const load = async () => {
     const token = await auth.getAccessToken();
@@ -60,6 +66,49 @@ export default function GroupDetailScreen({ route, navigation }: Props) {
   };
 
   // --- Change Group Avatar ---
+
+  const startEditDesc = () => { setNewDesc(group?.description || ''); setEditingDesc(true); };
+  const submitDesc = async () => {
+    const token = await auth.getAccessToken();
+    if (!token) return;
+    try {
+      await api.updateGroup(token, groupId, { description: newDesc.trim() });
+      setEditingDesc(false); load();
+    } catch (e: any) {
+      const msg = e?.message || '修改失败';
+      if (typeof window !== 'undefined') window.alert(msg); else Alert.alert('错误', msg);
+    }
+  };
+
+  const openInvite = async () => {
+    const token = await auth.getAccessToken();
+    if (!token) return;
+    try {
+      const res = await api.getFriends(token);
+      const memberIds = new Set(group?.members?.map(m => m.citizen_id) || []);
+      setFriends(((res as any).friends || []).filter((f: any) => !memberIds.has(f.citizen_id)));
+      setSelectedInvite(new Set());
+      setShowInvite(true);
+    } catch {}
+  };
+
+  const toggleInvite = (id: string) => {
+    setSelectedInvite(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  };
+
+  const doInvite = async () => {
+    if (selectedInvite.size === 0) return;
+    setInviting(true);
+    const token = await auth.getAccessToken();
+    if (!token) { setInviting(false); return; }
+    try {
+      await api.inviteGroupMembers(token, groupId, Array.from(selectedInvite));
+      setShowInvite(false); load();
+    } catch (e: any) {
+      if (typeof window !== 'undefined') window.alert(e?.message || '邀请失败');
+    } finally { setInviting(false); }
+  };
+
   const pickAvatar = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
@@ -117,6 +166,31 @@ export default function GroupDetailScreen({ route, navigation }: Props) {
       catch (e: any) { if (typeof window !== 'undefined') window.alert(e?.message || '操作失败'); }
     });
 
+
+  if (showInvite) {
+    return (
+      <View style={s.container}>
+        <View style={s.inviteHeader}>
+          <TouchableOpacity onPress={() => setShowInvite(false)}><Text style={s.inviteCancel}>取消</Text></TouchableOpacity>
+          <Text style={s.inviteTitle}>邀请好友</Text>
+          <TouchableOpacity onPress={doInvite} disabled={inviting || selectedInvite.size === 0}>
+            <Text style={[s.inviteConfirm, (inviting || selectedInvite.size === 0) && { opacity: 0.4 }]}>{inviting ? '邀请中...' : `邀请(${selectedInvite.size})`}</Text>
+          </TouchableOpacity>
+        </View>
+        <FlatList data={friends} keyExtractor={i => i.citizen_id} renderItem={({ item }) => {
+          const sel = selectedInvite.has(item.citizen_id);
+          return (
+            <TouchableOpacity style={s.inviteItem} onPress={() => toggleInvite(item.citizen_id)}>
+              <View style={[s.inviteCheck, sel && s.inviteCheckSel]}>{sel && <Text style={s.inviteCheckMark}>✓</Text>}</View>
+              <View style={s.inviteAvatar}><Text style={s.inviteAvatarText}>{item.display_name?.[0] || '?'}</Text></View>
+              <Text style={s.inviteName}>{item.display_name}</Text>
+            </TouchableOpacity>
+          );
+        }} ListEmptyComponent={<Text style={s.emptyInvite}>没有更多好友可邀请</Text>} />
+      </View>
+    );
+  }
+
   if (!group) return <View style={s.container}><Text style={s.loading}>加载中...</Text></View>;
 
   const roleLabel = (r: string) => r === 'owner' ? '群主' : r === 'admin' ? '管理' : '';
@@ -169,11 +243,25 @@ export default function GroupDetailScreen({ route, navigation }: Props) {
               </View>
             </TouchableOpacity>
           )}
-          {group.description ? <Text style={s.desc}>{group.description}</Text> : null}
+          {editingDesc ? (
+            <View style={s.editNameRow}>
+              <TextInput style={[s.editNameInput, { fontSize: 14 }]} value={newDesc} onChangeText={setNewDesc} autoFocus onSubmitEditing={submitDesc} returnKeyType="done" placeholder="添加群简介..." placeholderTextColor="#555" multiline />
+              <TouchableOpacity onPress={submitDesc}><Text style={s.editNameSave}>保存</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => setEditingDesc(false)}><Text style={s.editNameCancel}>取消</Text></TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity onPress={isAdmin ? startEditDesc : undefined} activeOpacity={isAdmin ? 0.7 : 1}>
+              <Text style={s.desc}>{group.description || (isAdmin ? '点击添加群简介...' : '')}</Text>
+            </TouchableOpacity>
+          )}
           <Text style={s.memberCount}>{group.member_count} 位成员</Text>
         </View>
       </View>
 
+      <TouchableOpacity style={s.inviteBtn} onPress={openInvite}>
+        <Text style={s.inviteBtnIcon}>➕</Text>
+        <Text style={s.inviteBtnText}>邀请好友</Text>
+      </TouchableOpacity>
       <Text style={s.sectionTitle}>群成员</Text>
       <FlatList
         data={group.members}
@@ -255,4 +343,21 @@ const s = StyleSheet.create({
   leaveBtnText: { color: '#ff3b30', fontSize: 15, fontWeight: '600' },
   disbandBtn: { backgroundColor: '#ff3b30', padding: 14, borderRadius: 10, alignItems: 'center' },
   disbandBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+
+  // Invite
+  inviteBtn: { flexDirection: 'row', alignItems: 'center', padding: 14, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#1a1a1a', backgroundColor: '#0f0f0f' },
+  inviteBtnIcon: { fontSize: 18, marginRight: 10 },
+  inviteBtnText: { color: '#ff6b35', fontSize: 15, fontWeight: '500' },
+  inviteHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: '#222' },
+  inviteCancel: { color: '#888', fontSize: 15 },
+  inviteTitle: { color: '#fff', fontSize: 17, fontWeight: '600' },
+  inviteConfirm: { color: '#ff6b35', fontSize: 15, fontWeight: '600' },
+  inviteItem: { flexDirection: 'row', alignItems: 'center', padding: 12, paddingHorizontal: 16 },
+  inviteCheck: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: '#444', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  inviteCheckSel: { backgroundColor: '#ff6b35', borderColor: '#ff6b35' },
+  inviteCheckMark: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  inviteAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#ff6b35', justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  inviteAvatarText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  inviteName: { color: '#fff', fontSize: 15 },
+  emptyInvite: { color: '#555', textAlign: 'center', marginTop: 40, fontSize: 14 },
 });
