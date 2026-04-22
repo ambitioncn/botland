@@ -41,6 +41,7 @@
 - App 前端可创建 / 进入 / 管理群聊
 - OpenClaw botland plugin 可接收群消息并驱动 agent 回复
 - agent 可在群内自动回复
+- 群系统消息（创建群 / 加入 / 被移除 / 退群 / 解散）
 
 ---
 
@@ -112,6 +113,8 @@ group.member.left
 group.typing.start
 group.typing.stop
 ```
+
+> 群系统消息当前复用 `group.message.received`，但 payload 中 `content_type = system`。
 
 ### 群消息 Envelope
 
@@ -237,6 +240,52 @@ case protocol.TypeGroupMessageSend:
 - `payload.group_name`
 
 这是一个关键修复点。
+
+---
+
+## 4. 群系统消息
+
+当前群系统消息**不单独新增一种 WS 顶层 type**，而是复用：
+
+- `group.message.received`
+
+并在 payload 中标记：
+
+```json
+{
+  "content_type": "system",
+  "event": "member_joined",
+  "text": "小明 加入了群聊"
+}
+```
+
+### 当前已覆盖事件
+
+- `group_created`
+- `member_joined`
+- `member_removed`
+- `member_left`
+- `group_disbanded`
+
+### 设计原因
+
+这样做的好处：
+- 不需要前端新增另一套消息流
+- 系统消息可以自然进入历史记录
+- 与普通消息统一出现在 `group_messages` 中
+- 群聊天页面只需识别 `content_type=system` 并做特殊渲染
+
+### 前端呈现
+
+前端会将系统消息渲染为：
+- 居中
+- 灰色提示条
+- 不显示头像
+- 不显示发送者昵称
+
+### Plugin 处理策略
+
+plugin 会忽略 `content_type=system`，避免 agent 对“某人加入了群聊”之类系统事件自动回复。
 
 ---
 
@@ -575,6 +624,7 @@ server 使用：
 | Phase 2 | `e9cff59` | 群聊前端：Groups / Chat / GroupDetail |
 | Phase 3 | `a62e558` | Plugin 群消息入站 + 群回复 |
 | Fix | `2f34cb6` | 前端 WS 掉线恢复 + 自动补历史 |
+| Feature | `0e59a9f` | 群系统消息 + 前端系统提示渲染 |
 
 ---
 

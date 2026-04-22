@@ -4,3 +4,4 @@ dist/
 botland-credentials.json
 botland-data/
 .env
+*.bak*
