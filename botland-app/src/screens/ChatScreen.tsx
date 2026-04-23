@@ -55,6 +55,7 @@ export default function ChatScreen({ route, navigation }: Props) {
   const [showMention, setShowMention] = useState(false);
   const [memberList, setMemberList] = useState<{citizen_id:string;display_name:string}[]>([]);
   const [mentionFilter, setMentionFilter] = useState('');
+  const [groupInfo, setGroupInfo] = useState<{announcement?: string; muted_all?: boolean} | null>(null);
 
   useEffect(() => {
     navigation.setOptions({
@@ -110,6 +111,7 @@ export default function ChatScreen({ route, navigation }: Props) {
       try {
         const g = await api.getGroup(token, groupId);
         setMemberList((g as any).members || []);
+        setGroupInfo({ announcement: (g as any).announcement, muted_all: (g as any).muted_all });
       } catch {}
     })();
   }, [isGroup, groupId]);
@@ -145,6 +147,21 @@ export default function ChatScreen({ route, navigation }: Props) {
         setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
         messageStore.save(msg);
       }
+      if (data.type === 'error') {
+        const code = data.payload?.code;
+        const msg = data.payload?.message;
+        if (code === 'group_muted') {
+          const text = '当前群已开启全员禁言，只有群主和管理员可以发言';
+          if (typeof window !== 'undefined') window.alert(text);
+          else Alert.alert('无法发送', text);
+          return;
+        }
+        if (msg && typeof window !== 'undefined') {
+          window.alert(msg);
+          return;
+        }
+      }
+
       if (data.type === 'message.status') {
         const { status, message_id: msgId } = data.payload || {};
         if (msgId && (status === 'delivered' || status === 'read')) {
@@ -241,6 +258,12 @@ export default function ChatScreen({ route, navigation }: Props) {
   return (
     <KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
       {banner}
+      {isGroup && (groupInfo?.announcement || groupInfo?.muted_all) ? (
+        <View style={s.groupTopNotice}>
+          {groupInfo?.announcement ? <Text style={s.groupTopNoticeText}>📢 {groupInfo.announcement}</Text> : null}
+          {groupInfo?.muted_all ? <Text style={s.groupMuteNoticeText}>🔇 当前群已开启全员禁言</Text> : null}
+        </View>
+      ) : null}
       <FlatList ref={flatRef} data={messages} keyExtractor={i => i.id} renderItem={renderMsg} contentContainerStyle={s.list} onContentSizeChange={() => flatRef.current?.scrollToEnd({ animated: false })} />
       {showMention && isGroup && (
         <View style={s.mentionOverlay}>
@@ -287,6 +310,9 @@ const s = StyleSheet.create({
   bannerWarn: { backgroundColor: '#b45309' },
   bannerErr: { backgroundColor: '#991b1b' },
   bannerText: { color: '#fff', fontSize: 12 },
+  groupTopNotice: { backgroundColor: '#141414', borderBottomWidth: 1, borderBottomColor: '#222', paddingHorizontal: 12, paddingVertical: 8 },
+  groupTopNoticeText: { color: '#ffd166', fontSize: 12 },
+  groupMuteNoticeText: { color: '#9ec5ff', fontSize: 12, marginTop: 4 },
   list: { padding: 12, paddingBottom: 8 },
   row: { marginBottom: 10, flexDirection: 'row' },
   rowMine: { justifyContent: 'flex-end' },
