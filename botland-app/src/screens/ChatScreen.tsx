@@ -6,13 +6,13 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import api from '../services/api';
 import auth from '../services/auth';
-import messageStore, { StoredMessage } from '../services/messageStore';
+import messageStore, { StoredMessage, MessageSegment } from '../services/messageStore';
 import wsManager, { ConnectionState } from '../services/wsManager';
 
 type Props = { route: any; navigation: any };
 
 
-type Segment = { type: 'text'; text: string } | { type: 'mention'; citizen_id: string; display_name: string };
+type Segment = MessageSegment;
 
 function buildSegments(text: string, members: {citizen_id:string;display_name:string}[]): Segment[] {
   // Sort members by name length desc so longer names match first
@@ -85,6 +85,7 @@ export default function ChatScreen({ route, navigation }: Props) {
         const mapped: StoredMessage[] = history.reverse().map((m: any) => ({
           id: m.id, chatId: groupId, fromId: m.sender_id, fromName: m.sender_name,
           text: m.payload?.text,
+          segments: m.payload?.segments,
           imageUrl: m.payload?.content_type === 'image' ? m.payload?.url : undefined,
           contentType: m.payload?.content_type || 'text',
           mine: m.sender_id !== 'system' && m.sender_id === myId,
@@ -127,7 +128,7 @@ export default function ChatScreen({ route, navigation }: Props) {
         const isImage = data.payload?.content_type === 'image';
         const msg: StoredMessage = {
           id: data.id || `r_${Date.now()}`, chatId: friendId, fromId: data.from,
-          text: data.payload?.text, imageUrl: isImage ? data.payload?.url : undefined,
+          text: data.payload?.text, segments: data.payload?.segments, imageUrl: isImage ? data.payload?.url : undefined,
           contentType: isImage ? 'image' : 'text', mine: data.from !== 'system' && false, timestamp: Date.now(), status: 'delivered',
         };
         setMessages(prev => [...prev, msg]);
@@ -138,7 +139,7 @@ export default function ChatScreen({ route, navigation }: Props) {
         const msg: StoredMessage = {
           id: data.id || `r_${Date.now()}`, chatId: groupId, fromId: data.from,
           fromName: data.payload?.sender_name || data.from,
-          text: data.payload?.text, imageUrl: isImage ? data.payload?.url : undefined,
+          text: data.payload?.text, segments: data.payload?.segments, imageUrl: isImage ? data.payload?.url : undefined,
           contentType: isImage ? 'image' : 'text', mine: false, timestamp: Date.now(), status: 'delivered',
         };
         setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
@@ -166,7 +167,7 @@ export default function ChatScreen({ route, navigation }: Props) {
     const payload: any = { content_type: 'text', text: trimmed };
     if (segments.length > 0) payload.segments = segments;
     if (mentions.length > 0) payload.mentions = mentions;
-    const msg: StoredMessage = { id, chatId, fromId: myId, text: trimmed, contentType: 'text', mine: true, timestamp: Date.now(), status: 'sent' };
+    const msg: StoredMessage = { id, chatId, fromId: myId, text: trimmed, segments: segments.length ? segments : undefined, contentType: 'text', mine: true, timestamp: Date.now(), status: 'sent' };
     wsManager.send({ type: isGroup ? 'group.message.send' : 'message.send', id, to: chatId, payload });
     setMessages(prev => [...prev, msg]);
     messageStore.save(msg);
@@ -219,8 +220,8 @@ export default function ChatScreen({ route, navigation }: Props) {
           <View style={[s.bubble, item.mine ? s.bubbleMine : s.bubbleTheirs]}>
             {isImage ? <Image source={{ uri: item.imageUrl }} style={s.msgImage} resizeMode="cover" /> : (
               <Text style={s.text}>{(() => {
-                const segs = isGroup ? buildSegments(item.text || '', memberList) : [];
-                if (segs.length === 0) return item.text;
+                const segs = item.segments || (isGroup ? buildSegments(item.text || '', memberList) : []);
+                if (!segs || segs.length === 0) return item.text;
                 return segs.map((seg, i) =>
                   seg.type === 'mention'
                     ? <Text key={i} style={s.mentionHighlight}>@{seg.display_name}</Text>

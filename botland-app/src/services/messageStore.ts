@@ -1,6 +1,8 @@
 import { Platform } from 'react-native';
 
 // Message type used throughout the app
+export type MessageSegment = { type: 'text'; text: string } | { type: 'mention'; citizen_id: string; display_name: string };
+
 export type StoredMessage = {
   id: string;
   chatId: string;       // the other party's citizen_id
@@ -8,6 +10,7 @@ export type StoredMessage = {
   fromName?: string;    // sender display name (group chat)
   text?: string;
   imageUrl?: string;
+  segments?: MessageSegment[];
   contentType: string;   // 'text' | 'image'
   mine: boolean;
   timestamp: number;     // unix ms
@@ -53,6 +56,7 @@ async function getDb() {
         text TEXT,
         image_url TEXT,
         content_type TEXT DEFAULT 'text',
+        segments TEXT,
         mine INTEGER NOT NULL DEFAULT 0,
         timestamp INTEGER NOT NULL,
         status TEXT DEFAULT 'sent'
@@ -92,10 +96,10 @@ export const messageStore = {
     const database = await getDb();
     if (!database) return;
     await database.runAsync(
-      `INSERT OR REPLACE INTO messages (id, chat_id, from_id, text, image_url, content_type, mine, timestamp, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR REPLACE INTO messages (id, chat_id, from_id, text, image_url, content_type, segments, mine, timestamp, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       msg.id, msg.chatId, msg.fromId, msg.text || null, msg.imageUrl || null,
-      msg.contentType, msg.mine ? 1 : 0, msg.timestamp, msg.status
+      msg.contentType, msg.segments ? JSON.stringify(msg.segments) : null, msg.mine ? 1 : 0, msg.timestamp, msg.status
     );
   },
 
@@ -120,6 +124,7 @@ export const messageStore = {
       text: r.text,
       imageUrl: r.image_url,
       contentType: r.content_type,
+      segments: r.segments ? JSON.parse(r.segments) : undefined,
       mine: !!r.mine,
       timestamp: r.timestamp,
       status: r.status,
