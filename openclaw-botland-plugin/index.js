@@ -187,7 +187,9 @@ async function connectBotland(params) {
       const onAbort = () => { cleanup(); try { ws.close(1000, "abort"); } catch {} safeResolve(false); };
       abortSignal.addEventListener("abort", onAbort, { once: true });
 
+      let connectTime = Date.now();
       ws.addEventListener("open", () => {
+        connectTime = Date.now();
         log?.info?.(`[${CHANNEL_ID}] WebSocket connected`);
         retryCount = 0;
         setStatus({ running: true, lastStartAt: Date.now(), lastError: null });
@@ -209,31 +211,60 @@ async function connectBotland(params) {
             const raw = typeof event.data === "string" ? event.data : Buffer.from(event.data).toString("utf8");
             const msg = JSON.parse(raw);
 
-            // Only handle incoming messages
-            if (msg.type !== "message.received" || !msg.from) return;
+            const isDirect = msg.type === "message.received" && msg.from;
+            const isGroup = msg.type === "group.message.received" && msg.from && msg.to;
+            if (!isDirect && !isGroup) return;
 
+            const contentType = msg.payload?.content_type ?? "text";
+            if (contentType === "system") return;
             const text = msg.payload?.text ?? "";
             if (!text.trim()) return;
 
             const senderId = msg.from;
-            const senderName = msg.sender_name || msg.from;
+            const senderName = msg.payload?.sender_name || msg.sender_name || msg.from;
             const requestId = msg.id || `botland_${Date.now()}`;
 
-            log?.info?.(`[${CHANNEL_ID}] message from=${senderId}: ${text.substring(0, 50)}...`);
+            if (isDirect) {
+              log?.info?.(`[${CHANNEL_ID}] dm from=${senderId}: ${text.substring(0, 50)}...`);
+              const reply = await runAgentReply({
+                account, cfg, from: senderId, text, senderName, requestId,
+              });
+              if (reply && ws.readyState === WS.OPEN) {
+                ws.send(JSON.stringify({
+                  type: "message.send",
+                  id: `reply_${Date.now()}`,
+                  to: senderId,
+                  payload: { content_type: "text", text: reply },
+                }));
+                log?.info?.(`[${CHANNEL_ID}] replied to ${senderId}: ${reply.substring(0, 50)}...`);
+              }
+              return;
+            }
 
-            // Run agent reply
+            const groupId = msg.to;
+            const groupName = msg.payload?.group_name || `Group ${groupId}`;
+            const myCitizenId = account?.citizenId || cfg?.citizenId || cfg?.citizen_id || '';
+            const mentions = Array.isArray(msg.payload?.mentions) ? msg.payload.mentions : [];
+            const mentionedMe = !!(myCitizenId && mentions.some((m) => m?.citizen_id === myCitizenId));
+            log?.info?.(`[${CHANNEL_ID}] group message group=${groupId} from=${senderId}${mentionedMe ? ' [mentioned]' : ''}: ${text.substring(0, 50)}...`);
+
             const reply = await runAgentReply({
-              account, cfg, from: senderId, text, senderName, requestId,
+              account,
+              cfg,
+              from: `group:${groupId}`,
+              text: `${mentionedMe ? '[@你] ' : ''}[${senderName} @ ${groupName}] ${text}`,
+              senderName: `${senderName} (${groupName})`,
+              requestId,
             });
 
             if (reply && ws.readyState === WS.OPEN) {
               ws.send(JSON.stringify({
-                type: "message.send",
+                type: "group.message.send",
                 id: `reply_${Date.now()}`,
-                to: senderId,
+                to: groupId,
                 payload: { content_type: "text", text: reply },
               }));
-              log?.info?.(`[${CHANNEL_ID}] replied to ${senderId}: ${reply.substring(0, 50)}...`);
+              log?.info?.(`[${CHANNEL_ID}] replied to group ${groupId}: ${reply.substring(0, 50)}...`);
             }
           } catch (err) {
             log?.error?.(`[${CHANNEL_ID}] message handler error: ${err instanceof Error ? err.message : String(err)}`);
@@ -248,12 +279,13 @@ async function connectBotland(params) {
       ws.addEventListener("close", (event) => {
         abortSignal.removeEventListener("abort", onAbort);
         cleanup();
-        log?.warn?.(`[${CHANNEL_ID}] WebSocket closed code=${event.code} reason=${event.reason || ""}`);
+        const uptime = Date.now() - connectTime;
+        log?.warn?.(`[${CHANNEL_ID}] WebSocket closed code=${event.code} reason=${event.reason || ""} uptime=${uptime}ms`);
         setStatus({ running: false, lastStopAt: Date.now() });
 
-        // If auth error, try re-login
-        if (event.code === 4001 || event.code === 4003) {
-          log?.info?.(`[${CHANNEL_ID}] auth error, will re-login on reconnect`);
+        // If auth error or rapid disconnect (< 2s uptime likely auth failure), force re-login
+        if (event.code === 4001 || event.code === 4003 || uptime < 2000) {
+          log?.info?.(`[${CHANNEL_ID}] auth error or rapid close, will re-login on reconnect`);
           cachedToken = null;
         }
         safeResolve(true); // should retry
