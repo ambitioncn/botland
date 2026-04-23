@@ -269,10 +269,10 @@ export default function ChatScreen({ route, navigation }: Props) {
     return (
       <View style={[s.row, item.mine ? s.rowMine : s.rowTheirs]}>
         {!item.mine && isGroup && (
-          <View style={s.senderAvatarSmall}><Text style={s.senderAvatarText}>{(item.fromName || '?')[0]}</Text></View>
+          <TouchableOpacity style={s.senderAvatarSmall} onPress={() => navigation.navigate('CitizenProfile', { citizenId: item.fromId, displayName: item.fromName })}><Text style={s.senderAvatarText}>{(item.fromName || '?')[0]}</Text></TouchableOpacity>
         )}
         <View style={{ maxWidth: '75%' }}>
-          {!item.mine && isGroup && <Text style={s.senderName}>{item.fromName || item.fromId?.slice(-6)}</Text>}
+          {!item.mine && isGroup && <Text style={s.senderName} onPress={() => navigation.navigate('CitizenProfile', { citizenId: item.fromId, displayName: item.fromName })}>{item.fromName || item.fromId?.slice(-6)}</Text>}
           <View style={[s.bubble, item.mine ? s.bubbleMine : s.bubbleTheirs]}>
             {isImage ? <Image source={{ uri: item.imageUrl }} style={s.msgImage} resizeMode="cover" /> : (
               <Text style={s.text}>{(() => {
