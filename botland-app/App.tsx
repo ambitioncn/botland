@@ -19,6 +19,7 @@ import BotCardScreen from './src/screens/BotCardScreen';
 import MyBotConnectionsScreen from './src/screens/MyBotConnectionsScreen';
 import GroupsScreen from './src/screens/GroupsScreen';
 import GroupDetailScreen from './src/screens/GroupDetailScreen';
+import CitizenProfileScreen from './src/screens/CitizenProfileScreen';
 import auth from './src/services/auth';
 import { registerPushToken } from './src/services/notifications';
 import wsManager from './src/services/wsManager';

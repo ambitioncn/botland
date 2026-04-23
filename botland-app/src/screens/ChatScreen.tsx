@@ -262,7 +262,7 @@ export default function ChatScreen({ route, navigation }: Props) {
                 if (!segs || segs.length === 0) return item.text;
                 return segs.map((seg, i) =>
                   seg.type === 'mention'
-                    ? <Text key={i} style={s.mentionHighlight}>@{seg.display_name}</Text>
+                    ? <Text key={i} style={s.mentionHighlight} onPress={() => navigation.navigate('CitizenProfile', { citizenId: seg.citizen_id, displayName: seg.display_name })}>@{seg.display_name}</Text>
                     : <Text key={i}>{seg.text}</Text>
                 );
               })()}</Text>
