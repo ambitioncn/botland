@@ -194,6 +194,24 @@ export default function ChatScreen({ route, navigation }: Props) {
     return () => { unsubState(); unsubMsg(); };
   }, [friendId, groupId, isGroup, loadGroupHistory]);
 
+  const resendMessage = async (failedMsg: StoredMessage) => {
+    const myId = wsManager.getCitizenId();
+    if (!myId) return;
+    const newId = `msg_${Date.now()}`;
+    const payload: any = { content_type: failedMsg.contentType };
+    if (failedMsg.contentType === 'image' && failedMsg.imageUrl) {
+      payload.url = failedMsg.imageUrl;
+    } else {
+      payload.text = failedMsg.text;
+      if (failedMsg.segments) payload.segments = failedMsg.segments;
+      const mentions = (failedMsg.segments || []).filter((s: any) => s.type === 'mention');
+      if (mentions.length > 0) payload.mentions = mentions;
+    }
+    wsManager.send({ type: isGroup ? 'group.message.send' : 'message.send', id: newId, to: chatId, payload });
+    setMessages(prev => prev.map(m => m.id === failedMsg.id ? { ...m, id: newId, status: 'sent' as const, timestamp: Date.now() } : m));
+    void messageStore.updateStatus(failedMsg.id, 'delivered');
+  };
+
   const sendMessage = async () => {
     if (!input.trim()) return;
     const myId = wsManager.getCitizenId();
@@ -268,8 +286,14 @@ export default function ChatScreen({ route, navigation }: Props) {
               })()}</Text>
             )}
           </View>
-          {item.mine && item.status && item.status !== 'sent' && (
-            <Text style={[s.status, item.status === 'failed' ? s.statusFailed : null]}>{item.status === 'delivered' ? '已送达' : item.status === 'read' ? '已读' : item.status === 'failed' ? '发送失败' : ''}</Text>
+          {item.mine && item.status === 'failed' && (
+            <TouchableOpacity onPress={() => resendMessage(item)} style={s.resendRow}>
+              <Text style={s.statusFailed}>发送失败</Text>
+              <Text style={s.resendBtn}> 点击重发</Text>
+            </TouchableOpacity>
+          )}
+          {item.mine && item.status && item.status !== 'sent' && item.status !== 'failed' && (
+            <Text style={s.status}>{item.status === 'delivered' ? '已送达' : item.status === 'read' ? '已读' : ''}</Text>
           )}
         </View>
       </View>
@@ -349,7 +373,9 @@ const s = StyleSheet.create({
   text: { color: '#fff', fontSize: 15 },
   msgImage: { width: 200, height: 200, borderRadius: 12 },
   status: { color: '#888', fontSize: 10, textAlign: 'right', marginTop: 2 },
-  statusFailed: { color: '#ff6b6b' },
+  statusFailed: { color: '#ff6b6b', fontSize: 10 },
+  resendRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 2 },
+  resendBtn: { color: '#ff6b35', fontSize: 10, fontWeight: '600' },
   inputRow: { flexDirection: 'row', alignItems: 'center', padding: 8, borderTopWidth: 1, borderTopColor: '#222', backgroundColor: '#111' },
   imgBtn: { padding: 8 },
   imgIcon: { fontSize: 22 },
