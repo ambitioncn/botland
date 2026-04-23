@@ -14,7 +14,7 @@ export type StoredMessage = {
   contentType: string;   // 'text' | 'image'
   mine: boolean;
   timestamp: number;     // unix ms
-  status: 'sent' | 'delivered' | 'read';
+  status: 'sent' | 'delivered' | 'read' | 'failed';
 };
 
 // Chat summary for conversation list
@@ -132,7 +132,7 @@ export const messageStore = {
   },
 
   /** Update message status */
-  async updateStatus(messageId: string, status: 'delivered' | 'read'): Promise<void> {
+  async updateStatus(messageId: string, status: 'delivered' | 'read' | 'failed'): Promise<void> {
     if (Platform.OS === 'web') {
       const all = webGetAll();
       for (const chatId of Object.keys(all)) {

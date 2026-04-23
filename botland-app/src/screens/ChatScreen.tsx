@@ -150,14 +150,26 @@ export default function ChatScreen({ route, navigation }: Props) {
       if (data.type === 'error') {
         const code = data.payload?.code;
         const msg = data.payload?.message;
+        setMessages(prev => {
+          const copy = [...prev];
+          for (let i = copy.length - 1; i >= 0; i--) {
+            if (copy[i].mine && copy[i].status === 'sent') {
+              copy[i] = { ...copy[i], status: 'failed' };
+              void messageStore.updateStatus(copy[i].id, 'failed');
+              break;
+            }
+          }
+          return copy;
+        });
         if (code === 'group_muted') {
           const text = '当前群已开启全员禁言，只有群主和管理员可以发言';
           if (typeof window !== 'undefined') window.alert(text);
           else Alert.alert('无法发送', text);
           return;
         }
-        if (msg && typeof window !== 'undefined') {
-          window.alert(msg);
+        if (msg) {
+          if (typeof window !== 'undefined') window.alert(msg);
+          else Alert.alert('发送失败', msg);
           return;
         }
       }
@@ -248,7 +260,7 @@ export default function ChatScreen({ route, navigation }: Props) {
             )}
           </View>
           {item.mine && item.status && item.status !== 'sent' && (
-            <Text style={s.status}>{item.status === 'delivered' ? '已送达' : item.status === 'read' ? '已读' : ''}</Text>
+            <Text style={[s.status, item.status === 'failed' ? s.statusFailed : null]}>{item.status === 'delivered' ? '已送达' : item.status === 'read' ? '已读' : item.status === 'failed' ? '发送失败' : ''}</Text>
           )}
         </View>
       </View>
@@ -259,10 +271,11 @@ export default function ChatScreen({ route, navigation }: Props) {
     <KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
       {banner}
       {isGroup && (groupInfo?.announcement || groupInfo?.muted_all) ? (
-        <View style={s.groupTopNotice}>
+        <TouchableOpacity style={s.groupTopNotice} onPress={() => navigation.navigate('GroupDetail', { groupId })} activeOpacity={0.8}>
           {groupInfo?.announcement ? <Text style={s.groupTopNoticeText}>📢 {groupInfo.announcement}</Text> : null}
           {groupInfo?.muted_all ? <Text style={s.groupMuteNoticeText}>🔇 当前群已开启全员禁言</Text> : null}
-        </View>
+          <Text style={s.groupTopNoticeHint}>点击查看群详情</Text>
+        </TouchableOpacity>
       ) : null}
       <FlatList ref={flatRef} data={messages} keyExtractor={i => i.id} renderItem={renderMsg} contentContainerStyle={s.list} onContentSizeChange={() => flatRef.current?.scrollToEnd({ animated: false })} />
       {showMention && isGroup && (
@@ -313,6 +326,7 @@ const s = StyleSheet.create({
   groupTopNotice: { backgroundColor: '#141414', borderBottomWidth: 1, borderBottomColor: '#222', paddingHorizontal: 12, paddingVertical: 8 },
   groupTopNoticeText: { color: '#ffd166', fontSize: 12 },
   groupMuteNoticeText: { color: '#9ec5ff', fontSize: 12, marginTop: 4 },
+  groupTopNoticeHint: { color: '#666', fontSize: 11, marginTop: 4 },
   list: { padding: 12, paddingBottom: 8 },
   row: { marginBottom: 10, flexDirection: 'row' },
   rowMine: { justifyContent: 'flex-end' },
@@ -326,6 +340,7 @@ const s = StyleSheet.create({
   text: { color: '#fff', fontSize: 15 },
   msgImage: { width: 200, height: 200, borderRadius: 12 },
   status: { color: '#888', fontSize: 10, textAlign: 'right', marginTop: 2 },
+  statusFailed: { color: '#ff6b6b' },
   inputRow: { flexDirection: 'row', alignItems: 'center', padding: 8, borderTopWidth: 1, borderTopColor: '#222', backgroundColor: '#111' },
   imgBtn: { padding: 8 },
   imgIcon: { fontSize: 22 },
