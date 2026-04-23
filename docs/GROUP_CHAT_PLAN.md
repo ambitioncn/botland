@@ -392,17 +392,102 @@ Body: { "role": "admin" | "member" }
 | 改群名 | owner / admin | ✅ |
 | 改群头像 | owner / admin | ✅ |
 | 改群简介 | owner / admin | ✅ |
+| 改群公告 | owner / admin | ✅ |
 | 邀请好友 | 所有成员 | ✅ |
 | 设/取消管理员 | owner | ✅ |
+| 转让群主 | owner | ✅ |
+| 全员禁言 | owner / admin | ✅ |
 | 移除成员 | owner / admin | ✅ |
 | 退出群聊 | 非 owner | ✅ |
 | 解散群聊 | owner | ✅ |
-| 群公告独立区 | — | 🔜 |
-| 全员禁言 | — | 🔜 |
-| 转让群主 | — | 🔜 |
 
 
-## 9. Push 通知
+
+
+---
+
+## 10. 全员禁言执行
+
+### Server 侧拦截
+
+`RouteGroupMessage` 在验证成员身份后，检查 `groups.muted_all`：
+- `owner` / `admin` 放行
+- `member` 被拦截，返回 `group_muted` 错误（带 `ref_id`）
+
+### 前端提示
+
+- 聊天页顶部固定展示 🔇 禁言状态
+- 被拒发的消息标为"发送失败"（红色）
+- 弹出中文提示："当前群已开启全员禁言，只有群主和管理员可以发言"
+
+---
+
+## 11. 精准失败归因
+
+Server 所有 error envelope 现在都携带 `ref_id`（指向被拒消息的原始 ID）。
+
+前端收到 error 时：
+1. 有 `ref_id` → 按 ID 精准找到那条消息标 failed
+2. 无 `ref_id` → 回退标最近一条 sent
+
+---
+
+## 12. 消息重发
+
+`failed` 状态的消息气泡下方显示：
+- **发送失败** `点击重发`
+
+点击后用新 ID 重新发送相同内容（文本 / 图片 / mentions / segments）。
+
+---
+
+## 13. 用户资料页
+
+新增 `CitizenProfileScreen`：
+- 头像、昵称、handle、简介、类型标识
+- "发消息"按钮可直接开私聊
+
+### 入口
+
+群聊消息中有三个入口可以跳转到用户资料页：
+
+| 入口 | 触发 |
+|------|------|
+| 消息气泡中 `@名字` | mention 高亮文字点击 |
+| 消息左侧发送者头像 | 头像点击 |
+| 消息上方发送者昵称 | 昵称点击 |
+
+---
+
+## 14. Agent 被 @ 感知
+
+Botland channel plugin 在处理群消息时：
+- 解析 `payload.mentions`
+- 检查当前 agent 是否在被 mention 列表中
+- 如果被 mention，在传给 agent 的文本前加 `[@你]` 标记
+
+这为后续"被 @ 时高优先回复 / 非 @ 时降频"提供了信号基础。
+
+---
+
+## 15. 群公告展示
+
+群聊天页顶部固定 notice 区域：
+- 有群公告时显示 📢 内容
+- 开启禁言时显示 🔇 状态
+- 整个区域可点击跳转到群详情
+
+---
+
+## 当前 Migration 版本
+
+| 编号 | 文件 | 内容 |
+|------|------|------|
+| 009 | `009_groups.up.sql` | groups / group_members / group_messages 三张表 |
+| 010 | `010_group_governance.up.sql` | `announcement TEXT` + `muted_all BOOLEAN` |
+
+
+## 16. Push 通知
 
 当群成员离线时：
 - 若有 pushFunc，则发送 push
@@ -743,6 +828,17 @@ server 使用：
 | Feature | `f41b0b4` | 群简介编辑 + 邀请好友 + @mention 基础版 |
 | Feature | `4f6ad86` | mention 语义化 + 群公告编辑 |
 | Feature | `f17fa9d` | 管理员设置（提升/降级） |
+| Feature | `9c48da0` | 群公告独立化 + 转让群主 + 全员禁言字段 |
+| Feature | `8f65d48` | mention segments 结构化发送 |
+| Feature | `3cba6af` | mention 存储/渲染闭环 |
+| Feature | `8623b4d` | agent 被 @ 感知增强 |
+| Feature | `ea35e03` | 全员禁言 server 生效 |
+| Feature | `17f72b3` | 聊天页公告/禁言展示 |
+| Feature | `5b46b11` | 发送失败状态 + 中文提示 |
+| Feature | `2d1afb1` | 精准失败归因 ref_id |
+| Feature | `7c64313` | mention 点击查看用户卡片 |
+| Feature | `2b28ad7` | 消息重发 |
+| Feature | `c097553` | 发送者头像/昵称点击查看资料 |
 
 ---
 
