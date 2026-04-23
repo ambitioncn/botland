@@ -97,6 +97,8 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, hub *ws.Hub, logger *slog.Lo
 			r.Put("/groups/{groupID}/members/{citizenID}/role", groupH.UpdateMemberRole)
 			r.Post("/groups/{groupID}/leave", groupH.LeaveGroup)
 			r.Get("/groups/{groupID}/messages", groupH.GetMessages)
+			r.Post("/groups/{groupID}/transfer", groupH.TransferOwnership)
+			r.Post("/groups/{groupID}/mute-all", groupH.ToggleMuteAll)
 
 			r.Get("/discover/search", citizenH.Search)
 			r.Get("/discover/trending", citizenH.Trending)

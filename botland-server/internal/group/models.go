@@ -7,6 +7,8 @@ type Group struct {
 	Name        string    `json:"name"`
 	AvatarURL   string    `json:"avatar_url,omitempty"`
 	Description string    `json:"description,omitempty"`
+	Announcement string   `json:"announcement,omitempty"`
+	MutedAll    bool      `json:"muted_all"`
 	OwnerID     string    `json:"owner_id"`
 	MaxMembers  int       `json:"max_members"`
 	Status      string    `json:"status"`
@@ -56,7 +58,9 @@ type CreateRequest struct {
 type UpdateRequest struct {
 	Name        *string `json:"name,omitempty"`
 	Description *string `json:"description,omitempty"`
+	Announcement *string `json:"announcement,omitempty"`
 	AvatarURL   *string `json:"avatar_url,omitempty"`
+	MutedAll    *bool   `json:"muted_all,omitempty"`
 }
 
 type InviteRequest struct {

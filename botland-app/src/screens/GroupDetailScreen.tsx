@@ -5,7 +5,7 @@ import api from '../services/api';
 import auth from '../services/auth';
 
 type Member = { citizen_id: string; display_name: string; role: string; avatar_url?: string; citizen_type: string };
-type GroupInfo = { id: string; name: string; owner_id: string; description?: string; avatar_url?: string; members: Member[]; member_count: number };
+type GroupInfo = { id: string; name: string; owner_id: string; description?: string; announcement?: string; muted_all?: boolean; avatar_url?: string; members: Member[]; member_count: number };
 type Props = { route: any; navigation: any };
 
 export default function GroupDetailScreen({ route, navigation }: Props) {
@@ -18,6 +18,8 @@ export default function GroupDetailScreen({ route, navigation }: Props) {
   const [editingDesc, setEditingDesc] = useState(false);
   const [newDesc, setNewDesc] = useState('');
   const [showInvite, setShowInvite] = useState(false);
+  const [editingAnnouncement, setEditingAnnouncement] = useState(false);
+  const [newAnnouncement, setNewAnnouncement] = useState('');
   const [friends, setFriends] = useState<{citizen_id:string;display_name:string}[]>([]);
   const [selectedInvite, setSelectedInvite] = useState<Set<string>>(new Set());
   const [inviting, setInviting] = useState(false);
@@ -68,6 +70,19 @@ export default function GroupDetailScreen({ route, navigation }: Props) {
   // --- Change Group Avatar ---
 
   const startEditDesc = () => { setNewDesc(group?.description || ''); setEditingDesc(true); };
+  const startEditAnnouncement = () => { setNewAnnouncement(group?.announcement || ''); setEditingAnnouncement(true); };
+  const submitAnnouncement = async () => {
+    const token = await auth.getAccessToken();
+    if (!token) return;
+    try {
+      await api.updateGroup(token, groupId, { announcement: newAnnouncement.trim() });
+      setEditingAnnouncement(false); load();
+    } catch (e: any) {
+      const msg = e?.message || '修改失败';
+      if (typeof window !== 'undefined') window.alert(msg); else Alert.alert('错误', msg);
+    }
+  };
+
   const submitDesc = async () => {
     const token = await auth.getAccessToken();
     if (!token) return;
@@ -174,6 +189,21 @@ export default function GroupDetailScreen({ route, navigation }: Props) {
       catch (e: any) { if (typeof window !== 'undefined') window.alert(e?.message || '操作失败'); }
     });
 
+  const handleTransferOwnership = (memberId: string, memberName: string) =>
+    confirm('转让群主', `确定将群主转让给 ${memberName}？`, async () => {
+      const token = await auth.getAccessToken();
+      if (!token) return;
+      try { await api.transferGroupOwnership(token, groupId, memberId); load(); }
+      catch (e: any) { if (typeof window !== 'undefined') window.alert(e?.message || '操作失败'); }
+    });
+
+  const handleToggleMuteAll = async () => {
+    const token = await auth.getAccessToken();
+    if (!token || !group) return;
+    try { await api.toggleGroupMuteAll(token, groupId, !group.muted_all); load(); }
+    catch (e: any) { if (typeof window !== 'undefined') window.alert(e?.message || '操作失败'); }
+  };
+
 
   if (showInvite) {
     return (
@@ -263,6 +293,21 @@ export default function GroupDetailScreen({ route, navigation }: Props) {
             </TouchableOpacity>
           )}
           <Text style={s.memberCount}>{group.member_count} 位成员</Text>
+          {editingAnnouncement ? (
+            <View style={s.editNameRow}>
+              <TextInput style={[s.editNameInput, { fontSize: 14 }]} value={newAnnouncement} onChangeText={setNewAnnouncement} autoFocus onSubmitEditing={submitAnnouncement} returnKeyType="done" placeholder="添加群公告..." placeholderTextColor="#555" multiline />
+              <TouchableOpacity onPress={submitAnnouncement}><Text style={s.editNameSave}>保存</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => setEditingAnnouncement(false)}><Text style={s.editNameCancel}>取消</Text></TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity onPress={isAdmin ? startEditAnnouncement : undefined} activeOpacity={isAdmin ? 0.7 : 1}>
+              <Text style={s.announcement}>{group.announcement || (isAdmin ? '点击添加群公告...' : '')}</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={s.muteAllBtn} onPress={handleToggleMuteAll}>
+            <Text style={s.muteAllBtnText}>{group.muted_all ? '关闭全员禁言' : '开启全员禁言'}</Text>
+          </TouchableOpacity>
+
         </View>
       </View>
 
@@ -286,9 +331,14 @@ export default function GroupDetailScreen({ route, navigation }: Props) {
               {roleLabel(item.role) ? <Text style={s.roleTag}>{roleLabel(item.role)}</Text> : null}
             </View>
             {isOwner && item.citizen_id !== myId && item.role !== 'owner' && (
-              <TouchableOpacity onPress={() => handleToggleAdmin(item.citizen_id, item.display_name, item.role !== 'admin')}>
-                <Text style={s.adminBtn}>{item.role === 'admin' ? '取消管理' : '设管理'}</Text>
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity onPress={() => handleToggleAdmin(item.citizen_id, item.display_name, item.role !== 'admin')}>
+                  <Text style={s.adminBtn}>{item.role === 'admin' ? '取消管理' : '设管理'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleTransferOwnership(item.citizen_id, item.display_name)}>
+                  <Text style={s.transferBtn}>转群主</Text>
+                </TouchableOpacity>
+              </>
             )}
             {isAdmin && item.citizen_id !== myId && item.role !== 'owner' && (
               <TouchableOpacity onPress={() => handleKick(item.citizen_id, item.display_name)}>
@@ -333,6 +383,9 @@ const s = StyleSheet.create({
   editIcon: { marginLeft: 8, fontSize: 14 },
   desc: { color: '#888', fontSize: 14, marginTop: 4 },
   memberCount: { color: '#ff6b35', fontSize: 13, marginTop: 8 },
+  announcement: { color: '#ffd166', fontSize: 13, marginTop: 6 },
+  muteAllBtn: { marginTop: 10, alignSelf: 'flex-start', backgroundColor: '#1a1a1a', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: '#333' },
+  muteAllBtnText: { color: '#9ec5ff', fontSize: 12, fontWeight: '600' },
 
   // Edit name
   editNameRow: { flexDirection: 'row', alignItems: 'center' },
@@ -350,6 +403,7 @@ const s = StyleSheet.create({
   roleTag: { color: '#ff6b35', fontSize: 11, marginTop: 2 },
   kickBtn: { color: '#ff3b30', fontSize: 13, fontWeight: '600', paddingHorizontal: 10 },
   adminBtn: { color: '#4f8cff', fontSize: 13, fontWeight: '600', paddingHorizontal: 10 },
+  transferBtn: { color: '#ffd166', fontSize: 13, fontWeight: '600', paddingHorizontal: 10 },
 
   // Actions
   actions: { padding: 20, borderTopWidth: 1, borderTopColor: '#222' },

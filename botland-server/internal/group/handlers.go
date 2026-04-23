@@ -139,7 +139,7 @@ func (h *Handler) ListGroups(w http.ResponseWriter, r *http.Request) {
 	citizenID := r.Context().Value("citizen_id").(string)
 
 	rows, err := h.db.Query(`
-		SELECT g.id, g.name, g.avatar_url, g.description, g.owner_id, g.max_members, g.status, g.created_at, g.updated_at,
+		SELECT g.id, g.name, g.avatar_url, g.description, COALESCE(g.announcement,''), COALESCE(g.muted_all,false), g.owner_id, g.max_members, g.status, g.created_at, g.updated_at,
 			(SELECT COUNT(*) FROM group_members gm2 WHERE gm2.group_id = g.id) as member_count
 		FROM groups g
 		JOIN group_members gm ON gm.group_id = g.id AND gm.citizen_id = $1
@@ -223,6 +223,12 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.AvatarURL != nil {
 		h.db.Exec(`UPDATE groups SET avatar_url=$1, updated_at=NOW() WHERE id=$2`, *req.AvatarURL, groupID)
+	}
+	if req.Announcement != nil {
+		h.db.Exec(`UPDATE groups SET announcement=$1, updated_at=NOW() WHERE id=$2`, *req.Announcement, groupID)
+	}
+	if req.MutedAll != nil {
+		h.db.Exec(`UPDATE groups SET muted_all=$1, updated_at=NOW() WHERE id=$2`, *req.MutedAll, groupID)
 	}
 
 	// Notify members
@@ -535,6 +541,57 @@ func (h *Handler) DisbandGroup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "disbanded"})
 }
 
+// TransferOwnership POST /groups/:id/transfer
+func (h *Handler) TransferOwnership(w http.ResponseWriter, r *http.Request) {
+	citizenID := r.Context().Value("citizen_id").(string)
+	groupID := chi.URLParam(r, "groupID")
+	if h.getMemberRole(groupID, citizenID) != "owner" {
+		writeJSON(w, http.StatusForbidden, ErrorResponse{Error: "only owner can transfer"})
+		return
+	}
+	var req struct { CitizenID string `json:"citizen_id"` }
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.CitizenID == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+		return
+	}
+	if !h.isMember(groupID, req.CitizenID) {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "target is not a member"})
+		return
+	}
+	_, _ = h.db.Exec(`UPDATE groups SET owner_id=$1, updated_at=NOW() WHERE id=$2`, req.CitizenID, groupID)
+	_, _ = h.db.Exec(`UPDATE group_members SET role='member' WHERE group_id=$1 AND citizen_id=$2`, groupID, citizenID)
+	_, _ = h.db.Exec(`UPDATE group_members SET role='owner' WHERE group_id=$1 AND citizen_id=$2`, groupID, req.CitizenID)
+	actorName := h.getCitizenName(citizenID)
+	targetName := h.getCitizenName(req.CitizenID)
+	msgID := h.storeSystemMessage(groupID, map[string]interface{}{"content_type":"system","event":"owner_transferred","text":actorName + " 将群主转让给了 " + targetName,"actor_id":citizenID,"actor_name":actorName,"target_id":req.CitizenID,"target_name":targetName})
+	h.broadcastSystemMessage(groupID, msgID, map[string]interface{}{"content_type":"system","event":"owner_transferred","text":actorName + " 将群主转让给了 " + targetName,"actor_id":citizenID,"actor_name":actorName,"target_id":req.CitizenID,"target_name":targetName})
+	writeJSON(w, http.StatusOK, map[string]string{"status":"updated"})
+}
+
+// ToggleMuteAll POST /groups/:id/mute-all
+func (h *Handler) ToggleMuteAll(w http.ResponseWriter, r *http.Request) {
+	citizenID := r.Context().Value("citizen_id").(string)
+	groupID := chi.URLParam(r, "groupID")
+	role := h.getMemberRole(groupID, citizenID)
+	if role != "owner" && role != "admin" {
+		writeJSON(w, http.StatusForbidden, ErrorResponse{Error: "permission denied"})
+		return
+	}
+	var req struct { Muted bool `json:"muted"` }
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+		return
+	}
+	_, _ = h.db.Exec(`UPDATE groups SET muted_all=$1, updated_at=NOW() WHERE id=$2`, req.Muted, groupID)
+	actorName := h.getCitizenName(citizenID)
+	text := actorName + " 开启了全员禁言"
+	event := "mute_all_enabled"
+	if !req.Muted { text = actorName + " 关闭了全员禁言"; event = "mute_all_disabled" }
+	msgID := h.storeSystemMessage(groupID, map[string]interface{}{"content_type":"system","event":event,"text":text,"actor_id":citizenID,"actor_name":actorName})
+	h.broadcastSystemMessage(groupID, msgID, map[string]interface{}{"content_type":"system","event":event,"text":text,"actor_id":citizenID,"actor_name":actorName})
+	writeJSON(w, http.StatusOK, map[string]string{"status":"updated"})
+}
+
 // GetMessages GET /groups/:id/messages?before=&limit=
 func (h *Handler) GetMessages(w http.ResponseWriter, r *http.Request) {
 	citizenID := r.Context().Value("citizen_id").(string)
@@ -623,7 +680,7 @@ func (h *Handler) getGroupWithMembers(groupID string) *GroupWithMembers {
 	var g GroupWithMembers
 	var avatarURL, desc sql.NullString
 	err := h.db.QueryRow(`
-		SELECT id, name, avatar_url, description, owner_id, max_members, status, created_at, updated_at
+		SELECT id, name, avatar_url, description, COALESCE(announcement,''), COALESCE(muted_all,false), owner_id, max_members, status, created_at, updated_at
 		FROM groups WHERE id=$1
 	`, groupID).Scan(&g.ID, &g.Name, &avatarURL, &desc, &g.OwnerID, &g.MaxMembers, &g.Status, &g.CreatedAt, &g.UpdatedAt)
 	if err != nil {

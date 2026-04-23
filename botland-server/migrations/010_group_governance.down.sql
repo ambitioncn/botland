@@ -1,0 +1,2 @@
+ALTER TABLE groups DROP COLUMN IF EXISTS muted_all;
+ALTER TABLE groups DROP COLUMN IF EXISTS announcement;

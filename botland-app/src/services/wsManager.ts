@@ -92,6 +92,14 @@ class WSManager {
   getState(): ConnectionState { return this.state; }
   getCitizenId(): string { return this.citizenId; }
 
+  sendGroupMessage(groupId: string, text: string, mentions?: { citizen_id: string; display_name: string; offset: number }[]): void {
+    this.send({
+      type: 'group.message.send',
+      to: groupId,
+      payload: { content_type: 'text', text, ...(mentions && mentions.length ? { mentions } : {}) },
+    });
+  }
+
   // --- Internals ---
 
   private doConnect(token: string): void {

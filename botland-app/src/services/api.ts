@@ -162,11 +162,11 @@ export const api = {
     ),
 
   getGroup: (token: string, groupId: string) =>
-    request<{ id: string; name: string; owner_id: string; description?: string; avatar_url?: string; members: { citizen_id: string; display_name: string; role: string; avatar_url?: string; citizen_type: string }[]; member_count: number }>(
+    request<{ id: string; name: string; owner_id: string; description?: string; announcement?: string; muted_all?: boolean; avatar_url?: string; members: { citizen_id: string; display_name: string; role: string; avatar_url?: string; citizen_type: string }[]; member_count: number }>(
       `/api/v1/groups/${groupId}`, { token }
     ),
 
-  updateGroup: (token: string, groupId: string, body: { name?: string; description?: string; avatar_url?: string }) =>
+  updateGroup: (token: string, groupId: string, body: { name?: string; description?: string; announcement?: string; avatar_url?: string; muted_all?: boolean }) =>
     request<{ status: string }>(`/api/v1/groups/${groupId}`, { method: 'PUT', body, token }),
 
   inviteGroupMembers: (token: string, groupId: string, citizenIds: string[]) =>
@@ -183,6 +183,12 @@ export const api = {
 
   updateGroupMemberRole: (token: string, groupId: string, citizenId: string, role: 'admin' | 'member') =>
     request<{ status: string }>(`/api/v1/groups/${groupId}/members/${citizenId}/role`, { method: 'PUT', body: { role }, token }),
+
+  transferGroupOwnership: (token: string, groupId: string, citizenId: string) =>
+    request<{ status: string }>(`/api/v1/groups/${groupId}/transfer`, { method: 'POST', body: { citizen_id: citizenId }, token }),
+
+  toggleGroupMuteAll: (token: string, groupId: string, muted: boolean) =>
+    request<{ status: string }>(`/api/v1/groups/${groupId}/mute-all`, { method: 'POST', body: { muted }, token }),
 
   getGroupMessages: (token: string, groupId: string, before?: string) => {
     const params = before ? `?before=${encodeURIComponent(before)}` : '';
