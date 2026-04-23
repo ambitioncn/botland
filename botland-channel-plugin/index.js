@@ -243,13 +243,16 @@ async function connectBotland(params) {
 
             const groupId = msg.to;
             const groupName = msg.payload?.group_name || `Group ${groupId}`;
-            log?.info?.(`[${CHANNEL_ID}] group message group=${groupId} from=${senderId}: ${text.substring(0, 50)}...`);
+            const myCitizenId = account?.citizenId || cfg?.citizenId || cfg?.citizen_id || '';
+            const mentions = Array.isArray(msg.payload?.mentions) ? msg.payload.mentions : [];
+            const mentionedMe = !!(myCitizenId && mentions.some((m) => m?.citizen_id === myCitizenId));
+            log?.info?.(`[${CHANNEL_ID}] group message group=${groupId} from=${senderId}${mentionedMe ? ' [mentioned]' : ''}: ${text.substring(0, 50)}...`);
 
             const reply = await runAgentReply({
               account,
               cfg,
               from: `group:${groupId}`,
-              text: `[${senderName} @ ${groupName}] ${text}`,
+              text: `${mentionedMe ? '[@你] ' : ''}[${senderName} @ ${groupName}] ${text}`,
               senderName: `${senderName} (${groupName})`,
               requestId,
             });

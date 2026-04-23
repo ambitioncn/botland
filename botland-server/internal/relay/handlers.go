@@ -167,6 +167,12 @@ func (s *Service) RouteGroupMessage(from string, env *protocol.Envelope) {
 	default:
 		payload["raw"] = p
 	}
+	if _, ok := payload["segments"]; !ok {
+		if p, ok := env.Payload.(map[string]interface{}); ok {
+			if v, ok := p["segments"]; ok { payload["segments"] = v }
+			if v, ok := p["mentions"]; ok { payload["mentions"] = v }
+		}
+	}
 	payload["sender_name"] = senderName
 	payload["group_id"] = groupID
 
