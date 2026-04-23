@@ -148,6 +148,7 @@ func (s *Service) RouteGroupMessage(from string, env *protocol.Envelope) {
 			Payload: protocol.ErrorPayload{
 				Code:    "not_member",
 				Message: "you are not a member of this group",
+				RefID:   env.ID,
 			},
 		})
 		return
@@ -162,6 +163,7 @@ func (s *Service) RouteGroupMessage(from string, env *protocol.Envelope) {
 				Payload: protocol.ErrorPayload{
 					Code:    "group_muted",
 					Message: "this group is muted for members",
+					RefID:   env.ID,
 				},
 			})
 			return

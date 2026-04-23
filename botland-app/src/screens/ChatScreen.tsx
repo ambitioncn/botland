@@ -150,13 +150,22 @@ export default function ChatScreen({ route, navigation }: Props) {
       if (data.type === 'error') {
         const code = data.payload?.code;
         const msg = data.payload?.message;
+        const refId = data.payload?.ref_id;
         setMessages(prev => {
           const copy = [...prev];
-          for (let i = copy.length - 1; i >= 0; i--) {
-            if (copy[i].mine && copy[i].status === 'sent') {
-              copy[i] = { ...copy[i], status: 'failed' };
-              void messageStore.updateStatus(copy[i].id, 'failed');
-              break;
+          if (refId) {
+            const idx = copy.findIndex(m => m.id === refId);
+            if (idx >= 0) {
+              copy[idx] = { ...copy[idx], status: 'failed' };
+              void messageStore.updateStatus(copy[idx].id, 'failed');
+            }
+          } else {
+            for (let i = copy.length - 1; i >= 0; i--) {
+              if (copy[i].mine && copy[i].status === 'sent') {
+                copy[i] = { ...copy[i], status: 'failed' };
+                void messageStore.updateStatus(copy[i].id, 'failed');
+                break;
+              }
             }
           }
           return copy;
