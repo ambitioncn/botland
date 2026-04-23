@@ -12,18 +12,33 @@ import wsManager, { ConnectionState } from '../services/wsManager';
 type Props = { route: any; navigation: any };
 
 
-function extractMentions(text: string, members: {citizen_id:string;display_name:string}[]): {citizen_id:string;display_name:string;offset:number}[] {
-  const result: {citizen_id:string;display_name:string;offset:number}[] = [];
-  for (const m of members) {
-    let idx = 0;
-    while (true) {
-      const found = text.indexOf('@' + m.display_name, idx);
-      if (found < 0) break;
-      result.push({ citizen_id: m.citizen_id, display_name: m.display_name, offset: found });
-      idx = found + 1;
+type Segment = { type: 'text'; text: string } | { type: 'mention'; citizen_id: string; display_name: string };
+
+function buildSegments(text: string, members: {citizen_id:string;display_name:string}[]): Segment[] {
+  // Sort members by name length desc so longer names match first
+  const sorted = [...members].sort((a, b) => b.display_name.length - a.display_name.length);
+  const segments: Segment[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    const atIdx = text.indexOf('@', cursor);
+    if (atIdx < 0) { segments.push({ type: 'text', text: text.slice(cursor) }); break; }
+    if (atIdx > cursor) segments.push({ type: 'text', text: text.slice(cursor, atIdx) });
+    let matched = false;
+    for (const m of sorted) {
+      if (text.startsWith('@' + m.display_name, atIdx)) {
+        segments.push({ type: 'mention', citizen_id: m.citizen_id, display_name: m.display_name });
+        cursor = atIdx + 1 + m.display_name.length;
+        matched = true;
+        break;
+      }
     }
+    if (!matched) { segments.push({ type: 'text', text: '@' }); cursor = atIdx + 1; }
   }
-  return result;
+  return segments;
+}
+
+function segmentsToMentions(segs: Segment[]): {citizen_id:string;display_name:string}[] {
+  return segs.filter((s): s is Extract<Segment, {type:'mention'}> => s.type === 'mention');
 }
 
 export default function ChatScreen({ route, navigation }: Props) {
@@ -145,8 +160,14 @@ export default function ChatScreen({ route, navigation }: Props) {
     const myId = wsManager.getCitizenId();
     if (!myId) return;
     const id = `msg_${Date.now()}`;
-    const msg: StoredMessage = { id, chatId, fromId: myId, text: input, contentType: 'text', mine: true, timestamp: Date.now(), status: 'sent' };
-    wsManager.send({ type: isGroup ? 'group.message.send' : 'message.send', id, to: chatId, payload: { content_type: 'text', text: input } });
+    const trimmed = input.trim();
+    const segments = isGroup ? buildSegments(trimmed, memberList) : [];
+    const mentions = segmentsToMentions(segments);
+    const payload: any = { content_type: 'text', text: trimmed };
+    if (segments.length > 0) payload.segments = segments;
+    if (mentions.length > 0) payload.mentions = mentions;
+    const msg: StoredMessage = { id, chatId, fromId: myId, text: trimmed, contentType: 'text', mine: true, timestamp: Date.now(), status: 'sent' };
+    wsManager.send({ type: isGroup ? 'group.message.send' : 'message.send', id, to: chatId, payload });
     setMessages(prev => [...prev, msg]);
     messageStore.save(msg);
     setInput('');
@@ -196,7 +217,17 @@ export default function ChatScreen({ route, navigation }: Props) {
         <View style={{ maxWidth: '75%' }}>
           {!item.mine && isGroup && <Text style={s.senderName}>{item.fromName || item.fromId?.slice(-6)}</Text>}
           <View style={[s.bubble, item.mine ? s.bubbleMine : s.bubbleTheirs]}>
-            {isImage ? <Image source={{ uri: item.imageUrl }} style={s.msgImage} resizeMode="cover" /> : <Text style={s.text}>{item.text}</Text>}
+            {isImage ? <Image source={{ uri: item.imageUrl }} style={s.msgImage} resizeMode="cover" /> : (
+              <Text style={s.text}>{(() => {
+                const segs = isGroup ? buildSegments(item.text || '', memberList) : [];
+                if (segs.length === 0) return item.text;
+                return segs.map((seg, i) =>
+                  seg.type === 'mention'
+                    ? <Text key={i} style={s.mentionHighlight}>@{seg.display_name}</Text>
+                    : <Text key={i}>{seg.text}</Text>
+                );
+              })()}</Text>
+            )}
           </View>
           {item.mine && item.status && item.status !== 'sent' && (
             <Text style={s.status}>{item.status === 'delivered' ? '已送达' : item.status === 'read' ? '已读' : ''}</Text>
