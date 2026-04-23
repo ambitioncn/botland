@@ -782,3 +782,14 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 }
 
 
+
+
+func (h *Handler) IsMutedAll(groupID string) bool {
+	var muted bool
+	_ = h.db.QueryRow(`SELECT COALESCE(muted_all,false) FROM groups WHERE id=$1`, groupID).Scan(&muted)
+	return muted
+}
+
+func (h *Handler) GetMemberRole(groupID, citizenID string) string {
+	return h.getMemberRole(groupID, citizenID)
+}

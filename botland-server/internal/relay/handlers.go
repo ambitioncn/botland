@@ -27,6 +27,8 @@ type Service struct {
 type GroupHandler interface {
 	GetGroupMembers(groupID string) []string
 	StoreGroupMessage(msgID, groupID, senderID string, payload interface{}) error
+	GetMemberRole(groupID, citizenID string) string
+	IsMutedAll(groupID string) bool
 }
 
 func NewService(db *sql.DB, hub *ws.Hub, logger *slog.Logger) *Service {
@@ -149,6 +151,21 @@ func (s *Service) RouteGroupMessage(from string, env *protocol.Envelope) {
 			},
 		})
 		return
+	}
+
+	// Enforce mute-all: only owner/admin can speak when enabled
+	if s.groupHandler.IsMutedAll(groupID) {
+		role := s.groupHandler.GetMemberRole(groupID, from)
+		if role != "owner" && role != "admin" {
+			s.hub.Send(from, &protocol.Envelope{
+				Type: protocol.TypeError,
+				Payload: protocol.ErrorPayload{
+					Code:    "group_muted",
+					Message: "this group is muted for members",
+				},
+			})
+			return
+		}
 	}
 
 	// Store message
