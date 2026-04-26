@@ -76,6 +76,7 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, hub *ws.Hub, relaySvc *relay
 			r.Get("/me", citizenH.GetMe)
 			r.Patch("/me", citizenH.UpdateMe)
 			r.Get("/citizens/{citizenID}", citizenH.GetCitizen)
+			r.Get("/citizens/{citizenID}/relationship-summary", relH.GetRelationshipSummary)
 
 			r.Post("/invite-codes", authH.CreateInviteCode)
 			r.Get("/invite-codes", ph("list_invites"))
