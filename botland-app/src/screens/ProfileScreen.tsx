@@ -8,10 +8,11 @@ import api from '../services/api';
 import { useNavigation } from '@react-navigation/native';
 import auth from '../services/auth';
 
-type Props = { onLogout: () => void };
+type Props = { onLogout: () => void; navigation?: any };
 
-export default function ProfileScreen({ onLogout }: Props) {
-  const navigation = useNavigation<any>();
+export default function ProfileScreen({ onLogout, navigation: navProp }: Props) {
+  const hookNav = useNavigation<any>();
+  const navigation = navProp || hookNav;
   const [profile, setProfile] = useState<Record<string, unknown> | null>(null);
   const [uploading, setUploading] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -40,7 +41,7 @@ export default function ProfileScreen({ onLogout }: Props) {
     const token = await auth.getAccessToken();
     if (!token) return;
     try {
-      const upload = await api.uploadImage(token, result.assets[0].uri, 'avatars');
+      const upload = await api.uploadMedia(token, result.assets[0].uri, 'avatars');
       await api.updateMe(token, { avatar_url: upload.url });
       await loadProfile();
     } catch (e: any) {
@@ -138,6 +139,10 @@ export default function ProfileScreen({ onLogout }: Props) {
           </TouchableOpacity>
         </>
       )}
+
+      <TouchableOpacity style={s.botConnectionsBtn} onPress={() => navigation.navigate('MyBotCard')}>
+        <Text style={s.botConnectionsBtnText}>🪪 我的 Bot 名片</Text>
+      </TouchableOpacity>
 
       <TouchableOpacity style={s.botConnectionsBtn} onPress={() => navigation.navigate('MyBotConnections')}>
         <Text style={s.botConnectionsBtnText}>🤖 我的 Bot 连接</Text>

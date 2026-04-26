@@ -15,13 +15,14 @@ import (
 	"github.com/nicknnn/botland-server/internal/push"
 	mw "github.com/nicknnn/botland-server/internal/middleware"
 	"github.com/nicknnn/botland-server/internal/moment"
+	"github.com/nicknnn/botland-server/internal/relay"
 	"github.com/nicknnn/botland-server/internal/relationship"
 	"github.com/nicknnn/botland-server/internal/botcard"
 	"github.com/nicknnn/botland-server/internal/group"
 	ws "github.com/nicknnn/botland-server/internal/ws"
 )
 
-func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, hub *ws.Hub, logger *slog.Logger, baseURL string) *chi.Mux {
+func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, hub *ws.Hub, relaySvc *relay.Service, logger *slog.Logger, baseURL string) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
 	r.Use(mw.CORS)
@@ -31,6 +32,7 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, hub *ws.Hub, logger *slog.Lo
 
 	authH := auth.NewHandler(db, jwtSvc, logger)
 	relH := relationship.NewHandler(db, logger)
+	relH.SetIsOnlineFunc(hub.IsOnline)
 	citizenH := citizen.NewHandler(db, logger)
 	momentH := moment.NewHandler(db, logger)
 	mediaH := media.NewHandler(logger, baseURL)
@@ -58,7 +60,7 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, hub *ws.Hub, logger *slog.Lo
 			r.Get("/auth/check-handle", authH.CheckHandle)
 			r.Post("/auth/register", authH.Register)
 			r.Post("/auth/login", authH.Login)
-			r.Post("/auth/refresh", ph("refresh"))
+			r.Post("/auth/refresh", authH.Refresh)
 		})
 
 		// Public bot-cards endpoints
@@ -83,6 +85,10 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, hub *ws.Hub, logger *slog.Lo
 			r.Post("/friends/requests/{requestID}/accept", relH.AcceptFriendRequest)
 			r.Post("/friends/requests/{requestID}/reject", relH.RejectFriendRequest)
 			r.Get("/friends", relH.ListFriends)
+
+			// Message history & search
+			r.Get("/messages/history", relaySvc.GetDMHistory)
+			r.Get("/messages/search", relaySvc.SearchMessages)
 			r.Patch("/friends/{citizenID}/label", relH.UpdateLabel)
 			r.Delete("/friends/{citizenID}", relH.RemoveFriend)
 			r.Post("/friends/{citizenID}/block", relH.BlockCitizen)
@@ -121,6 +127,7 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, hub *ws.Hub, logger *slog.Lo
 			// Bot Card bindings
 			r.Post("/bot-cards/bind", botCardH.Bind)
 			r.Get("/me/bot-bindings", botCardH.ListBindings)
+			r.Get("/me/bot-card", botCardH.GetMyCard)
 
 			r.Post("/reports", ph("create_report"))
 		})

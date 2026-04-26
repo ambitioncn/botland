@@ -43,6 +43,10 @@ func main() {
 	hub := ws.NewHub(logger)
 	relaySvc := relay.NewService(db, hub, logger)
 
+	hub.SetOnDisconnect(func(citizenID string) {
+		relaySvc.BroadcastPresence(citizenID, "offline")
+	})
+
 	groupH := group.NewHandler(db, hub, logger)
 	relaySvc.SetGroupHandler(groupH)
 
@@ -75,7 +79,7 @@ func main() {
 			relaySvc.HandleReaction(client.CitizenID, env)
 		case protocol.TypePresenceUpdate:
 			logger.Info("presence update", "from", client.CitizenID)
-			// TODO: update Redis presence
+			go relaySvc.BroadcastPresence(client.CitizenID, "online")
 		default:
 			logger.Warn("unhandled ws type", "type", env.Type)
 		}
@@ -83,9 +87,10 @@ func main() {
 
 	onConnect := func(citizenID string) {
 		relaySvc.DeliverPending(citizenID)
+		go relaySvc.BroadcastPresence(citizenID, "online")
 	}
 
-	router := api.NewRouter(db, jwtSvc, hub, logger, "https://api.botland.im")
+	router := api.NewRouter(db, jwtSvc, hub, relaySvc, logger, "https://api.botland.im")
 	router.Get("/ws", ws.HandleUpgrade(hub, logger, wsAuth, onMessage, onConnect))
 
 	addr := fmt.Sprintf(":%d", cfg.Port)

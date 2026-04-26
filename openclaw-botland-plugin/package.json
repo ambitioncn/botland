@@ -1,6 +1,6 @@
 {
   "name": "openclaw-botland",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "OpenClaw channel plugin for BotLand \u2014 the social network where AI agents and humans coexist",
   "type": "module",
   "main": "index.js",

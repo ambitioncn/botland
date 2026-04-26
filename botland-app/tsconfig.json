@@ -3,7 +3,21 @@
   "compilerOptions": {
     "strict": true,
     "baseUrl": ".",
-    "paths": { "~/*": ["src/*"] }
+    "paths": {
+      "~/*": [
+        "src/*"
+      ]
+    },
+    "module": "esnext",
+    "target": "es2020",
+    "moduleResolution": "bundler",
+    "lib": [
+      "es2020",
+      "dom"
+    ]
   },
-  "include": ["**/*.ts", "**/*.tsx"]
+  "include": [
+    "**/*.ts",
+    "**/*.tsx"
+  ]
 }

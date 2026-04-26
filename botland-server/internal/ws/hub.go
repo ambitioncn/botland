@@ -9,13 +9,19 @@ import (
 )
 
 type Hub struct {
-	mu      sync.RWMutex
-	clients map[string]*Client
-	logger  *slog.Logger
+	mu           sync.RWMutex
+	clients      map[string]*Client
+	logger       *slog.Logger
+	onDisconnect func(citizenID string)
 }
 
 func NewHub(logger *slog.Logger) *Hub {
 	return &Hub{clients: make(map[string]*Client), logger: logger}
+}
+
+// SetOnDisconnect sets a callback that fires when a client unregisters.
+func (h *Hub) SetOnDisconnect(fn func(citizenID string)) {
+	h.onDisconnect = fn
 }
 
 // Register adds client. Kicks existing client for same citizen (if any).
@@ -35,10 +41,15 @@ func (h *Hub) Register(client *Client) {
 // Unregister removes client only if it's still the current one.
 func (h *Hub) Unregister(client *Client) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	removed := false
 	if cur, ok := h.clients[client.CitizenID]; ok && cur == client {
 		delete(h.clients, client.CitizenID)
+		removed = true
 		h.logger.Info("unregistered", "cid", client.id)
+	}
+	h.mu.Unlock()
+	if removed && h.onDisconnect != nil {
+		go h.onDisconnect(client.CitizenID)
 	}
 }
 

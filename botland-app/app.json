@@ -16,14 +16,18 @@
     },
     "ios": {
       "bundleIdentifier": "im.botland.app",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "BotLand 需要麦克风权限来发送语音消息"
+      }
     },
     "android": {
       "package": "im.botland.app",
       "adaptiveIcon": {
         "backgroundColor": "#0a0a0a"
       },
-      "versionCode": 1
+      "versionCode": 1,
+      "permissions": ["RECORD_AUDIO"]
     },
     "plugins": [
       "expo-asset",

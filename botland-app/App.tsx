@@ -17,9 +17,12 @@ import MomentDetailScreen from './src/screens/MomentDetailScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import BotCardScreen from './src/screens/BotCardScreen';
 import MyBotConnectionsScreen from './src/screens/MyBotConnectionsScreen';
+import MyBotCardScreen from './src/screens/MyBotCardScreen';
 import GroupsScreen from './src/screens/GroupsScreen';
 import GroupDetailScreen from './src/screens/GroupDetailScreen';
 import CitizenProfileScreen from './src/screens/CitizenProfileScreen';
+import MessageSearchScreen from './src/screens/MessageSearchScreen';
+import WebLayout from './src/web/WebLayout';
 import auth from './src/services/auth';
 import { registerPushToken } from './src/services/notifications';
 import wsManager from './src/services/wsManager';
@@ -94,19 +97,27 @@ export default function App() {
 
   // Register push token after login
   useEffect(() => {
-    if (loggedIn) {
+    if (loggedIn && Platform.OS !== 'web') {
       registerPushToken().catch(console.error);
     }
   }, [loggedIn]);
 
   // Handle notification tap (navigate to chat)
   useEffect(() => {
+    if (Platform.OS === 'web') return;
     const subscription = Notifications.addNotificationResponseReceivedListener(response => {
       const data = response.notification.request.content.data;
       if (data?.type === 'message' && data?.from_id && navigationRef.current) {
         navigationRef.current.navigate('Chat', {
           friendId: data.from_id,
           friendName: response.notification.request.content.title || '聊天',
+        });
+      }
+      if (data?.type === 'group_message' && data?.group_id && navigationRef.current) {
+        navigationRef.current.navigate('Chat', {
+          groupId: data.group_id,
+          groupName: response.notification.request.content.title || '群聊',
+          chatType: 'group',
         });
       }
     });
@@ -125,16 +136,28 @@ export default function App() {
     <NavigationContainer theme={DarkTheme} ref={navigationRef}>
       <StatusBar style="light" />
       {loggedIn ? (
-        <Stack.Navigator screenOptions={{ headerStyle: { backgroundColor: '#111' }, headerTintColor: '#fff' }}>
-          <Stack.Screen name="Main" options={{ headerShown: false }}>
-            {() => <MainTabs onLogout={handleLogout} />}
-          </Stack.Screen>
-          <Stack.Screen name="Chat" component={ChatScreen} options={({ route }: any) => ({ title: route.params?.friendName || '聊天' })} />
-          <Stack.Screen name="FriendRequests" component={FriendRequestsScreen} options={{ title: '好友请求' }} />
-          <Stack.Screen name="MomentDetail" component={MomentDetailScreen} options={{ title: '动态详情' }} />
-          <Stack.Screen name="BotCard" component={BotCardScreen} options={{ title: 'Bot 名片' }} />
-          <Stack.Screen name="MyBotConnections" component={MyBotConnectionsScreen} options={{ title: '我的 Bot 连接' }} />
-        </Stack.Navigator>
+        Platform.OS === 'web' ? (
+          <Stack.Navigator screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="WebMain">
+              {() => <WebLayout onLogout={handleLogout} />}
+            </Stack.Screen>
+          </Stack.Navigator>
+        ) : (
+          <Stack.Navigator screenOptions={{ headerStyle: { backgroundColor: '#111' }, headerTintColor: '#fff' }}>
+            <Stack.Screen name="Main" options={{ headerShown: false }}>
+              {() => <MainTabs onLogout={handleLogout} />}
+            </Stack.Screen>
+            <Stack.Screen name="Chat" component={ChatScreen} options={({ route }: any) => ({ title: route.params?.friendName || '聊天' })} />
+            <Stack.Screen name="FriendRequests" component={FriendRequestsScreen} options={{ title: '好友请求' }} />
+            <Stack.Screen name="MomentDetail" component={MomentDetailScreen} options={{ title: '动态详情' }} />
+            <Stack.Screen name="BotCard" component={BotCardScreen} options={{ title: 'Bot 名片' }} />
+            <Stack.Screen name="MyBotConnections" component={MyBotConnectionsScreen} options={{ title: '我的 Bot 连接' }} />
+            <Stack.Screen name="MyBotCard" component={MyBotCardScreen} options={{ title: '我的 Bot 名片' }} />
+            <Stack.Screen name="GroupDetail" component={GroupDetailScreen} options={{ title: '群详情' }} />
+            <Stack.Screen name="CitizenProfile" component={CitizenProfileScreen} options={{ title: '公民资料' }} />
+            <Stack.Screen name="MessageSearch" component={MessageSearchScreen} options={{ title: '搜索消息' }} />
+          </Stack.Navigator>
+        )
       ) : (
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           <Stack.Screen name="Login">

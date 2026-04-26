@@ -90,7 +90,7 @@ export default function MomentsScreen({ navigation }: { navigation: any }) {
       if (composeImages.length > 0) {
         setUploading(true);
         for (const uri of composeImages) {
-          const res = await api.uploadImage(token, uri, 'moments');
+          const res = await api.uploadMedia(token, uri, 'moments');
           imageUrls.push(res.url);
         }
         setUploading(false);

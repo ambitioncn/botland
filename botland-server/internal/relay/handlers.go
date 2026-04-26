@@ -4,6 +4,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"log/slog"
+	"net/http"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -340,15 +343,21 @@ func (s *Service) HandleAck(from string, env *protocol.Envelope) {
 		s.db.Exec(`UPDATE message_relay SET status='read' WHERE id=$1 AND to_id=$2`, env.ID, from)
 	}
 
-	// Forward read receipt
-	if env.From != "" {
-		s.hub.Send(env.From, &protocol.Envelope{
+	// Forward read receipt to the original sender (env.To = original sender)
+	target := env.To
+	if target == "" {
+		target = env.From
+	}
+	if target != "" && target != from {
+		s.hub.Send(target, &protocol.Envelope{
 			Type: protocol.TypeMessageStatus,
+			From: from,
 			Payload: protocol.AckPayload{
 				MessageID: env.ID,
 				Status:    "read",
 			},
 		})
+		s.logger.Info("read receipt forwarded", "from", from, "to", target, "msgId", env.ID)
 	}
 }
 
@@ -396,4 +405,259 @@ func strVal(v interface{}) string {
 	}
 	s, _ := v.(string)
 	return s
+}
+
+// BroadcastPresence notifies all friends of a citizen about their online/offline status.
+func (s *Service) BroadcastPresence(citizenID string, state string) {
+	rows, err := s.db.Query(`
+		SELECT CASE WHEN citizen_a_id = $1 THEN citizen_b_id ELSE citizen_a_id END AS friend_id
+		FROM relationships
+		WHERE (citizen_a_id = $1 OR citizen_b_id = $1) AND status = 'active'`, citizenID)
+	if err != nil {
+		s.logger.Error("query friends for presence", "error", err)
+		return
+	}
+	defer rows.Close()
+
+	env := &protocol.Envelope{
+		Type: protocol.TypePresenceChanged,
+		From: citizenID,
+		Payload: map[string]string{
+			"citizen_id": citizenID,
+			"state":      state,
+		},
+	}
+
+	sent := 0
+	for rows.Next() {
+		var friendID string
+		if err := rows.Scan(&friendID); err != nil {
+			continue
+		}
+		if s.hub.Send(friendID, env) {
+			sent++
+		}
+	}
+
+	if sent > 0 {
+		s.logger.Info("presence broadcast", "citizen", citizenID, "state", state, "notified", sent)
+	}
+}
+
+
+
+// GetDMHistory returns paginated DM history between the authenticated citizen and a peer.
+// GET /api/v1/messages/history?peer={citizenID}&before={msgID}&limit=50
+func (s *Service) GetDMHistory(w http.ResponseWriter, r *http.Request) {
+	citizenID, _ := r.Context().Value("citizen_id").(string)
+	if citizenID == "" {
+		http.Error(w, `{"error":{"code":"UNAUTHORIZED","message":"not authenticated"}}`, 401)
+		return
+	}
+
+	peerID := r.URL.Query().Get("peer")
+	if peerID == "" {
+		http.Error(w, `{"error":{"code":"VALIDATION_ERROR","message":"peer parameter required"}}`, 400)
+		return
+	}
+
+	before := r.URL.Query().Get("before")
+	limitStr := r.URL.Query().Get("limit")
+	limit := 50
+	if limitStr != "" {
+		if n, err := strconv.Atoi(limitStr); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+
+	type DMMessage struct {
+		ID          string      `json:"id"`
+		FromID      string      `json:"sender_id"`
+		FromName    string      `json:"sender_name"`
+		ToID        string      `json:"to_id"`
+		Payload     interface{} `json:"payload"`
+		CreatedAt   string      `json:"created_at"`
+	}
+
+	var rows *sql.Rows
+	var err error
+
+	if before != "" {
+		rows, err = s.db.Query(`
+			SELECT mr.id, mr.from_id, COALESCE(c.display_name,''), mr.to_id, mr.payload, mr.created_at
+			FROM message_relay mr
+			JOIN citizens c ON c.id = mr.from_id
+			WHERE ((mr.from_id = $1 AND mr.to_id = $2) OR (mr.from_id = $2 AND mr.to_id = $1))
+				AND mr.created_at < (SELECT created_at FROM message_relay WHERE id = $3)
+			ORDER BY mr.created_at DESC
+			LIMIT $4
+		`, citizenID, peerID, before, limit)
+	} else {
+		rows, err = s.db.Query(`
+			SELECT mr.id, mr.from_id, COALESCE(c.display_name,''), mr.to_id, mr.payload, mr.created_at
+			FROM message_relay mr
+			JOIN citizens c ON c.id = mr.from_id
+			WHERE ((mr.from_id = $1 AND mr.to_id = $2) OR (mr.from_id = $2 AND mr.to_id = $1))
+			ORDER BY mr.created_at DESC
+			LIMIT $3
+		`, citizenID, peerID, limit)
+	}
+	if err != nil {
+		s.logger.Error("dm history query", "error", err)
+		http.Error(w, `{"error":{"code":"INTERNAL","message":"query failed"}}`, 500)
+		return
+	}
+	defer rows.Close()
+
+	var messages []DMMessage
+	for rows.Next() {
+		var m DMMessage
+		var payloadBytes []byte
+		var ts time.Time
+		if err := rows.Scan(&m.ID, &m.FromID, &m.FromName, &m.ToID, &payloadBytes, &ts); err != nil {
+			continue
+		}
+		// The payload in message_relay is a JSON envelope; extract the inner payload
+		var envelope map[string]interface{}
+		if json.Unmarshal(payloadBytes, &envelope) == nil {
+			if inner, ok := envelope["payload"]; ok {
+				m.Payload = inner
+			} else {
+				m.Payload = envelope
+			}
+		}
+		m.CreatedAt = ts.Format(time.RFC3339)
+		messages = append(messages, m)
+	}
+	if messages == nil {
+		messages = []DMMessage{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(messages)
+}
+
+// SearchMessages searches DM and group messages for a citizen.
+// GET /api/v1/messages/search?q=keyword&limit=20&before=<timestamp>
+func (s *Service) SearchMessages(w http.ResponseWriter, r *http.Request) {
+	citizenID, _ := r.Context().Value("citizen_id").(string)
+	if citizenID == "" {
+		http.Error(w, `{"error":{"code":"UNAUTHORIZED","message":"not authenticated"}}`, 401)
+		return
+	}
+
+	q := r.URL.Query().Get("q")
+	if q == "" || len(q) < 2 {
+		http.Error(w, `{"error":{"code":"VALIDATION_ERROR","message":"query must be at least 2 characters"}}`, 400)
+		return
+	}
+
+	limitStr := r.URL.Query().Get("limit")
+	limit := 30
+	if limitStr != "" {
+		if n, err := strconv.Atoi(limitStr); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+
+	pattern := "%" + q + "%"
+
+	type SearchResult struct {
+		ID          string `json:"id"`
+		ChatID      string `json:"chat_id"`
+		ChatType    string `json:"chat_type"` // "direct" or "group"
+		FromID      string `json:"from_id"`
+		FromName    string `json:"from_name"`
+		Text        string `json:"text"`
+		ContentType string `json:"content_type"`
+		Timestamp   string `json:"timestamp"`
+		PeerName    string `json:"peer_name,omitempty"`
+	}
+
+	var results []SearchResult
+
+	// Search DM messages (message_relay)
+	dmRows, err := s.db.Query(`
+		SELECT mr.id, 
+			CASE WHEN mr.from_id = $1 THEN mr.to_id ELSE mr.from_id END AS chat_id,
+			'direct' AS chat_type,
+			mr.from_id,
+			COALESCE(c.display_name, '') AS from_name,
+			COALESCE(mr.payload->'payload'->>'text', mr.payload->>'text', '') AS text,
+			COALESCE(mr.payload->'payload'->>'content_type', mr.payload->>'content_type', 'text') AS content_type,
+			mr.created_at,
+			COALESCE(peer.display_name, '') AS peer_name
+		FROM message_relay mr
+		JOIN citizens c ON c.id = mr.from_id
+		JOIN citizens peer ON peer.id = CASE WHEN mr.from_id = $1 THEN mr.to_id ELSE mr.from_id END
+		WHERE (mr.from_id = $1 OR mr.to_id = $1)
+			AND (mr.payload->>'text' ILIKE $2 OR mr.payload->'payload'->>'text' ILIKE $2)
+		ORDER BY mr.created_at DESC
+		LIMIT $3`,
+		citizenID, pattern, limit/2)
+
+	if err != nil {
+		s.logger.Error("search dm messages", "error", err)
+	} else {
+		defer dmRows.Close()
+		for dmRows.Next() {
+			var r SearchResult
+			var ts time.Time
+			dmRows.Scan(&r.ID, &r.ChatID, &r.ChatType, &r.FromID, &r.FromName, &r.Text, &r.ContentType, &ts, &r.PeerName)
+			r.Timestamp = ts.Format(time.RFC3339)
+			results = append(results, r)
+		}
+	}
+
+	// Search group messages
+	grpRows, err := s.db.Query(`
+		SELECT gm.id, gm.group_id AS chat_id,
+			'group' AS chat_type,
+			gm.sender_id AS from_id,
+			COALESCE(c.display_name, '') AS from_name,
+			COALESCE(gm.payload->>'text', '') AS text,
+			COALESCE(gm.payload->>'content_type', 'text') AS content_type,
+			gm.created_at,
+			COALESCE(g.name, '') AS peer_name
+		FROM group_messages gm
+		JOIN group_members memb ON memb.group_id = gm.group_id AND memb.citizen_id = $1
+		JOIN citizens c ON c.id = gm.sender_id
+		JOIN groups g ON g.id = gm.group_id
+		WHERE gm.payload->>'text' ILIKE $2
+		ORDER BY gm.created_at DESC
+		LIMIT $3`,
+		citizenID, pattern, limit/2)
+
+	if err != nil {
+		s.logger.Error("search group messages", "error", err)
+	} else {
+		defer grpRows.Close()
+		for grpRows.Next() {
+			var r SearchResult
+			var ts time.Time
+			grpRows.Scan(&r.ID, &r.ChatID, &r.ChatType, &r.FromID, &r.FromName, &r.Text, &r.ContentType, &ts, &r.PeerName)
+			r.Timestamp = ts.Format(time.RFC3339)
+			results = append(results, r)
+		}
+	}
+
+	// Sort combined results by timestamp desc
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Timestamp > results[j].Timestamp
+	})
+
+	if len(results) > limit {
+		results = results[:limit]
+	}
+
+	if results == nil {
+		results = []SearchResult{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"results": results,
+		"total":   len(results),
+		"query":   q,
+	})
 }

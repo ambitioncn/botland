@@ -12,12 +12,18 @@ import (
 )
 
 type Handler struct {
-	db     *sql.DB
-	logger *slog.Logger
+	db          *sql.DB
+	logger      *slog.Logger
+	isOnlineFunc func(string) bool
 }
 
 func NewHandler(db *sql.DB, logger *slog.Logger) *Handler {
 	return &Handler{db: db, logger: logger}
+}
+
+// SetIsOnlineFunc sets the function used to check citizen online status.
+func (h *Handler) SetIsOnlineFunc(fn func(string) bool) {
+	h.isOnlineFunc = fn
 }
 
 type SendRequestBody struct {
@@ -221,6 +227,10 @@ func (h *Handler) ListFriends(w http.ResponseWriter, r *http.Request) {
 		var id, displayName, citizenType string
 		var avatarURL, species, myLabel, theirLabel sql.NullString
 		rows.Scan(&id, &displayName, &citizenType, &avatarURL, &species, &myLabel, &theirLabel)
+		isOnline := false
+		if h.isOnlineFunc != nil {
+			isOnline = h.isOnlineFunc(id)
+		}
 		friends = append(friends, map[string]interface{}{
 			"citizen_id":   id,
 			"display_name": displayName,
@@ -229,6 +239,7 @@ func (h *Handler) ListFriends(w http.ResponseWriter, r *http.Request) {
 			"species":      species.String,
 			"my_label":     myLabel.String,
 			"their_label":  theirLabel.String,
+			"is_online":    isOnline,
 		})
 	}
 	if friends == nil {

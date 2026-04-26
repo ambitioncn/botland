@@ -2,8 +2,9 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, Alert } from 'react-native';
 import api from '../services/api';
 import auth from '../services/auth';
+import wsManager from '../services/wsManager';
 
-type Friend = { citizen_id: string; display_name: string; species?: string; my_label?: string };
+type Friend = { citizen_id: string; display_name: string; species?: string; my_label?: string; is_online?: boolean };
 type Props = { navigation: any };
 
 export default function FriendsScreen({ navigation }: Props) {
@@ -25,6 +26,18 @@ export default function FriendsScreen({ navigation }: Props) {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Real-time presence updates
+  useEffect(() => {
+    const unsub = wsManager.onMessage((data) => {
+      if (data.type === 'presence.changed' && data.payload?.citizen_id) {
+        const cid = data.payload.citizen_id;
+        const online = data.payload.state === 'online';
+        setFriends(prev => prev.map(f => f.citizen_id === cid ? { ...f, is_online: online } : f));
+      }
+    });
+    return () => unsub();
+  }, []);
 
   // Reload when navigating back to this screen
   useEffect(() => {
@@ -64,7 +77,10 @@ export default function FriendsScreen({ navigation }: Props) {
   const renderItem = ({ item }: { item: Friend }) => (
     <View style={s.item}>
       <TouchableOpacity style={s.itemMain} onPress={() => navigation.navigate('Chat', { friendId: item.citizen_id, friendName: item.display_name })}>
-        <View style={s.avatar}><Text style={s.avatarText}>{item.display_name?.[0] || '?'}</Text></View>
+        <View style={s.avatarWrap}>
+          <View style={s.avatar}><Text style={s.avatarText}>{item.display_name?.[0] || '?'}</Text></View>
+          {item.is_online && <View style={s.onlineDot} />}
+        </View>
         <View style={s.info}>
           <Text style={s.name}>{item.display_name}</Text>
           {item.my_label ? <Text style={s.label}>{item.my_label}</Text> : null}
@@ -80,6 +96,16 @@ export default function FriendsScreen({ navigation }: Props) {
 
   return (
     <View style={s.container}>
+      {/* Message Search */}
+      <TouchableOpacity
+        style={s.searchBanner}
+        onPress={() => navigation.navigate('MessageSearch')}
+      >
+        <Text style={s.searchIcon}>🔍</Text>
+        <Text style={s.searchLabel}>搜索聊天记录</Text>
+        <Text style={s.arrow}>›</Text>
+      </TouchableOpacity>
+
       {/* Friend Requests Banner */}
       <TouchableOpacity
         style={s.requestBanner}
@@ -110,6 +136,17 @@ export default function FriendsScreen({ navigation }: Props) {
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0a0a0a' },
+  searchBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1a1a1a',
+    backgroundColor: '#0f0f0f',
+  },
+  searchIcon: { fontSize: 20, marginRight: 10 },
+  searchLabel: { flex: 1, color: '#aaa', fontSize: 15 },
   requestBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -145,7 +182,9 @@ const s = StyleSheet.create({
   itemMain: { flex: 1, flexDirection: 'row', alignItems: 'center', padding: 16 },
   removeBtn: { paddingHorizontal: 14, paddingVertical: 16, justifyContent: 'center', alignItems: 'center' },
   removeX: { color: '#ff3b30', fontSize: 16, fontWeight: '700' },
+  avatarWrap: { position: 'relative' },
   avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#ff6b35', justifyContent: 'center', alignItems: 'center' },
+  onlineDot: { position: 'absolute', bottom: 0, right: 0, width: 14, height: 14, borderRadius: 7, backgroundColor: '#34c759', borderWidth: 2, borderColor: '#0a0a0a' },
   avatarText: { color: '#fff', fontSize: 20, fontWeight: '700' },
   info: { flex: 1, marginLeft: 12 },
   name: { color: '#fff', fontSize: 16, fontWeight: '600' },

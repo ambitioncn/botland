@@ -103,13 +103,27 @@ export const api = {
 
 
   // --- Media ---
-  uploadImage: async (token: string, uri: string, category: 'avatars' | 'moments' | 'chat' = 'moments') => {
+  uploadMedia: async (token: string, uri: string, category: 'avatars' | 'moments' | 'chat' | 'video' | 'audio' = 'moments') => {
     const formData = new FormData();
     const filename = uri.split('/').pop() || 'photo.jpg';
     const match = /\.([\w]+)$/.exec(filename);
-    const ext = match ? match[1] : 'jpg';
-    const mimeType = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-    formData.append('file', { uri, name: filename, type: mimeType } as unknown as Blob);
+    const ext = match ? match[1].toLowerCase() : 'jpg';
+    const mimeMap: Record<string, string> = {
+      jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+      gif: 'image/gif', webp: 'image/webp',
+      mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm',
+      mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg', wav: 'audio/wav',
+    };
+    const mimeType = mimeMap[ext] || 'application/octet-stream';
+
+    if (typeof window !== 'undefined') {
+      const fileRes = await fetch(uri);
+      const blob = await fileRes.blob();
+      formData.append('file', blob, filename);
+    } else {
+      formData.append('file', { uri, name: filename, type: mimeType } as unknown as Blob);
+    }
+
     const res = await fetch(`${BASE_URL}/api/v1/media/upload?category=${category}`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` },
@@ -117,8 +131,10 @@ export const api = {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
-    return data as { url: string; filename: string; size: number; content_type: string };
+    return data as { url: string; filename: string; size: number; content_type: string; media_type?: string };
   },
+
+  // uploadImage is now uploadMedia (renamed)
 
 
   // --- Push Notifications ---
@@ -147,6 +163,11 @@ export const api = {
   getMyBotBindings: (token: string) =>
     request<{ bindings: { id: string; card_id: string; status: string; bot: { name: string; slug: string; avatar?: string }; created_at: string }[] }>(
       '/api/v1/me/bot-bindings', { token }
+    ),
+
+  getMyBotCard: (token: string) =>
+    request<{ card: { id: string; slug: string; code: string; bot: { id: string; slug?: string; name: string; avatar?: string; summary?: string }; human_url: string; agent_url?: string; skill_slug?: string; status: string } }>(
+      '/api/v1/me/bot-card', { token }
     ),
 
 
@@ -189,6 +210,15 @@ export const api = {
 
   toggleGroupMuteAll: (token: string, groupId: string, muted: boolean) =>
     request<{ status: string }>(`/api/v1/groups/${groupId}/mute-all`, { method: 'POST', body: { muted }, token }),
+
+  getDMHistory: (token: string, peerId: string, before?: string, limit?: number) => {
+    const params = new URLSearchParams({ peer: peerId });
+    if (before) params.append('before', before);
+    if (limit) params.append('limit', String(limit));
+    return request<{ id: string; sender_id: string; sender_name: string; to_id: string; payload: any; created_at: string }[]>(
+      `/api/v1/messages/history?\${params.toString()}`, { token }
+    );
+  },
 
   getGroupMessages: (token: string, groupId: string, before?: string) => {
     const params = before ? `?before=${encodeURIComponent(before)}` : '';

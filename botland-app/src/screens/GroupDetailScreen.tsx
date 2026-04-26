@@ -137,7 +137,7 @@ export default function GroupDetailScreen({ route, navigation }: Props) {
     const token = await auth.getAccessToken();
     if (!token) { setUploading(false); return; }
     try {
-      const upload = await api.uploadImage(token, result.assets[0].uri, 'avatars');
+      const upload = await api.uploadMedia(token, result.assets[0].uri, 'avatars');
       await api.updateGroup(token, groupId, { avatar_url: upload.url });
       load();
     } catch (e: any) {

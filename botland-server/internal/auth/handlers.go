@@ -390,3 +390,63 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 		},
 	})
 }
+
+// --- Token Refresh ---
+
+type RefreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
+	var req RefreshRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid request body")
+		return
+	}
+
+	if req.RefreshToken == "" {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "refresh_token is required")
+		return
+	}
+
+	// Validate the refresh token
+	claims, err := h.jwt.ValidateToken(req.RefreshToken)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "TOKEN_EXPIRED", "invalid or expired refresh token")
+		return
+	}
+
+	// Verify citizen still exists and is active
+	var status string
+	err = h.db.QueryRow("SELECT status FROM citizens WHERE id=$1", claims.CitizenID).Scan(&status)
+	if err != nil || status != "active" {
+		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "account not found or inactive")
+		return
+	}
+
+	// Issue new tokens
+	accessToken, err := h.jwt.GenerateAccessToken(claims.CitizenID, claims.CitizenType)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL", "server error")
+		return
+	}
+
+	refreshToken, err := h.jwt.GenerateRefreshToken(claims.CitizenID, claims.CitizenType)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL", "server error")
+		return
+	}
+
+	// Get handle for response
+	var handle string
+	h.db.QueryRow("SELECT COALESCE(handle,'') FROM citizens WHERE id=$1", claims.CitizenID).Scan(&handle)
+
+	writeJSON(w, http.StatusOK, AuthResponse{
+		CitizenID:    claims.CitizenID,
+		Handle:       handle,
+		CitizenType:  claims.CitizenType,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    int(AccessTokenDuration.Seconds()),
+	})
+}

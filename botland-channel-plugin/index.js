@@ -28,6 +28,7 @@ const DEFAULT_TIMEOUT_MS = 120000;
 // ─── Auth ──────────────────────────────────────────────────────
 let cachedToken = null;
 let cachedCitizenId = null;
+let _activeWs = null;
 
 async function login(apiUrl, handle, password, log) {
   log?.info?.(`[${CHANNEL_ID}] logging in as ${handle}...`);
@@ -189,6 +190,7 @@ async function connectBotland(params) {
 
       let connectTime = Date.now();
       ws.addEventListener("open", () => {
+        _activeWs = ws;
         connectTime = Date.now();
         log?.info?.(`[${CHANNEL_ID}] WebSocket connected`);
         retryCount = 0;
@@ -277,6 +279,7 @@ async function connectBotland(params) {
       });
 
       ws.addEventListener("close", (event) => {
+        _activeWs = null;
         abortSignal.removeEventListener("abort", onAbort);
         cleanup();
         const uptime = Date.now() - connectTime;
@@ -355,8 +358,8 @@ const botlandPlugin = {
     order: 201,
   },
   capabilities: {
-    chatTypes: ["direct"],
-    media: false,
+    chatTypes: ["direct", "group"],
+    media: true,
     threads: false,
     reactions: false,
     nativeCommands: false,
@@ -457,6 +460,69 @@ const botlandPlugin = {
     targetResolver: {
       looksLikeId: (value) => Boolean(value.trim()),
       hint: "<citizen_id>",
+    },
+    send: async ({ target, message, media, accountId, cfg }) => {
+      const log = getPluginApi()?.logger;
+      const ws = _activeWs;
+      if (!ws || ws.readyState !== WS.OPEN) {
+        log?.error?.(`[${CHANNEL_ID}] messaging.send: WebSocket not connected`);
+        return { success: false, error: "WebSocket not connected" };
+      }
+
+      const isGroup = target.startsWith("group:") || target.startsWith("group_");
+      const to = isGroup ? target.replace(/^group:/, "") : target;
+      const msgType = isGroup ? "group.message.send" : "message.send";
+      const msgId = `out_${Date.now()}`;
+
+      // Handle media (image upload)
+      if (media) {
+        try {
+          const account = resolveAccount(cfg);
+          if (!cachedToken) {
+            const loginData = await login(account.apiUrl, account.handle, account.password, log);
+            cachedToken = loginData.access_token;
+          }
+          // Upload the media first
+          const formData = new FormData();
+          const fs = await import("fs");
+          const path = await import("path");
+          const mediaPath = media.path || media.filePath || media;
+          const filename = typeof mediaPath === "string" ? path.basename(mediaPath) : "file";
+          const buffer = fs.readFileSync(mediaPath);
+          const blob = new Blob([buffer], { type: media.mimeType || "image/jpeg" });
+          formData.append("file", blob, filename);
+
+          const uploadRes = await fetch(`${account.apiUrl}/api/v1/media/upload?category=chat`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${cachedToken}` },
+            body: formData,
+          });
+          const uploadData = await uploadRes.json();
+          if (!uploadRes.ok) throw new Error(uploadData?.error?.message || "Upload failed");
+
+          ws.send(JSON.stringify({
+            type: msgType, id: msgId, to,
+            payload: { content_type: "image", url: uploadData.url, text: message || "" },
+          }));
+          log?.info?.(`[${CHANNEL_ID}] sent image to ${to}: ${uploadData.url}`);
+          return { success: true };
+        } catch (err) {
+          log?.error?.(`[${CHANNEL_ID}] media upload error: ${err.message}`);
+          return { success: false, error: err.message };
+        }
+      }
+
+      // Text message
+      if (message) {
+        ws.send(JSON.stringify({
+          type: msgType, id: msgId, to,
+          payload: { content_type: "text", text: message },
+        }));
+        log?.info?.(`[${CHANNEL_ID}] sent text to ${to}: ${message.substring(0, 50)}...`);
+        return { success: true };
+      }
+
+      return { success: false, error: "No message or media provided" };
     },
   },
 };

@@ -257,6 +257,42 @@ func (h *Handler) Bind(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ── GetMyCard ──────────────────────────────────────────────────────────────
+
+// GET /api/v1/me/bot-card  (authenticated)
+func (h *Handler) GetMyCard(w http.ResponseWriter, r *http.Request) {
+	citizenID := r.Context().Value("citizen_id")
+	if citizenID == nil {
+		writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "unauthorized", Message: "请先登录"})
+		return
+	}
+	cid := citizenID.(string)
+
+	card := &BotCard{}
+	err := h.db.QueryRow(
+		`SELECT id, slug, code, bot_id, COALESCE(title,''), COALESCE(description,''),
+		        human_url, COALESCE(agent_url,''), COALESCE(skill_slug,''), status
+		 FROM bot_cards WHERE bot_id = $1 AND status = 'active'
+		 ORDER BY updated_at DESC NULLS LAST, created_at DESC LIMIT 1`, cid,
+	).Scan(&card.ID, &card.Slug, &card.Code, &card.BotID, &card.Title, &card.Description,
+		&card.HumanURL, &card.AgentURL, &card.SkillSlug, &card.Status)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "card_not_found", Message: "你还没有自己的 Bot 名片"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "internal", Message: "查询失败"})
+		return
+	}
+
+	dto, err := h.cardToDTO(card)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "internal", Message: "服务器错误"})
+		return
+	}
+	writeJSON(w, http.StatusOK, CardResponse{Card: dto})
+}
+
 // ── ListBindings ─────────────────────────────────────────────────────────────
 
 // GET /api/v1/me/bot-bindings  (authenticated)

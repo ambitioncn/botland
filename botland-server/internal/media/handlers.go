@@ -14,16 +14,36 @@ import (
 )
 
 const (
-	MaxFileSize = 10 << 20 // 10 MB
-	UploadDir   = "/opt/botland/uploads"
-	URLPrefix   = "/uploads"
+	MaxImageSize = 10 << 20  // 10 MB for images
+	MaxVideoSize = 50 << 20  // 50 MB for videos
+	MaxAudioSize = 25 << 20  // 25 MB for audio
+	MaxFileSize  = 50 << 20  // 50 MB overall limit
+	UploadDir    = "/opt/botland/uploads"
+	URLPrefix    = "/uploads"
 )
 
-var allowedTypes = map[string]string{
+var allowedImageTypes = map[string]string{
 	"image/jpeg": ".jpg",
 	"image/png":  ".png",
 	"image/gif":  ".gif",
 	"image/webp": ".webp",
+}
+
+var allowedVideoTypes = map[string]string{
+	"video/mp4":       ".mp4",
+	"video/quicktime": ".mov",
+	"video/webm":      ".webm",
+}
+
+var allowedAudioTypes = map[string]string{
+	"audio/mpeg":    ".mp3",
+	"audio/mp4":     ".m4a",
+	"audio/x-m4a":   ".m4a",
+	"audio/aac":     ".aac",
+	"audio/ogg":     ".ogg",
+	"audio/webm":    ".webm",
+	"audio/wav":     ".wav",
+	"audio/x-wav":   ".wav",
 }
 
 type Handler struct {
@@ -32,7 +52,7 @@ type Handler struct {
 }
 
 func NewHandler(logger *slog.Logger, baseURL string) *Handler {
-	for _, sub := range []string{"avatars", "moments", "chat"} {
+	for _, sub := range []string{"avatars", "moments", "chat", "video", "audio"} {
 		os.MkdirAll(filepath.Join(UploadDir, sub), 0755)
 	}
 	return &Handler{logger: logger, baseURL: baseURL}
@@ -71,16 +91,47 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	contentType := http.DetectContentType(buf[:n])
 	file.Seek(0, io.SeekStart)
 
-	ext, ok := allowedTypes[contentType]
+	ext, ok := allowedImageTypes[contentType]
+	isVideo := false
+	isAudio := false
+	if !ok {
+		ext, ok = allowedVideoTypes[contentType]
+		isVideo = true
+	}
+	if !ok {
+		ext, ok = allowedAudioTypes[contentType]
+		isAudio = true
+		isVideo = false
+	}
 	if !ok {
 		writeError(w, http.StatusBadRequest, "INVALID_TYPE",
-			fmt.Sprintf("file type %s not allowed; accepted: jpeg, png, gif, webp", contentType))
+			fmt.Sprintf("file type %s not allowed; accepted: jpeg, png, gif, webp, mp4, mov, webm, mp3, m4a, aac, ogg, wav", contentType))
+		return
+	}
+
+	// Enforce size limits per type
+	if isAudio && header.Size > MaxAudioSize {
+		writeError(w, http.StatusBadRequest, "FILE_TOO_LARGE", "audio exceeds 25MB limit")
+		return
+	}
+	if isVideo && header.Size > MaxVideoSize {
+		writeError(w, http.StatusBadRequest, "FILE_TOO_LARGE", "video exceeds 50MB limit")
+		return
+	}
+	if !isVideo && !isAudio && header.Size > MaxImageSize {
+		writeError(w, http.StatusBadRequest, "FILE_TOO_LARGE", "image exceeds 10MB limit")
 		return
 	}
 
 	category := r.URL.Query().Get("category")
-	if category != "avatars" && category != "moments" && category != "chat" {
-		category = "moments"
+	if category != "avatars" && category != "moments" && category != "chat" && category != "video" && category != "audio" {
+		if isAudio {
+			category = "audio"
+		} else if isVideo {
+			category = "video"
+		} else {
+			category = "moments"
+		}
 	}
 
 	filename := fmt.Sprintf("%s_%s%s", time.Now().Format("20060102"), generateFilename(), ext)
@@ -115,8 +166,14 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	fmt.Fprintf(w, `{"url":"%s","filename":"%s","size":%d,"content_type":"%s"}`,
-		url, filename, written, contentType)
+	mediaType := "image"
+	if isAudio {
+		mediaType = "audio"
+	} else if isVideo {
+		mediaType = "video"
+	}
+	fmt.Fprintf(w, `{"url":"%s","filename":"%s","size":%d,"content_type":"%s","media_type":"%s"}`,
+		url, filename, written, contentType, mediaType)
 }
 
 func writeError(w http.ResponseWriter, status int, code, msg string) {

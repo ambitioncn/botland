@@ -3,6 +3,14 @@ import { Platform } from 'react-native';
 // Message type used throughout the app
 export type MessageSegment = { type: 'text'; text: string } | { type: 'mention'; citizen_id: string; display_name: string };
 
+export type MessageReplyPreview = {
+  id: string;
+  fromId?: string;
+  fromName?: string;
+  text?: string;
+  contentType?: string;
+};
+
 export type StoredMessage = {
   id: string;
   chatId: string;       // the other party's citizen_id
@@ -10,8 +18,13 @@ export type StoredMessage = {
   fromName?: string;    // sender display name (group chat)
   text?: string;
   imageUrl?: string;
+  videoUrl?: string;
+  audioUrl?: string;
+  durationMs?: number;
   segments?: MessageSegment[];
-  contentType: string;   // 'text' | 'image'
+  replyTo?: string;
+  replyPreview?: MessageReplyPreview;
+  contentType: string;   // 'text' | 'image' | 'video' | 'voice'
   mine: boolean;
   timestamp: number;     // unix ms
   status: 'sent' | 'delivered' | 'read' | 'failed';
@@ -55,13 +68,20 @@ async function getDb() {
         from_id TEXT NOT NULL,
         text TEXT,
         image_url TEXT,
+        video_url TEXT,
+        audio_url TEXT,
+        duration_ms INTEGER,
         content_type TEXT DEFAULT 'text',
         segments TEXT,
+        reply_to TEXT,
+        reply_preview TEXT,
         mine INTEGER NOT NULL DEFAULT 0,
         timestamp INTEGER NOT NULL,
         status TEXT DEFAULT 'sent'
       );
       CREATE INDEX IF NOT EXISTS idx_messages_chat ON messages(chat_id, timestamp);
+      ALTER TABLE messages ADD COLUMN reply_to TEXT;
+      ALTER TABLE messages ADD COLUMN reply_preview TEXT;
     `);
     return db;
   } catch (e) {
@@ -96,10 +116,10 @@ export const messageStore = {
     const database = await getDb();
     if (!database) return;
     await database.runAsync(
-      `INSERT OR REPLACE INTO messages (id, chat_id, from_id, text, image_url, content_type, segments, mine, timestamp, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      msg.id, msg.chatId, msg.fromId, msg.text || null, msg.imageUrl || null,
-      msg.contentType, msg.segments ? JSON.stringify(msg.segments) : null, msg.mine ? 1 : 0, msg.timestamp, msg.status
+      `INSERT OR REPLACE INTO messages (id, chat_id, from_id, text, image_url, video_url, audio_url, duration_ms, content_type, segments, reply_to, reply_preview, mine, timestamp, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      msg.id, msg.chatId, msg.fromId, msg.text || null, msg.imageUrl || null, msg.videoUrl || null, msg.audioUrl || null, msg.durationMs || null,
+      msg.contentType, msg.segments ? JSON.stringify(msg.segments) : null, msg.replyTo || null, msg.replyPreview ? JSON.stringify(msg.replyPreview) : null, msg.mine ? 1 : 0, msg.timestamp, msg.status
     );
   },
 
@@ -123,8 +143,13 @@ export const messageStore = {
       fromId: r.from_id,
       text: r.text,
       imageUrl: r.image_url,
+      videoUrl: r.video_url,
+      audioUrl: r.audio_url,
+      durationMs: r.duration_ms || undefined,
       contentType: r.content_type,
       segments: r.segments ? JSON.parse(r.segments) : undefined,
+      replyTo: r.reply_to || undefined,
+      replyPreview: r.reply_preview ? JSON.parse(r.reply_preview) : undefined,
       mine: !!r.mine,
       timestamp: r.timestamp,
       status: r.status,
@@ -162,7 +187,7 @@ export const messageStore = {
         const last = msgs[msgs.length - 1];
         return {
           chatId,
-          lastMessage: last?.text || (last?.imageUrl ? '[图片]' : ''),
+          lastMessage: last?.text || (last?.imageUrl ? '[图片]' : last?.audioUrl ? '[语音]' : ''),
           lastTimestamp: last?.timestamp || 0,
           unreadCount: 0,
         };
@@ -172,14 +197,14 @@ export const messageStore = {
     const database = await getDb();
     if (!database) return [];
     const rows = await database.getAllAsync(`
-      SELECT chat_id, text, image_url, timestamp
+      SELECT chat_id, text, image_url, audio_url, content_type, timestamp
       FROM messages
       WHERE id IN (SELECT id FROM messages GROUP BY chat_id HAVING timestamp = MAX(timestamp))
       ORDER BY timestamp DESC
     `);
     return (rows as any[]).map(r => ({
       chatId: r.chat_id,
-      lastMessage: r.text || (r.image_url ? '[图片]' : ''),
+      lastMessage: r.text || (r.image_url ? '[图片]' : r.audio_url ? '[语音]' : ''),
       lastTimestamp: r.timestamp,
       unreadCount: 0,
     }));
