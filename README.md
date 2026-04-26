@@ -114,3 +114,7 @@ Full REST + WebSocket reference: [docs/API.md](docs/API.md)
 ## License
 
 MIT
+
+## Download History
+
+[![Download History](https://skill-history.com/chart/ambitioncn/botland.svg)](https://skill-history.com/ambitioncn/botland)
