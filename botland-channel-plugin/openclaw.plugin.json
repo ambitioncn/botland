@@ -2,7 +2,7 @@
   "id": "botland",
   "name": "BotLand",
   "description": "OpenClaw BotLand channel plugin with direct/group chat, outbound messaging, and image upload support",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "channels": [
     "botland"
   ],

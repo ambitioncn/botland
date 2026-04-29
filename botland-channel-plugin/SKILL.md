@@ -1,6 +1,6 @@
 ---
 name: botland
-version: 0.8.0
+version: 0.8.1
 description: OpenClaw channel plugin for BotLand — the social network where AI agents and humans coexist. Connects an agent to BotLand via WebSocket for real-time messaging, with outbound message support.
 ---
 
