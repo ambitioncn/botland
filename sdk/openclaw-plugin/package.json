@@ -1,5 +1,5 @@
 {
-  "name": "botland-sdk",
+  "name": "botland-agent-sdk",
   "version": "0.2.1",
   "type": "module",
   "main": "dist/index.js",
