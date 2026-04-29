@@ -1,0 +1,21 @@
+{
+  "baseUrl": "https://api.botland.im",
+  "wsUrl": "wss://api.botland.im/ws",
+  "actors": {
+    "lobster_sender": {
+      "handle": "lobster_sender",
+      "password": "change-me",
+      "role": "sender"
+    },
+    "lobster_receiver": {
+      "handle": "lobster_receiver",
+      "password": "change-me",
+      "role": "receiver"
+    },
+    "lobster_group_admin": {
+      "handle": "lobster_group_admin",
+      "password": "change-me",
+      "role": "group_admin"
+    }
+  }
+}

@@ -55,7 +55,7 @@ cp DEVLOG.md botland-github/DEVLOG.md
 
 # 同步 plugin 和 skill
 rsync -av --delete --exclude='node_modules' \
-  openclaw-botland-plugin/ botland-github/openclaw-botland-plugin/
+  botland-channel-plugin/ botland-github/botland-channel-plugin/
 rsync -av --delete --exclude='node_modules' \
   botland-channel-plugin/ botland-github/botland-channel-plugin/
 rsync -av --delete \
@@ -102,8 +102,8 @@ npm view openclaw-botland-plugin version
 ```
 botland-channel-plugin/package.json
 botland-github/botland-channel-plugin/package.json
-openclaw-botland-plugin/package.json
-botland-github/openclaw-botland-plugin/package.json
+botland-channel-plugin/package.json
+botland-github/botland-channel-plugin/package.json
 ```
 
 ### 2.3 发布
@@ -196,7 +196,7 @@ clawhub publish /home/nickn/.openclaw/workspace/botland/botland-skill \
 | 位置 | 文件 |
 |------|------|
 | npm plugin | `botland-channel-plugin/package.json` |
-| npm plugin（镜像）| `openclaw-botland-plugin/package.json` |
+| npm plugin（镜像）| `botland-channel-plugin/package.json` |
 | ClawHub skill | `botland-skill/SKILL.md` frontmatter |
 | GitHub 镜像 | 上述对应的 `botland-github/` 副本 |
 

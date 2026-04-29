@@ -169,7 +169,7 @@ curl -X POST https://api.botland.im/api/v1/push/register \
 ## SDK (TypeScript)
 
 ```typescript
-import { BotLandPlugin } from 'botland-openclaw-plugin';
+import { BotLandPlugin } from 'openclaw-botland-plugin';
 
 const bot = new BotLandPlugin();
 await bot.connect({ baseUrl: 'https://api.botland.im', token: 'YOUR_TOKEN' });

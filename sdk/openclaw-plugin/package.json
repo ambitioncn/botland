@@ -1,5 +1,5 @@
 {
-  "name": "botland-openclaw-plugin",
+  "name": "botland-sdk",
   "version": "0.2.0",
   "type": "module",
   "main": "dist/index.js",

@@ -48,6 +48,14 @@ async function login(apiUrl, handle, password, log) {
   return false;
 }
 
+
+async function ensureToken(account, log) {
+  if (cachedToken) return cachedToken;
+  const ok = await login(account.apiUrl, account.handle, account.password, log);
+  if (!ok || !cachedToken) throw new Error('BotLand login failed');
+  return cachedToken;
+}
+
 // ─── Agent reply dispatch ──────────────────────────────────────
 function extractReplyText(payload) {
   const visited = new Set();
@@ -215,6 +223,21 @@ async function connectBotland(params) {
 
             const isDirect = msg.type === "message.received" && msg.from;
             const isGroup = msg.type === "group.message.received" && msg.from && msg.to;
+            const isTyping = (msg.type === "typing.start" || msg.type === "typing.stop") && msg.from;
+            const isGroupTyping = (msg.type === "group.typing.start" || msg.type === "group.typing.stop") && msg.from && msg.to;
+            const isReaction = msg.type === "message.reaction" && msg.from;
+            if (isTyping) {
+              log?.info?.(`[${CHANNEL_ID}] typing ${msg.type} from=${msg.from}`);
+              return;
+            }
+            if (isGroupTyping) {
+              log?.info?.(`[${CHANNEL_ID}] group typing ${msg.type} group=${msg.to} from=${msg.from}`);
+              return;
+            }
+            if (isReaction) {
+              log?.info?.(`[${CHANNEL_ID}] reaction from=${msg.from} payload=${JSON.stringify(msg.payload ?? {})}`);
+              return;
+            }
             if (!isDirect && !isGroup) return;
 
             const contentType = msg.payload?.content_type ?? "text";
@@ -228,17 +251,36 @@ async function connectBotland(params) {
 
             if (isDirect) {
               log?.info?.(`[${CHANNEL_ID}] dm from=${senderId}: ${text.substring(0, 50)}...`);
-              const reply = await runAgentReply({
-                account, cfg, from: senderId, text, senderName, requestId,
-              });
-              if (reply && ws.readyState === WS.OPEN) {
-                ws.send(JSON.stringify({
-                  type: "message.send",
-                  id: `reply_${Date.now()}`,
-                  to: senderId,
-                  payload: { content_type: "text", text: reply },
-                }));
-                log?.info?.(`[${CHANNEL_ID}] replied to ${senderId}: ${reply.substring(0, 50)}...`);
+              try {
+                if (ws.readyState === WS.OPEN) {
+                  ws.send(JSON.stringify({ type: "typing.start", to: senderId }));
+                }
+                const reply = await runAgentReply({
+                  account, cfg, from: senderId, text, senderName, requestId,
+                });
+                if (reply && ws.readyState === WS.OPEN) {
+                  ws.send(JSON.stringify({
+                    type: "message.send",
+                    id: `reply_${Date.now()}`,
+                    to: senderId,
+                    payload: {
+                      content_type: "text",
+                      text: reply,
+                      reply_to: requestId,
+                      reply_preview: {
+                        id: requestId,
+                        fromName: senderName,
+                        text: text.slice(0, 120),
+                        contentType: contentType,
+                      },
+                    },
+                  }));
+                  log?.info?.(`[${CHANNEL_ID}] replied to ${senderId}: ${reply.substring(0, 50)}...`);
+                }
+              } finally {
+                if (ws.readyState === WS.OPEN) {
+                  ws.send(JSON.stringify({ type: "typing.stop", to: senderId }));
+                }
               }
               return;
             }
@@ -250,23 +292,42 @@ async function connectBotland(params) {
             const mentionedMe = !!(myCitizenId && mentions.some((m) => m?.citizen_id === myCitizenId));
             log?.info?.(`[${CHANNEL_ID}] group message group=${groupId} from=${senderId}${mentionedMe ? ' [mentioned]' : ''}: ${text.substring(0, 50)}...`);
 
-            const reply = await runAgentReply({
-              account,
-              cfg,
-              from: `group:${groupId}`,
-              text: `${mentionedMe ? '[@你] ' : ''}[${senderName} @ ${groupName}] ${text}`,
-              senderName: `${senderName} (${groupName})`,
-              requestId,
-            });
+            try {
+              if (ws.readyState === WS.OPEN) {
+                ws.send(JSON.stringify({ type: "group.typing.start", to: groupId }));
+              }
+              const reply = await runAgentReply({
+                account,
+                cfg,
+                from: `group:${groupId}`,
+                text: `${mentionedMe ? '[@你] ' : ''}[${senderName} @ ${groupName}] ${text}`,
+                senderName: `${senderName} (${groupName})`,
+                requestId,
+              });
 
-            if (reply && ws.readyState === WS.OPEN) {
-              ws.send(JSON.stringify({
-                type: "group.message.send",
-                id: `reply_${Date.now()}`,
-                to: groupId,
-                payload: { content_type: "text", text: reply },
-              }));
-              log?.info?.(`[${CHANNEL_ID}] replied to group ${groupId}: ${reply.substring(0, 50)}...`);
+              if (reply && ws.readyState === WS.OPEN) {
+                ws.send(JSON.stringify({
+                  type: "group.message.send",
+                  id: `reply_${Date.now()}`,
+                  to: groupId,
+                  payload: {
+                    content_type: "text",
+                    text: reply,
+                    reply_to: requestId,
+                    reply_preview: {
+                      id: requestId,
+                      fromName: senderName,
+                      text: text.slice(0, 120),
+                      contentType: contentType,
+                    },
+                  },
+                }));
+                log?.info?.(`[${CHANNEL_ID}] replied to group ${groupId}: ${reply.substring(0, 50)}...`);
+              }
+            } finally {
+              if (ws.readyState === WS.OPEN) {
+                ws.send(JSON.stringify({ type: "group.typing.stop", to: groupId }));
+              }
             }
           } catch (err) {
             log?.error?.(`[${CHANNEL_ID}] message handler error: ${err instanceof Error ? err.message : String(err)}`);
@@ -411,8 +472,54 @@ const botlandPlugin = {
   },
   directory: {
     self: async () => cachedCitizenId ? { id: cachedCitizenId, name: cachedToken ? "online" : "offline" } : null,
-    listPeers: async () => [],
-    listGroups: async () => [],
+    listPeers: async ({ cfg } = {}) => {
+      const log = getPluginApi()?.logger;
+      try {
+        const account = resolveAccount(cfg ?? {});
+        const token = await ensureToken(account, log);
+        const res = await fetch(`${account.apiUrl}/api/v1/friends`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error(`friends ${res.status}`);
+        const data = await res.json();
+        const friends = Array.isArray(data?.friends) ? data.friends : [];
+        return friends.map((f) => ({
+          id: f.citizen_id,
+          name: f.display_name || f.citizen_id,
+          avatarUrl: f.avatar_url || undefined,
+          description: f.species || f.my_label || undefined,
+          isOnline: Boolean(f.is_online),
+          raw: f,
+        }));
+      } catch (err) {
+        log?.warn?.(`[${CHANNEL_ID}] listPeers failed: ${err instanceof Error ? err.message : String(err)}`);
+        return [];
+      }
+    },
+    listGroups: async ({ cfg } = {}) => {
+      const log = getPluginApi()?.logger;
+      try {
+        const account = resolveAccount(cfg ?? {});
+        const token = await ensureToken(account, log);
+        const res = await fetch(`${account.apiUrl}/api/v1/groups`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error(`groups ${res.status}`);
+        const data = await res.json();
+        const groups = Array.isArray(data) ? data : [];
+        return groups.map((g) => ({
+          id: g.id,
+          name: g.name || g.id,
+          avatarUrl: g.avatar_url || undefined,
+          description: g.description || undefined,
+          memberCount: g.member_count ?? undefined,
+          raw: g,
+        }));
+      } catch (err) {
+        log?.warn?.(`[${CHANNEL_ID}] listGroups failed: ${err instanceof Error ? err.message : String(err)}`);
+        return [];
+      }
+    },
   },
   status: {
     defaultRuntime: {
@@ -473,6 +580,16 @@ const botlandPlugin = {
       const to = isGroup ? target.replace(/^group:/, "") : target;
       const msgType = isGroup ? "group.message.send" : "message.send";
       const msgId = `out_${Date.now()}`;
+
+      // Reaction passthrough: message can be an object like { reaction: { ...payload } }
+      if (!isGroup && message && typeof message === "object" && message.reaction && typeof message.reaction === "object") {
+        ws.send(JSON.stringify({
+          type: "message.reaction", id: msgId, to,
+          payload: message.reaction,
+        }));
+        log?.info?.(`[${CHANNEL_ID}] sent reaction to ${to}`);
+        return { success: true };
+      }
 
       // Handle media (image upload)
       if (media) {

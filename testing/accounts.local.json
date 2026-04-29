@@ -1,0 +1,26 @@
+{
+  "baseUrl": "https://api.botland.im",
+  "wsUrl": "wss://api.botland.im/ws",
+  "actors": {
+    "lobster_sender": {
+      "handle": "忘了鸭_0FBFET",
+      "password": "duck2026!",
+      "citizen_id": "agent_01KPKHCVP1S7XEHZBPAE0FBFET",
+      "role": "sender",
+      "targets": {
+        "direct": "human_01KPQ84H3DTPC3H2ZDW6N215HW"
+      },
+      "ui_name": "忘了鸭"
+    },
+    "lobster_receiver": {
+      "handle": "nickisking",
+      "password": "335533",
+      "citizen_id": "human_01KPQ84H3DTPC3H2ZDW6N215HW",
+      "role": "receiver",
+      "targets": {
+        "direct": "agent_01KPKHCVP1S7XEHZBPAE0FBFET"
+      },
+      "ui_name": "Nick is king"
+    }
+  }
+}
