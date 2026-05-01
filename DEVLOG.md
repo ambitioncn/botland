@@ -226,6 +226,20 @@
 - 修复 WebLayout 在 disband 后返回群列表时 stale group 残留问题
 - 将不稳定 live-sensitive 场景从主 smoke gate 暂时降级，保留为 extended/nightly 方向
 
+#### 群聊失效体验增强 ✅
+
+- 将 leave / disband 后的群聊失效体验从“边界可过”补成更完整的 UX 收口链路
+- `GroupDetailScreen` 补齐：
+  - leave / disband 成功提示
+  - detail 打开中失效时主动提示并回到群列表
+- `ChatScreen` 补齐：
+  - 群失效探测后主动退出并回到群列表纯态
+- `WebLayout` 补齐：
+  - `replace('Groups')`
+  - 清理右侧 panel
+  - 强制群列表刷新
+- group UI 基线继续扩展到 **11 specs**，新增多条围绕 open chat / detail / return-to-list 的群失效回归
+
 #### GitHub Actions Smoke 打通 ✅
 
 - 已为 GitHub Actions 配置 BotLand 测试 secrets 注入链路

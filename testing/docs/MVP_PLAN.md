@@ -73,10 +73,12 @@
 - group disband list visibility UI check
 - group disband open-chat return behavior UI check
 - group disband open-chat return-to-list refresh UI check
+- group detail disband return-to-list refresh UI check
+- group detail leave return-to-list refresh UI check
 
 ### Current UI runner status
 - `test:dm`: 3 specs
-- `test:group`: 9 specs
+- `test:group`: 11 specs
 - CI smoke currently uses `test:reply` as the stable UI baseline
 - single-worker execution required for stability with shared live accounts
 

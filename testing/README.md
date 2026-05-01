@@ -106,6 +106,8 @@ UI automation lives under `testing/ui/` and is validated with Playwright against
 - `group-disband-list-visibility.spec.ts` — disbanded group no longer appears in member group list UI
 - `group-disband-open-chat-behavior.spec.ts` — returning from an open disbanded group chat no longer leaves a stale group entry visible
 - `group-disband-open-chat-return-list.spec.ts` — disbanded open group chats return cleanly to a refreshed group list state
+- `group-detail-disband-return-list.spec.ts` — disbanded group detail views return cleanly to a refreshed group list state
+- `group-detail-leave-return-list.spec.ts` — group detail views return cleanly to a refreshed group list after the viewer leaves
 
 Run UI suites:
 
