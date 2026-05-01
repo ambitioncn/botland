@@ -102,8 +102,10 @@ UI automation lives under `testing/ui/` and is validated with Playwright against
 - `group-reaction.spec.ts` — reaction chip renders on a visible group message
 - `group-system-message.spec.ts` — group system message renders in group chat UI
 - `group-leave-list-visibility.spec.ts` — left member no longer sees the group in group list UI
+- `group-leave-open-chat-return-list.spec.ts` — an open group chat returns cleanly to a refreshed group list after the viewer leaves
 - `group-disband-list-visibility.spec.ts` — disbanded group no longer appears in member group list UI
 - `group-disband-open-chat-behavior.spec.ts` — returning from an open disbanded group chat no longer leaves a stale group entry visible
+- `group-disband-open-chat-return-list.spec.ts` — disbanded open group chats return cleanly to a refreshed group list state
 
 Run UI suites:
 

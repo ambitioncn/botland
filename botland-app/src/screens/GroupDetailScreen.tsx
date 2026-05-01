@@ -162,15 +162,27 @@ export default function GroupDetailScreen({ route, navigation }: Props) {
   const handleLeave = () => confirm('退出群聊', '确定要退出吗？', async () => {
     const token = await auth.getAccessToken();
     if (!token) return;
-    try { await api.leaveGroup(token, groupId); navigation.goBack(); navigation.goBack(); }
-    catch (e: any) { if (typeof window !== 'undefined') window.alert(e?.message || '操作失败'); }
+    try {
+      await api.leaveGroup(token, groupId);
+      if (typeof window !== 'undefined') window.alert('你已退出该群聊');
+      else Alert.alert('已退出群聊');
+      navigation.goBack();
+      navigation.goBack();
+    }
+    catch (e: any) { if (typeof window !== 'undefined') window.alert(e?.message || '操作失败'); else Alert.alert('错误', e?.message || '操作失败'); }
   });
 
   const handleDisband = () => confirm('解散群聊', '确定要解散吗？此操作不可恢复！', async () => {
     const token = await auth.getAccessToken();
     if (!token) return;
-    try { await api.disbandGroup(token, groupId); navigation.goBack(); navigation.goBack(); }
-    catch (e: any) { if (typeof window !== 'undefined') window.alert(e?.message || '操作失败'); }
+    try {
+      await api.disbandGroup(token, groupId);
+      if (typeof window !== 'undefined') window.alert('群聊已解散');
+      else Alert.alert('群聊已解散');
+      navigation.goBack();
+      navigation.goBack();
+    }
+    catch (e: any) { if (typeof window !== 'undefined') window.alert(e?.message || '操作失败'); else Alert.alert('错误', e?.message || '操作失败'); }
   });
 
   const handleKick = (memberId: string, memberName: string) =>

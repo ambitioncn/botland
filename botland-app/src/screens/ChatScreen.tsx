@@ -147,6 +147,21 @@ export default function ChatScreen({ route, navigation }: Props) {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMoreHistory, setHasMoreHistory] = useState(true);
 
+  const [groupUnavailableHandled, setGroupUnavailableHandled] = useState(false);
+
+  const handleGroupUnavailable = useCallback((message?: string) => {
+    if (!isGroup || groupUnavailableHandled) return;
+    setGroupUnavailableHandled(true);
+    const text = message || '你已不在该群聊中，正在返回群列表';
+    if (typeof window !== 'undefined') window.alert(text);
+    else Alert.alert('群聊不可用', text);
+    if (navigation.replace) navigation.replace('Groups');
+    else {
+      navigation.goBack?.();
+      navigation.goBack?.();
+    }
+  }, [isGroup, groupUnavailableHandled, navigation]);
+
   const scrollToReply = async (replyToId?: string) => {
     if (!replyToId) return;
 
@@ -358,8 +373,11 @@ export default function ChatScreen({ route, navigation }: Props) {
           return [...fresh, ...prev].sort((a, b) => a.timestamp - b.timestamp);
         });
       }
-    } catch {}
-  }, [isGroup, groupId]);
+    } catch (e: any) {
+      const msg = e?.message || '';
+      if (msg.includes('not a member') || msg.includes('group not found')) handleGroupUnavailable('该群聊已不可访问，正在返回群列表');
+    }
+  }, [isGroup, groupId, handleGroupUnavailable]);
 
   useEffect(() => { void loadGroupHistory(); }, [loadGroupHistory]);
 
@@ -410,9 +428,12 @@ export default function ChatScreen({ route, navigation }: Props) {
         const g = await api.getGroup(token, groupId);
         setMemberList((g as any).members || []);
         setGroupInfo({ announcement: (g as any).announcement, muted_all: (g as any).muted_all });
-      } catch {}
+      } catch (e: any) {
+        const msg = e?.message || '';
+        if (msg.includes('not a member') || msg.includes('group not found')) handleGroupUnavailable('你已不在该群聊中，正在返回群列表');
+      }
     })();
-  }, [isGroup, groupId]);
+  }, [isGroup, groupId, handleGroupUnavailable]);
 
   useEffect(() => {
     wsManager.connect();
