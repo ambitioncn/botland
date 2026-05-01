@@ -75,6 +75,7 @@
 ### Current UI runner status
 - `test:dm`: 3 specs
 - `test:group`: 7 specs
+- CI smoke currently uses `test:reply` as the stable UI baseline
 - single-worker execution required for stability with shared live accounts
 
 ### Next UI targets

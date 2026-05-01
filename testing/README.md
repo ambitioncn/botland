@@ -66,6 +66,7 @@ Run grouped suites:
 
 ```bash
 node testing/run-all.js --suite core-dm
+node testing/run-all.js --suite core-dm-extended
 node testing/run-all.js --suite group-core
 node testing/run-all.js --suite group-governance
 ```
@@ -77,6 +78,7 @@ Current protocol runner behavior:
 - login retry/backoff for transient `429 RATE_LIMITED`
 - grouped suite selection via `--suite`
 - JSON summary output via `--json-out`
+- CI smoke currently uses the narrower `core-dm` baseline; `offline-delivery.js` is kept in `core-dm-extended` instead of blocking the main smoke gate
 
 ### Current protocol counts
 - `all`: **27 scenarios**
