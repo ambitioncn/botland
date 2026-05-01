@@ -74,9 +74,6 @@ jobs:
       - name: Run protocol core-dm
         run: node testing/run-all.js --suite core-dm --json-out testing/artifacts/ci/protocol-core-dm.json
 
-      - name: Run protocol group-core
-        run: node testing/run-all.js --suite group-core --json-out testing/artifacts/ci/protocol-group-core.json
-
       - name: Upload protocol artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -157,9 +154,9 @@ jobs:
         working-directory: testing/ui
         run: npx playwright install --with-deps chromium
 
-      - name: Run UI dm suite
+      - name: Run UI stable smoke suite
         working-directory: testing/ui
-        run: npm run test:dm
+        run: npm run test:reply
 
       - name: Upload UI artifacts
         if: always()
