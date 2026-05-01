@@ -270,3 +270,26 @@ npm publish --access public
 | 问题 | 原因 | 解法 |
 |------|------|------|
 | `403 You do not have permission to publish "botland-sdk"` | `botland-sdk` 已被其他 npm owner 占用 | 改包名为 `botland-agent-sdk` 后再发布 |
+
+## 7. BotLand GitHub Smoke（当前稳定基线）
+
+当前 GitHub Actions 主 smoke 已打通，但为保证稳定性，baseline 已收窄为：
+
+### Protocol smoke
+- `core-dm`
+
+### UI smoke
+- `test:reply`
+
+### 暂不阻塞主 smoke 的 live-sensitive 场景
+- `offline-delivery.js`（保留在 `core-dm-extended`）
+- `group-core`
+- 部分 reaction / realtime / group UI live flows
+
+### 现状建议
+- PR / main 自动验证 → 走 `botland-smoke.yml` 当前稳定基线
+- 更广覆盖 → 后续放到 nightly / manual workflow
+
+### 维护提示
+- GitHub Actions 当前会提示 Node.js 20 deprecation，后续需要跟进 action runtime 升级
+- 当前 UI smoke 若未生成 `test-results` / `playwright-report`，artifact 上传会给出 non-blocking 提示

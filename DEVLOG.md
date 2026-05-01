@@ -210,6 +210,33 @@
 
 ---
 
+### Day 12 — 2026-04-30 / 2026-05-01：测试基线扩展 + GitHub Smoke 打通
+
+#### Protocol / UI 测试扩展 ✅
+
+- protocol 基线扩展到 **27 条**
+- group UI 基线扩展到 **7 specs**
+- query / history / lifecycle-query 覆盖显著增强
+- 新增 group system message UI、leave/disband 列表可见性 UI、disband open-chat return 行为 UI
+
+#### 真实修复与测试驱动收敛 ✅
+
+- 后端补齐 group history `limit` 参数实现
+- 修复 system message history / query 相关兼容
+- 修复 WebLayout 在 disband 后返回群列表时 stale group 残留问题
+- 将不稳定 live-sensitive 场景从主 smoke gate 暂时降级，保留为 extended/nightly 方向
+
+#### GitHub Actions Smoke 打通 ✅
+
+- 已为 GitHub Actions 配置 BotLand 测试 secrets 注入链路
+- 修复 UI smoke 启动依赖问题（补装 `botland-app` 依赖）
+- 将 `botland-smoke.yml` 收敛为稳定 baseline：
+  - Protocol: `core-dm`
+  - UI: `test:reply`
+- 已确认：
+  - 手动触发 smoke 成功
+  - push 自动触发 smoke 成功
+
 ### Day 4 — 2026-04-22/23：Token 刷新 + 在线状态 + Plugin 强化
 
 #### Token Refresh ✅
