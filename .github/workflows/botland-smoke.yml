@@ -108,6 +108,10 @@ jobs:
         working-directory: testing/ui
         run: npm ci
 
+      - name: Install app deps
+        working-directory: botland-app
+        run: npm ci
+
       - name: Generate testing/accounts.local.json
         shell: bash
         env:
