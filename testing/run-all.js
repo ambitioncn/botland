@@ -40,6 +40,13 @@ const suites = {
     'reaction-basic.js',
     'reply-preview.js',
     'dm-delivery-ack.js',
+  ],
+  'core-dm-extended': [
+    'typing-basic.js',
+    'typing-relay-check.js',
+    'reaction-basic.js',
+    'reply-preview.js',
+    'dm-delivery-ack.js',
     'offline-delivery.js',
   ],
   'group-core': [
