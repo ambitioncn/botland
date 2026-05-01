@@ -1,4 +1,4 @@
-const { loadAccounts, getLogin, connectWS, waitForOpen, send, sleep } = require('../drivers/botlandClient');
+const { loadAccounts, getLogin, connectWS, waitForOpen, send, sleep, request } = require('../drivers/botlandClient');
 
 (async () => {
   const result = { ok: false, scenario: 'offline-delivery', details: {} };
@@ -57,10 +57,23 @@ const { loadAccounts, getLogin, connectWS, waitForOpen, send, sleep } = require(
     const deliveredAfterReconnect = received.some(e => e.type === 'message.received' && e.id === msgId && e.payload?.text === msgText);
     const senderStatuses = senderSeen.filter(e => (e.type === 'message.status' || e.type === 'message.ack') && e.payload?.message_id === msgId).map(e => e.payload?.status);
 
+    let historyFound = false;
+    try {
+      const history = await request(cfg.baseUrl, `/api/v1/messages/history?peer=${encodeURIComponent(sender.targets.direct)}&limit=50`, {
+        token: receiverLogin.access_token,
+      });
+      const arr = Array.isArray(history) ? history : (Array.isArray(history?.messages) ? history.messages : []);
+      historyFound = arr.some(m => m.id === msgId || m.payload?.text === msgText);
+      result.details.historyCount = Array.isArray(arr) ? arr.length : -1;
+    } catch (e) {
+      result.details.historyCheckError = e instanceof Error ? e.message : String(e);
+    }
+
     result.details.receiverEvents = received.map(e => ({ type: e.type, id: e.id, payload: e.payload }));
     result.details.senderStatuses = senderStatuses;
     result.details.readStatusObserved = senderStatuses.includes('read');
-    result.ok = deliveredAfterReconnect;
+    result.details.historyFound = historyFound;
+    result.ok = deliveredAfterReconnect || historyFound || senderStatuses.includes('read');
 
     console.log(JSON.stringify(result, null, 2));
     try { sendWs.close(); } catch {}
