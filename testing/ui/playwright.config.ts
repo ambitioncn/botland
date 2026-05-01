@@ -4,6 +4,7 @@ export default defineConfig({
   testDir: './specs',
   timeout: 30_000,
   fullyParallel: false,
+  workers: 1,
   webServer: {
     command: 'npx expo start --web',
     cwd: '../../botland-app',

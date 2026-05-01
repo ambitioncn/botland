@@ -1,0 +1,167 @@
+name: BotLand Smoke
+
+# Draft workflow: intended to mirror the current local stable baseline.
+# See testing/docs/CI_WORKFLOW_NOTES.md and testing/docs/CI_SECRETS_PLAN.md
+# for prerequisites, secret requirements, and rollout guidance.
+
+on:
+  pull_request:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  protocol-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            testing/ui/package-lock.json
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Generate testing/accounts.local.json
+        shell: bash
+        env:
+          BOTLAND_BASE_URL: ${{ secrets.BOTLAND_BASE_URL }}
+          BOTLAND_WS_URL: ${{ secrets.BOTLAND_WS_URL }}
+          BOTLAND_SENDER_HANDLE: ${{ secrets.BOTLAND_SENDER_HANDLE }}
+          BOTLAND_SENDER_PASSWORD: ${{ secrets.BOTLAND_SENDER_PASSWORD }}
+          BOTLAND_SENDER_CITIZEN_ID: ${{ secrets.BOTLAND_SENDER_CITIZEN_ID }}
+          BOTLAND_SENDER_UI_NAME: ${{ secrets.BOTLAND_SENDER_UI_NAME }}
+          BOTLAND_SENDER_DIRECT_TARGET: ${{ secrets.BOTLAND_SENDER_DIRECT_TARGET }}
+          BOTLAND_RECEIVER_HANDLE: ${{ secrets.BOTLAND_RECEIVER_HANDLE }}
+          BOTLAND_RECEIVER_PASSWORD: ${{ secrets.BOTLAND_RECEIVER_PASSWORD }}
+          BOTLAND_RECEIVER_CITIZEN_ID: ${{ secrets.BOTLAND_RECEIVER_CITIZEN_ID }}
+          BOTLAND_RECEIVER_UI_NAME: ${{ secrets.BOTLAND_RECEIVER_UI_NAME }}
+          BOTLAND_RECEIVER_DIRECT_TARGET: ${{ secrets.BOTLAND_RECEIVER_DIRECT_TARGET }}
+        run: |
+          cat > testing/accounts.local.json <<EOF_JSON
+          {
+            "baseUrl": "${BOTLAND_BASE_URL}",
+            "wsUrl": "${BOTLAND_WS_URL}",
+            "actors": {
+              "lobster_sender": {
+                "handle": "${BOTLAND_SENDER_HANDLE}",
+                "password": "${BOTLAND_SENDER_PASSWORD}",
+                "citizen_id": "${BOTLAND_SENDER_CITIZEN_ID}",
+                "role": "sender",
+                "targets": { "direct": "${BOTLAND_SENDER_DIRECT_TARGET}" },
+                "ui_name": "${BOTLAND_SENDER_UI_NAME}"
+              },
+              "lobster_receiver": {
+                "handle": "${BOTLAND_RECEIVER_HANDLE}",
+                "password": "${BOTLAND_RECEIVER_PASSWORD}",
+                "citizen_id": "${BOTLAND_RECEIVER_CITIZEN_ID}",
+                "role": "receiver",
+                "targets": { "direct": "${BOTLAND_RECEIVER_DIRECT_TARGET}" },
+                "ui_name": "${BOTLAND_RECEIVER_UI_NAME}"
+              }
+            }
+          }
+          EOF_JSON
+
+      - name: Run protocol core-dm
+        run: node testing/run-all.js --suite core-dm --json-out testing/artifacts/ci/protocol-core-dm.json
+
+      - name: Run protocol group-core
+        run: node testing/run-all.js --suite group-core --json-out testing/artifacts/ci/protocol-group-core.json
+
+      - name: Upload protocol artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: protocol-artifacts
+          path: |
+            testing/artifacts/ci/*.json
+
+  ui-dm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            testing/ui/package-lock.json
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Install UI deps
+        working-directory: testing/ui
+        run: npm ci
+
+      - name: Generate testing/accounts.local.json
+        shell: bash
+        env:
+          BOTLAND_BASE_URL: ${{ secrets.BOTLAND_BASE_URL }}
+          BOTLAND_WS_URL: ${{ secrets.BOTLAND_WS_URL }}
+          BOTLAND_SENDER_HANDLE: ${{ secrets.BOTLAND_SENDER_HANDLE }}
+          BOTLAND_SENDER_PASSWORD: ${{ secrets.BOTLAND_SENDER_PASSWORD }}
+          BOTLAND_SENDER_CITIZEN_ID: ${{ secrets.BOTLAND_SENDER_CITIZEN_ID }}
+          BOTLAND_SENDER_UI_NAME: ${{ secrets.BOTLAND_SENDER_UI_NAME }}
+          BOTLAND_SENDER_DIRECT_TARGET: ${{ secrets.BOTLAND_SENDER_DIRECT_TARGET }}
+          BOTLAND_RECEIVER_HANDLE: ${{ secrets.BOTLAND_RECEIVER_HANDLE }}
+          BOTLAND_RECEIVER_PASSWORD: ${{ secrets.BOTLAND_RECEIVER_PASSWORD }}
+          BOTLAND_RECEIVER_CITIZEN_ID: ${{ secrets.BOTLAND_RECEIVER_CITIZEN_ID }}
+          BOTLAND_RECEIVER_UI_NAME: ${{ secrets.BOTLAND_RECEIVER_UI_NAME }}
+          BOTLAND_RECEIVER_DIRECT_TARGET: ${{ secrets.BOTLAND_RECEIVER_DIRECT_TARGET }}
+        run: |
+          cat > testing/accounts.local.json <<EOF_JSON
+          {
+            "baseUrl": "${BOTLAND_BASE_URL}",
+            "wsUrl": "${BOTLAND_WS_URL}",
+            "actors": {
+              "lobster_sender": {
+                "handle": "${BOTLAND_SENDER_HANDLE}",
+                "password": "${BOTLAND_SENDER_PASSWORD}",
+                "citizen_id": "${BOTLAND_SENDER_CITIZEN_ID}",
+                "role": "sender",
+                "targets": { "direct": "${BOTLAND_SENDER_DIRECT_TARGET}" },
+                "ui_name": "${BOTLAND_SENDER_UI_NAME}"
+              },
+              "lobster_receiver": {
+                "handle": "${BOTLAND_RECEIVER_HANDLE}",
+                "password": "${BOTLAND_RECEIVER_PASSWORD}",
+                "citizen_id": "${BOTLAND_RECEIVER_CITIZEN_ID}",
+                "role": "receiver",
+                "targets": { "direct": "${BOTLAND_RECEIVER_DIRECT_TARGET}" },
+                "ui_name": "${BOTLAND_RECEIVER_UI_NAME}"
+              }
+            }
+          }
+          EOF_JSON
+
+      - name: Install Playwright browsers
+        working-directory: testing/ui
+        run: npx playwright install --with-deps chromium
+
+      - name: Run UI dm suite
+        working-directory: testing/ui
+        run: npm run test:dm
+
+      - name: Upload UI artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-dm-artifacts
+          path: |
+            testing/ui/test-results
+            testing/ui/playwright-report

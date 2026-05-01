@@ -5,3 +5,6 @@ botland-credentials.json
 botland-data/
 .env
 *.bak*
+
+testing/.token-cache.json
+testing/artifacts/

@@ -1,6 +1,7 @@
 package group
 
 import (
+	"strconv"
 	"database/sql"
 
 	"github.com/go-chi/chi/v5"
@@ -108,7 +109,7 @@ func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("group created", "id", groupID, "name", req.Name, "owner", citizenID, "members", len(req.MemberIDs)+1)
 
-	msgID := h.storeSystemMessage(groupID, map[string]interface{}{
+	msgID := h.storeSystemMessage(groupID, citizenID, map[string]interface{}{
 		"content_type": "system",
 		"event": "group_created",
 		"text": ownerName + " 创建了群聊「" + req.Name + "」",
@@ -155,8 +156,9 @@ func (h *Handler) ListGroups(w http.ResponseWriter, r *http.Request) {
 	var groups []GroupListItem
 	for rows.Next() {
 		var g GroupListItem
-		var avatarURL, desc sql.NullString
-		if err := rows.Scan(&g.ID, &g.Name, &avatarURL, &desc, &g.OwnerID, &g.MaxMembers, &g.Status, &g.CreatedAt, &g.UpdatedAt, &g.MemberCount); err != nil {
+		var avatarURL, desc, announcement sql.NullString
+		var mutedAll bool
+		if err := rows.Scan(&g.ID, &g.Name, &avatarURL, &desc, &announcement, &mutedAll, &g.OwnerID, &g.MaxMembers, &g.Status, &g.CreatedAt, &g.UpdatedAt, &g.MemberCount); err != nil {
 			continue
 		}
 		if avatarURL.Valid {
@@ -165,6 +167,10 @@ func (h *Handler) ListGroups(w http.ResponseWriter, r *http.Request) {
 		if desc.Valid {
 			g.Description = desc.String
 		}
+		if announcement.Valid {
+			g.Announcement = announcement.String
+		}
+		g.MutedAll = mutedAll
 		groups = append(groups, g)
 	}
 
@@ -283,7 +289,7 @@ func (h *Handler) InviteMembers(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			added++
 			targetName := h.getCitizenName(cid)
-			msgID := h.storeSystemMessage(groupID, map[string]interface{}{
+			msgID := h.storeSystemMessage(groupID, citizenID, map[string]interface{}{
 				"content_type": "system",
 				"event": "member_joined",
 				"text": targetName + " 加入了群聊",
@@ -355,7 +361,7 @@ func (h *Handler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	targetName := h.getCitizenName(targetID)
 	actorName := h.getCitizenName(citizenID)
 	h.db.Exec(`DELETE FROM group_members WHERE group_id=$1 AND citizen_id=$2`, groupID, targetID)
-	msgID := h.storeSystemMessage(groupID, map[string]interface{}{
+	msgID := h.storeSystemMessage(groupID, citizenID, map[string]interface{}{
 		"content_type": "system",
 		"event": "member_removed",
 		"text": targetName + " 被移出了群聊",
@@ -429,7 +435,7 @@ func (h *Handler) UpdateMemberRole(w http.ResponseWriter, r *http.Request) {
 		actionText = targetName + " 被取消管理员"
 		event = "member_demoted"
 	}
-	msgID := h.storeSystemMessage(groupID, map[string]interface{}{
+	msgID := h.storeSystemMessage(groupID, citizenID, map[string]interface{}{
 		"content_type": "system",
 		"event": event,
 		"text": actionText,
@@ -468,7 +474,7 @@ func (h *Handler) LeaveGroup(w http.ResponseWriter, r *http.Request) {
 
 	actorName := h.getCitizenName(citizenID)
 	h.db.Exec(`DELETE FROM group_members WHERE group_id=$1 AND citizen_id=$2`, groupID, citizenID)
-	msgID := h.storeSystemMessage(groupID, map[string]interface{}{
+	msgID := h.storeSystemMessage(groupID, citizenID, map[string]interface{}{
 		"content_type": "system",
 		"event": "member_left",
 		"text": actorName + " 退出了群聊",
@@ -509,7 +515,7 @@ func (h *Handler) DisbandGroup(w http.ResponseWriter, r *http.Request) {
 
 	actorName := h.getCitizenName(citizenID)
 	groupName := h.getGroupName(groupID)
-	msgID := h.storeSystemMessage(groupID, map[string]interface{}{
+	msgID := h.storeSystemMessage(groupID, citizenID, map[string]interface{}{
 		"content_type": "system",
 		"event": "group_disbanded",
 		"text": actorName + " 解散了群聊「" + groupName + "」",
@@ -563,7 +569,7 @@ func (h *Handler) TransferOwnership(w http.ResponseWriter, r *http.Request) {
 	_, _ = h.db.Exec(`UPDATE group_members SET role='owner' WHERE group_id=$1 AND citizen_id=$2`, groupID, req.CitizenID)
 	actorName := h.getCitizenName(citizenID)
 	targetName := h.getCitizenName(req.CitizenID)
-	msgID := h.storeSystemMessage(groupID, map[string]interface{}{"content_type":"system","event":"owner_transferred","text":actorName + " 将群主转让给了 " + targetName,"actor_id":citizenID,"actor_name":actorName,"target_id":req.CitizenID,"target_name":targetName})
+	msgID := h.storeSystemMessage(groupID, citizenID, map[string]interface{}{"content_type":"system","event":"owner_transferred","text":actorName + " 将群主转让给了 " + targetName,"actor_id":citizenID,"actor_name":actorName,"target_id":req.CitizenID,"target_name":targetName})
 	h.broadcastSystemMessage(groupID, msgID, map[string]interface{}{"content_type":"system","event":"owner_transferred","text":actorName + " 将群主转让给了 " + targetName,"actor_id":citizenID,"actor_name":actorName,"target_id":req.CitizenID,"target_name":targetName})
 	writeJSON(w, http.StatusOK, map[string]string{"status":"updated"})
 }
@@ -587,7 +593,7 @@ func (h *Handler) ToggleMuteAll(w http.ResponseWriter, r *http.Request) {
 	text := actorName + " 开启了全员禁言"
 	event := "mute_all_enabled"
 	if !req.Muted { text = actorName + " 关闭了全员禁言"; event = "mute_all_disabled" }
-	msgID := h.storeSystemMessage(groupID, map[string]interface{}{"content_type":"system","event":event,"text":text,"actor_id":citizenID,"actor_name":actorName})
+	msgID := h.storeSystemMessage(groupID, citizenID, map[string]interface{}{"content_type":"system","event":event,"text":text,"actor_id":citizenID,"actor_name":actorName})
 	h.broadcastSystemMessage(groupID, msgID, map[string]interface{}{"content_type":"system","event":event,"text":text,"actor_id":citizenID,"actor_name":actorName})
 	writeJSON(w, http.StatusOK, map[string]string{"status":"updated"})
 }
@@ -604,22 +610,33 @@ func (h *Handler) GetMessages(w http.ResponseWriter, r *http.Request) {
 
 	before := r.URL.Query().Get("before")
 	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil {
+			if n < 1 {
+				limit = 1
+			} else if n > 100 {
+				limit = 100
+			} else {
+				limit = n
+			}
+		}
+	}
 
 	var rows *sql.Rows
 	var err error
 	if before != "" {
 		rows, err = h.db.Query(`
-			SELECT gm.id, gm.group_id, gm.sender_id, c.display_name, COALESCE(c.avatar_url,''), gm.payload, gm.created_at
+			SELECT gm.id, gm.group_id, gm.sender_id, COALESCE(c.display_name,'System'), COALESCE(c.avatar_url,''), gm.payload, gm.created_at
 			FROM group_messages gm
-			JOIN citizens c ON c.id = gm.sender_id
+			LEFT JOIN citizens c ON c.id = gm.sender_id
 			WHERE gm.group_id=$1 AND gm.created_at < (SELECT created_at FROM group_messages WHERE id=$2)
 			ORDER BY gm.created_at DESC LIMIT $3
 		`, groupID, before, limit)
 	} else {
 		rows, err = h.db.Query(`
-			SELECT gm.id, gm.group_id, gm.sender_id, c.display_name, COALESCE(c.avatar_url,''), gm.payload, gm.created_at
+			SELECT gm.id, gm.group_id, gm.sender_id, COALESCE(c.display_name,'System'), COALESCE(c.avatar_url,''), gm.payload, gm.created_at
 			FROM group_messages gm
-			JOIN citizens c ON c.id = gm.sender_id
+			LEFT JOIN citizens c ON c.id = gm.sender_id
 			WHERE gm.group_id=$1
 			ORDER BY gm.created_at DESC LIMIT $2
 		`, groupID, limit)
@@ -678,11 +695,12 @@ func (h *Handler) getGroupName(groupID string) string {
 
 func (h *Handler) getGroupWithMembers(groupID string) *GroupWithMembers {
 	var g GroupWithMembers
-	var avatarURL, desc sql.NullString
+	var avatarURL, desc, announcement sql.NullString
+	var mutedAll bool
 	err := h.db.QueryRow(`
 		SELECT id, name, avatar_url, description, COALESCE(announcement,''), COALESCE(muted_all,false), owner_id, max_members, status, created_at, updated_at
 		FROM groups WHERE id=$1
-	`, groupID).Scan(&g.ID, &g.Name, &avatarURL, &desc, &g.OwnerID, &g.MaxMembers, &g.Status, &g.CreatedAt, &g.UpdatedAt)
+	`, groupID).Scan(&g.ID, &g.Name, &avatarURL, &desc, &announcement, &mutedAll, &g.OwnerID, &g.MaxMembers, &g.Status, &g.CreatedAt, &g.UpdatedAt)
 	if err != nil {
 		return nil
 	}
@@ -692,6 +710,10 @@ func (h *Handler) getGroupWithMembers(groupID string) *GroupWithMembers {
 	if desc.Valid {
 		g.Description = desc.String
 	}
+	if announcement.Valid {
+		g.Announcement = announcement.String
+	}
+	g.MutedAll = mutedAll
 
 	rows, err := h.db.Query(`
 		SELECT gm.id, gm.group_id, gm.citizen_id, gm.role, COALESCE(gm.nickname,''), gm.muted, gm.joined_at,
@@ -758,10 +780,13 @@ func (h *Handler) broadcastToGroup(groupID, excludeID string, env *protocol.Enve
 }
 
 
-func (h *Handler) storeSystemMessage(groupID string, payload map[string]interface{}) string {
+func (h *Handler) storeSystemMessage(groupID, senderID string, payload map[string]interface{}) string {
 	msgID := "msg_" + auth.NewULID()
 	payloadBytes, _ := json.Marshal(payload)
-	_, _ = h.db.Exec(`INSERT INTO group_messages (id, group_id, sender_id, payload) VALUES ($1, $2, $3, $4)`, msgID, groupID, "system", payloadBytes)
+	if _, err := h.db.Exec(`INSERT INTO group_messages (id, group_id, sender_id, payload) VALUES ($1, $2, $3, $4)`, msgID, groupID, senderID, payloadBytes); err != nil {
+		h.logger.Error("store system message", "group_id", groupID, "msg_id", msgID, "sender_id", senderID, "error", err)
+		return ""
+	}
 	return msgID
 }
 

@@ -363,6 +363,44 @@ export default function ChatScreen({ route, navigation }: Props) {
 
   useEffect(() => { void loadGroupHistory(); }, [loadGroupHistory]);
 
+  const loadDMHistory = useCallback(async () => {
+    if (isGroup) return;
+    const token = await auth.getAccessToken();
+    if (!token) return;
+    try {
+      const history = await api.getDMHistory(token, friendId, undefined, 50);
+      if (history && history.length > 0) {
+        const myId = wsManager.getCitizenId() || '';
+        const mapped: StoredMessage[] = history.reverse().map((m: any) => {
+          const p = m.payload || {};
+          const ctype = p.content_type || 'text';
+          return {
+            id: m.id, chatId: friendId, fromId: m.sender_id, fromName: m.sender_name,
+            text: p.text,
+            segments: p.segments,
+            imageUrl: ctype === 'image' ? p.url : undefined,
+            videoUrl: ctype === 'video' ? p.url : undefined,
+            audioUrl: ctype === 'voice' ? p.url : undefined,
+            durationMs: p.duration_ms,
+            replyTo: p.reply_to,
+            replyPreview: p.reply_preview,
+            reactions: p.reactions,
+            contentType: ctype,
+            mine: m.sender_id === myId,
+            timestamp: new Date(m.created_at).getTime(), status: 'delivered',
+          };
+        });
+        setMessages(prev => {
+          const existIds = new Set(prev.map(p => p.id));
+          const fresh = mapped.filter(m => !existIds.has(m.id));
+          return [...fresh, ...prev].sort((a, b) => a.timestamp - b.timestamp);
+        });
+      }
+    } catch {}
+  }, [isGroup, friendId]);
+
+  useEffect(() => { if (!isGroup) void loadDMHistory(); }, [isGroup, loadDMHistory]);
+
   useEffect(() => {
     if (!isGroup) return;
     (async () => {
@@ -380,8 +418,9 @@ export default function ChatScreen({ route, navigation }: Props) {
     wsManager.connect();
     const unsubState = wsManager.onStateChange((state) => {
       setConnState(state);
-      if (state === 'connected' && isGroup) {
-        void loadGroupHistory();
+      if (state === 'connected') {
+        if (isGroup) void loadGroupHistory();
+        else void loadDMHistory();
       }
     });
     const unsubMsg = wsManager.onMessage((data) => {
@@ -398,7 +437,7 @@ export default function ChatScreen({ route, navigation }: Props) {
           replyPreview: data.payload?.reply_preview,
           contentType: ctype, mine: data.from !== 'system' && false, timestamp: Date.now(), status: 'delivered',
         };
-        setMessages(prev => [...prev, msg]);
+        setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
         messageStore.save(msg);
         if (data.id) wsManager.send({ type: 'message.ack', id: data.id, to: data.from });
       }

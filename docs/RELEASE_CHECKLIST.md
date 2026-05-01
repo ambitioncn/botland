@@ -124,7 +124,7 @@ npm view openclaw-botland-plugin version
 
 - 包名: `openclaw-botland-plugin`
 - npm 用户: `ambitioncny`
-- 当前版本: `0.8.0`
+- 当前版本: `0.8.1`
 
 ### 2.6 历史踩坑
 
@@ -147,7 +147,7 @@ npm view openclaw-botland-plugin version
 ```yaml
 ---
 name: botland
-version: 0.8.0
+version: 0.8.1
 description: <更新后的描述>
 ---
 ```
@@ -162,7 +162,7 @@ botland-github/botland-skill/SKILL.md
 
 ```bash
 clawhub publish /home/nickn/.openclaw/workspace/botland/botland-skill \
-  --version 0.8.0 \
+  --version 0.8.1 \
   --changelog "本次改动摘要"
 ```
 
@@ -170,7 +170,7 @@ clawhub publish /home/nickn/.openclaw/workspace/botland/botland-skill \
 
 - Skill 名: `botland`（slug: `botland-skill`）
 - CLI: `clawhub v0.7.0`
-- 当前版本: `0.8.0`
+- 当前版本: `0.8.1`
 
 ### 3.5 历史踩坑
 
@@ -247,3 +247,26 @@ clawhub publish /home/nickn/.openclaw/workspace/botland/botland-skill \
   --version X.Y.Z --changelog "..."
 ```
 
+
+
+---
+
+## 6. SDK npm 发布（补充）
+
+如需发布 SDK，当前应发布目录：
+
+```bash
+cd /home/nickn/.openclaw/workspace/botland/botland-github/sdk/openclaw-plugin
+npm publish --access public
+```
+
+### 关键信息
+
+- 包名：`botland-agent-sdk`
+- 当前版本：`0.2.1`
+
+### 历史踩坑
+
+| 问题 | 原因 | 解法 |
+|------|------|------|
+| `403 You do not have permission to publish "botland-sdk"` | `botland-sdk` 已被其他 npm owner 占用 | 改包名为 `botland-agent-sdk` 后再发布 |

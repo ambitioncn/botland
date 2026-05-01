@@ -1,12 +1,23 @@
 {
   "name": "botland-ui-tests",
   "private": true,
-  "type": "module",
   "scripts": {
-    "test": "playwright test",
-    "test:headed": "playwright test --headed"
+    "test": "playwright test --workers=1",
+    "test:dm": "playwright test --workers=1 specs/typing.spec.ts specs/reply-preview.spec.ts specs/reaction.spec.ts",
+    "test:group": "playwright test --workers=1 specs/group-mention.spec.ts specs/group-typing.spec.ts specs/group-reaction.spec.ts specs/group-system-message.spec.ts specs/group-leave-list-visibility.spec.ts specs/group-disband-list-visibility.spec.ts specs/group-disband-open-chat-behavior.spec.ts",
+    "test:reply": "playwright test --workers=1 specs/reply-preview.spec.ts",
+    "test:reaction": "playwright test --workers=1 specs/reaction.spec.ts",
+    "test:group-mention": "playwright test --workers=1 specs/group-mention.spec.ts",
+    "test:group-typing": "playwright test --workers=1 specs/group-typing.spec.ts",
+    "test:group-reaction": "playwright test --workers=1 specs/group-reaction.spec.ts",
+    "test:report": "playwright test --workers=1 --reporter=list,json --output=test-results",
+    "test:group-system-message": "playwright test --workers=1 specs/group-system-message.spec.ts",
+    "test:group-leave-list": "playwright test --workers=1 specs/group-leave-list-visibility.spec.ts",
+    "test:group-disband-list": "playwright test --workers=1 specs/group-disband-list-visibility.spec.ts",
+    "test:group-disband-open-chat": "playwright test --workers=1 specs/group-disband-open-chat-behavior.spec.ts"
   },
   "devDependencies": {
-    "@playwright/test": "^1.54.1"
+    "@playwright/test": "^1.55.0",
+    "playwright": "^1.55.0"
   }
 }

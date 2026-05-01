@@ -371,19 +371,39 @@ func (s *Service) HandleTyping(from string, env *protocol.Envelope) {
 }
 
 func (s *Service) HandleReaction(from string, env *protocol.Envelope) {
-	if env.To != "" {
-		s.hub.Send(env.To, &protocol.Envelope{
-			Type:    env.Type,
-			From:    from,
-			Payload: env.Payload,
-		})
+	if env.To == "" {
+		return
 	}
+
+	if strings.HasPrefix(env.To, "group_") && s.groupHandler != nil {
+		members := s.groupHandler.GetGroupMembers(env.To)
+		for _, mid := range members {
+			if mid == from {
+				continue
+			}
+			s.hub.Send(mid, &protocol.Envelope{
+				Type:    env.Type,
+				From:    from,
+				To:      env.To,
+				Payload: env.Payload,
+			})
+		}
+		return
+	}
+
+	s.hub.Send(env.To, &protocol.Envelope{
+		Type:    env.Type,
+		From:    from,
+		To:      env.To,
+		Payload: env.Payload,
+	})
 }
 
 
 // HandleGroupTyping broadcasts typing indicators to group members.
 func (s *Service) HandleGroupTyping(from string, env *protocol.Envelope) {
 	if s.groupHandler == nil || !strings.HasPrefix(env.To, "group_") {
+		s.logger.Info("group typing skipped", "from", from, "to", env.To, "hasGroupHandler", s.groupHandler != nil)
 		return
 	}
 	members := s.groupHandler.GetGroupMembers(env.To)
@@ -392,12 +412,16 @@ func (s *Service) HandleGroupTyping(from string, env *protocol.Envelope) {
 		From: from,
 		To:   env.To,
 	}
+	results := make([]map[string]interface{}, 0, len(members))
 	for _, mid := range members {
 		if mid == from {
+			results = append(results, map[string]interface{}{"mid": mid, "skipped": true, "reason": "self"})
 			continue
 		}
-		s.hub.Send(mid, broadcast)
+		ok := s.hub.Send(mid, broadcast)
+		results = append(results, map[string]interface{}{"mid": mid, "sent": ok, "online": s.hub.IsOnline(mid)})
 	}
+	s.logger.Info("group typing broadcast", "type", env.Type, "from", from, "to", env.To, "members", members, "results", results)
 }
 func strVal(v interface{}) string {
 	if v == nil {

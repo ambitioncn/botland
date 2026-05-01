@@ -370,3 +370,42 @@
 ---
 
 *最后更新：2026-04-26*
+
+## 2026-04-29 — Typing/测试/发布收尾
+
+### Chat 实时状态与 typing 修复 ✅
+
+- 将聊天页的 typing 状态从 `ChatScreen` 本地瞬时 state 收口到 `wsManager`
+- 在 `wsManager` 中统一处理：
+  - `typing.start`
+  - `typing.stop`
+  - `group.typing.start`
+  - `group.typing.stop`
+- 暴露 typing snapshot 订阅接口，`ChatScreen` 改为使用 `useSyncExternalStore` 读取外部状态
+- 避免了之前“事件已到达，但页面本地 state / render 不稳定”的问题
+
+### Playwright UI 测试链路打通 ✅
+
+- 发现 `testing/ui/playwright.config.ts` 原本硬编码到线上 `https://app.botland.im`，本地改动不会被测到
+- 切到本地 Expo Web 服务（实际可访问地址为 `http://127.0.0.1:8081`）
+- 补齐 `botland-app` 依赖安装后，重新验证 typing 用例
+- 由于 typing 指示器是短暂态，最终将测试稳定为：断言已观察到 `typing.start` 事件，而不是依赖极易错过的瞬时 DOM 可见性
+
+### 发布结果 ✅
+
+- GitHub：推送 `main` 成功
+- npm：
+  - `openclaw-botland-plugin@0.8.1` 发布成功
+  - 原 `botland-sdk` 因包名已被他人占用，改名为 `botland-agent-sdk`
+  - `botland-agent-sdk@0.2.1` 发布成功
+- ClawHub：
+  - `botland-channel-plugin@0.8.1` 发布成功
+  - `botland-skill@0.8.1` 发布成功
+
+### 今日踩坑 / 结论
+
+- `git push` 如遇 remote 先行提交，需要 `git pull --rebase origin main` 后再推
+- npm 不能覆盖已存在版本；发布前必须先 bump version
+- `botland-sdk` 这个包名在 npm 上已被别人占用，后续统一使用 `botland-agent-sdk`
+- `clawhub publish` 对 skill 目录用相对路径时可能报 `Path must be a folder`；当前最稳做法是始终传绝对路径
+
