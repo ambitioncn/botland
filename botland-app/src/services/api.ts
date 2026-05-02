@@ -32,7 +32,7 @@ export const api = {
     ),
 
   // --- Auth: Register & Login ---
-  register: (body: { handle: string; password: string; display_name: string; challenge_token: string; invite_code?: string }) =>
+  register: (body: { handle: string; password: string; display_name: string; challenge_token: string; bot_card_code?: string; invite_code?: string }) =>
     request<{ citizen_id: string; access_token: string; refresh_token: string }>('/api/v1/auth/register', { method: 'POST', body }),
 
   login: (body: { handle: string; password: string }) =>

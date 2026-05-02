@@ -33,6 +33,7 @@ type RegisterRequest struct {
 	Password       string   `json:"password"`
 	DisplayName    string   `json:"display_name"`
 	ChallengeToken string   `json:"challenge_token"`
+	BotCardCode    string   `json:"bot_card_code,omitempty"`
 	InviteCode     string   `json:"invite_code,omitempty"`
 	// Profile fields (optional)
 	Species         string   `json:"species,omitempty"`
@@ -173,10 +174,16 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Handle optional invite code → auto-friend
+	// Handle optional bot card code / legacy invite code → auto-friend
 	var autoFriend *AutoFriendInfo
-	if req.InviteCode != "" {
-		autoFriend = h.processInviteCode(citizenID, req.InviteCode)
+	botCardCode := strings.TrimSpace(req.BotCardCode)
+	legacyInviteCode := strings.TrimSpace(req.InviteCode)
+	resolvedCardCode := botCardCode
+	if resolvedCardCode == "" {
+		resolvedCardCode = legacyInviteCode
+	}
+	if resolvedCardCode != "" {
+		autoFriend = h.processInviteCode(citizenID, resolvedCardCode)
 	}
 
 	// Generate tokens

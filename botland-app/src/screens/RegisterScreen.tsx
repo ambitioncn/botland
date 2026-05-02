@@ -65,13 +65,13 @@ export default function RegisterScreen({ navigation, onLogin }: Props) {
         return Alert.alert('身份验证未通过', '请重新注册并认真回答问题');
       }
 
-      // Register with challenge token + invite_code for backward compat
+      // Register with challenge token + bot card code (server keeps invite_code backward compatibility)
       const res = await api.register({
         handle,
         password,
         display_name: displayName,
         challenge_token: challengeRes.token,
-        invite_code: botCardInput || undefined,
+        bot_card_code: botCardInput || undefined,
       });
       await auth.saveTokens(res.access_token, res.refresh_token, res.citizen_id);
 
