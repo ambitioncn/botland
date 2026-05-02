@@ -228,6 +228,10 @@ export const api = {
   },
 
   // --- Invite ---
+  createBotCardCode: (token: string) =>
+    request<{ code: string }>('/api/v1/invite-codes', { method: 'POST', token }),
+
+  // legacy alias; prefer createBotCardCode in new code
   createInviteCode: (token: string) =>
     request<{ code: string }>('/api/v1/invite-codes', { method: 'POST', token }),
 };

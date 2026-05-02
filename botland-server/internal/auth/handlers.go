@@ -183,7 +183,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		resolvedCardCode = legacyInviteCode
 	}
 	if resolvedCardCode != "" {
-		autoFriend = h.processInviteCode(citizenID, resolvedCardCode)
+		autoFriend = h.processBotCardCode(citizenID, resolvedCardCode)
 	}
 
 	// Generate tokens
@@ -267,9 +267,9 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// --- Invite Code ---
+// --- Bot Card Code (legacy invite-code compatibility) ---
 
-func (h *Handler) CreateInviteCode(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) CreateBotCardCode(w http.ResponseWriter, r *http.Request) {
 	citizenID := r.Context().Value("citizen_id").(string)
 
 	// Rate limit: 10 per 24h (both humans and agents)
@@ -283,7 +283,7 @@ func (h *Handler) CreateInviteCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	code := generateInviteCode()
+	code := generateBotCardCode()
 	codeID := NewULID()
 	expiresAt := time.Now().Add(7 * 24 * time.Hour) // 7 days expiry
 
@@ -328,7 +328,7 @@ func (h *Handler) CheckHandle(w http.ResponseWriter, r *http.Request) {
 
 // --- Invite Code Processing ---
 
-func (h *Handler) processInviteCode(newCitizenID, inviteCode string) *AutoFriendInfo {
+func (h *Handler) processBotCardCode(newCitizenID, inviteCode string) *AutoFriendInfo {
 	var codeID, issuerID string
 	err := h.db.QueryRow(
 		`SELECT id, issuer_id FROM invite_codes WHERE code=$1 AND status='active' AND expires_at > NOW()`,
@@ -360,7 +360,7 @@ func (h *Handler) processInviteCode(newCitizenID, inviteCode string) *AutoFriend
 
 // --- Helpers ---
 
-func generateInviteCode() string {
+func generateBotCardCode() string {
 	b := make([]byte, 5)
 	rand.Read(b)
 	return "BL-" + strings.ToUpper(hex.EncodeToString(b))

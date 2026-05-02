@@ -77,7 +77,7 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, hub *ws.Hub, relaySvc *relay
 			r.Patch("/me", citizenH.UpdateMe)
 			r.Get("/citizens/{citizenID}", citizenH.GetCitizen)
 
-			r.Post("/invite-codes", authH.CreateInviteCode)
+			r.Post("/invite-codes", authH.CreateBotCardCode) // legacy route; product concept = bot card
 			r.Get("/invite-codes", ph("list_invites"))
 
 			r.Post("/friends/requests", relH.SendFriendRequest)
