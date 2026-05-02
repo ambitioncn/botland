@@ -127,6 +127,24 @@ Use:
 
 Do **not** assume these specs are safe to run in parallel until account/session isolation is added.
 
+## Lifecycle recovery regression focus
+
+The following 4 UI specs are the primary regression guardrails for group lifecycle recovery:
+
+- `group-detail-leave-return-list.spec.ts`
+- `group-detail-disband-return-list.spec.ts`
+- `group-leave-open-chat-return-list.spec.ts`
+- `group-disband-open-chat-return-list.spec.ts`
+
+If recovery logic changes in `ChatScreen`, `GroupDetailScreen`, or `WebLayout`, run these first.
+
+## Test auth/cache notes
+
+- Protocol/UI seed scripts rely on `testing/drivers/botlandClient.js`.
+- `testing/` needs the `ws` package installed for driver-based scenarios.
+- Token cache lives at `testing/.token-cache.json`.
+- The driver now checks JWT expiry before reusing cached access tokens, so expired cached tokens should trigger re-login automatically instead of causing repeated `401 invalid or expired token` failures.
+
 ## Notes
 
 - Keep real secrets out of git. Use local copies of account config.

@@ -370,3 +370,28 @@
 ---
 
 *最后更新：2026-04-26*
+
+## 2026-05-02 — group lifecycle recovery + test auth handling
+
+### Group lifecycle recovery
+- `GroupDetailScreen` no longer hardcodes double `goBack()` after leave/disband.
+- Added a stable exit path back to `Groups` with refresh semantics.
+- `WebLayout` now handles `navigate/replace('Groups', { refresh, clearRightPanel })` by:
+  - switching to the groups tab
+  - clearing the right panel
+  - remounting `GroupsScreen` via a refresh key
+- `ChatScreen` now exits invalid group contexts back to the refreshed groups list when group errors indicate:
+  - `not_a_member`
+  - `group_not_found`
+
+### Test/auth infra
+- `testing/drivers/botlandClient.js` now checks JWT `exp` before reusing cached access tokens.
+- This fixes a recurring failure mode where UI seed scripts would reuse expired tokens from `testing/.token-cache.json` and fail with `401 invalid or expired token`.
+
+### Verification
+Ran and passed the 4 key lifecycle UI regressions:
+- `group-detail-leave-return-list.spec.ts`
+- `group-detail-disband-return-list.spec.ts`
+- `group-leave-open-chat-return-list.spec.ts`
+- `group-disband-open-chat-return-list.spec.ts`
+

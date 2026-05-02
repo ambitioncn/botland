@@ -39,3 +39,9 @@ npx playwright test specs/group-typing.spec.ts
   - backend event injection second
   - UI visibility assertions last
 - Group UI tests may depend on list/detail queries being correct; backend list/detail regressions can block entry into target chats.
+
+## Dependency notes
+
+- `testing/ui/` needs its own Playwright install (`npm install` in this folder).
+- Playwright will auto-start Expo Web via `npx expo start --web` using `playwright.config.ts`.
+- Some group UI specs call seed scenarios under `../scenarios/`, which in turn depend on `testing/drivers/botlandClient.js` and the `ws` package being available in `testing/`.
