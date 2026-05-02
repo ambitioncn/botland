@@ -47,6 +47,11 @@ func (h *Handler) Resolve(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "card_not_found", Message: "无效的名片码"})
 		return
 	}
+	if card.ExpiresAt.Before(time.Now()) {
+		h.db.Exec(`UPDATE bot_cards SET status='expired', updated_at=NOW() WHERE id=$1`, card.ID)
+		writeJSON(w, http.StatusGone, ErrorResponse{Error: "card_expired", Message: "该名片已过期"})
+		return
+	}
 	if card.Status != "active" {
 		code := "card_" + card.Status
 		msg := "该名片已停用"
@@ -259,6 +264,91 @@ func (h *Handler) Bind(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ── UseCard ───────────────────────────────────────────────────────────────
+
+// POST /api/v1/bot-cards/use  (authenticated)
+func (h *Handler) UseCard(w http.ResponseWriter, r *http.Request) {
+	citizenID := r.Context().Value("citizen_id")
+	if citizenID == nil {
+		writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "unauthorized", Message: "请先登录"})
+		return
+	}
+	cid := citizenID.(string)
+
+	var req UseCardRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "bad_request", Message: "无效的请求体"})
+		return
+	}
+	code := strings.TrimSpace(req.Code)
+	if code == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "bad_request", Message: "缺少 bot card code"})
+		return
+	}
+	source := req.Source
+	if source == "" {
+		source = "manual"
+	}
+
+	card, err := h.resolveCard(code)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "card_not_found", Message: "无效的名片码"})
+		return
+	}
+	if card.ExpiresAt.Before(time.Now()) {
+		h.db.Exec(`UPDATE bot_cards SET status='expired', updated_at=NOW() WHERE id=$1`, card.ID)
+		writeJSON(w, http.StatusGone, ErrorResponse{Error: "card_expired", Message: "Bot Card 已过期，请让对方重新分享新的"})
+		return
+	}
+	if card.Status != "active" {
+		writeJSON(w, http.StatusGone, ErrorResponse{Error: "card_inactive", Message: "该名片当前不可用"})
+		return
+	}
+	if card.BotID == cid {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "self_add_forbidden", Message: "不能添加自己的 Bot Card"})
+		return
+	}
+
+	var existing string
+	err = h.db.QueryRow(
+		`SELECT status FROM relationships
+		 WHERE (citizen_a_id = LEAST($1,$2) AND citizen_b_id = GREATEST($1,$2))`,
+		cid, card.BotID,
+	).Scan(&existing)
+	if err == nil && existing == "active" {
+		bot := h.fetchBot(card.BotID)
+		writeJSON(w, http.StatusOK, UseCardResponse{Result: "already_friends", Binding: &BindingDTO{CardID: card.ID, CitizenID: cid, Status: "connected", Source: source, Bot: bot, CreatedAt: time.Now()}})
+		return
+	}
+
+	bindID := newULID()
+	_, err = h.db.Exec(
+		`INSERT INTO bot_card_bindings (id, card_id, citizen_id, source, status)
+		 VALUES ($1, $2, $3, $4, 'connected')
+		 ON CONFLICT (citizen_id, card_id) DO UPDATE SET status = 'connected', source = EXCLUDED.source`,
+		bindID, card.ID, cid, source,
+	)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "internal", Message: "添加失败"})
+		return
+	}
+
+	h.autoFriend(cid, card.BotID)
+	bot := h.fetchBot(card.BotID)
+	writeJSON(w, http.StatusOK, UseCardResponse{
+		Result: "connected",
+		Binding: &BindingDTO{
+			ID: bindID,
+			CardID: card.ID,
+			CitizenID: cid,
+			Status: "connected",
+			Source: source,
+			Bot: bot,
+			CreatedAt: time.Now(),
+		},
+	})
+}
+
 // ── GetMyCard ──────────────────────────────────────────────────────────────
 
 // GET /api/v1/me/bot-card  (authenticated)
@@ -273,11 +363,11 @@ func (h *Handler) GetMyCard(w http.ResponseWriter, r *http.Request) {
 	card := &BotCard{}
 	err := h.db.QueryRow(
 		`SELECT id, slug, code, bot_id, COALESCE(title,''), COALESCE(description,''),
-		        human_url, COALESCE(agent_url,''), COALESCE(skill_slug,''), status
-		 FROM bot_cards WHERE bot_id = $1 AND status = 'active'
+		        human_url, COALESCE(agent_url,''), COALESCE(skill_slug,''), status, expires_at
+		 FROM bot_cards WHERE bot_id = $1 AND status = 'active' AND expires_at > NOW()
 		 ORDER BY updated_at DESC NULLS LAST, created_at DESC LIMIT 1`, cid,
 	).Scan(&card.ID, &card.Slug, &card.Code, &card.BotID, &card.Title, &card.Description,
-		&card.HumanURL, &card.AgentURL, &card.SkillSlug, &card.Status)
+		&card.HumanURL, &card.AgentURL, &card.SkillSlug, &card.Status, &card.ExpiresAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			// Auto-create a card for this citizen
@@ -333,20 +423,22 @@ func (h *Handler) autoCreateCard(citizenID string) (*BotCard, error) {
 		title = handle
 	}
 
+	expiresAt := time.Now().Add(30 * time.Minute)
 	card := &BotCard{
-		ID:       cardID,
-		Slug:     slug,
-		Code:     code,
-		BotID:    citizenID,
-		Title:    title,
-		HumanURL: humanURL,
-		Status:   "active",
+		ID:        cardID,
+		Slug:      slug,
+		Code:      code,
+		BotID:     citizenID,
+		Title:     title,
+		HumanURL:  humanURL,
+		Status:    "active",
+		ExpiresAt: expiresAt,
 	}
 
 	_, err := h.db.Exec(
-		`INSERT INTO bot_cards (id, slug, code, bot_id, title, human_url, status)
-		 VALUES ($1, $2, $3, $4, $5, $6, 'active')`,
-		card.ID, card.Slug, card.Code, card.BotID, card.Title, card.HumanURL,
+		`INSERT INTO bot_cards (id, slug, code, bot_id, title, human_url, status, expires_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, 'active', $7)`,
+		card.ID, card.Slug, card.Code, card.BotID, card.Title, card.HumanURL, card.ExpiresAt,
 	)
 	if err != nil {
 		return nil, err
@@ -429,10 +521,10 @@ func (h *Handler) resolveCard(input string) (*BotCard, error) {
 	// Try by code first (exact match, case insensitive)
 	err := h.db.QueryRow(
 		`SELECT id, slug, code, bot_id, COALESCE(title,''), COALESCE(description,''),
-		        human_url, COALESCE(agent_url,''), COALESCE(skill_slug,''), status
+		        human_url, COALESCE(agent_url,''), COALESCE(skill_slug,''), status, expires_at
 		 FROM bot_cards WHERE UPPER(code) = UPPER($1)`, cleaned,
 	).Scan(&card.ID, &card.Slug, &card.Code, &card.BotID, &card.Title, &card.Description,
-		&card.HumanURL, &card.AgentURL, &card.SkillSlug, &card.Status)
+		&card.HumanURL, &card.AgentURL, &card.SkillSlug, &card.Status, &card.ExpiresAt)
 	if err == nil {
 		return card, nil
 	}
@@ -440,10 +532,10 @@ func (h *Handler) resolveCard(input string) (*BotCard, error) {
 	// Try by slug
 	err = h.db.QueryRow(
 		`SELECT id, slug, code, bot_id, COALESCE(title,''), COALESCE(description,''),
-		        human_url, COALESCE(agent_url,''), COALESCE(skill_slug,''), status
+		        human_url, COALESCE(agent_url,''), COALESCE(skill_slug,''), status, expires_at
 		 FROM bot_cards WHERE slug = $1`, strings.ToLower(cleaned),
 	).Scan(&card.ID, &card.Slug, &card.Code, &card.BotID, &card.Title, &card.Description,
-		&card.HumanURL, &card.AgentURL, &card.SkillSlug, &card.Status)
+		&card.HumanURL, &card.AgentURL, &card.SkillSlug, &card.Status, &card.ExpiresAt)
 	if err == nil {
 		return card, nil
 	}
@@ -455,10 +547,10 @@ func (h *Handler) findBySlug(slug string) (*BotCard, error) {
 	card := &BotCard{}
 	err := h.db.QueryRow(
 		`SELECT id, slug, code, bot_id, COALESCE(title,''), COALESCE(description,''),
-		        human_url, COALESCE(agent_url,''), COALESCE(skill_slug,''), status
+		        human_url, COALESCE(agent_url,''), COALESCE(skill_slug,''), status, expires_at
 		 FROM bot_cards WHERE slug = $1`, slug,
 	).Scan(&card.ID, &card.Slug, &card.Code, &card.BotID, &card.Title, &card.Description,
-		&card.HumanURL, &card.AgentURL, &card.SkillSlug, &card.Status)
+		&card.HumanURL, &card.AgentURL, &card.SkillSlug, &card.Status, &card.ExpiresAt)
 	return card, err
 }
 
@@ -473,6 +565,7 @@ func (h *Handler) cardToDTO(card *BotCard) (*CardDTO, error) {
 		AgentURL:  card.AgentURL,
 		SkillSlug: card.SkillSlug,
 		Status:    card.Status,
+		ExpiresAt: card.ExpiresAt,
 	}, nil
 }
 

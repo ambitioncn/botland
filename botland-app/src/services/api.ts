@@ -160,6 +160,11 @@ export const api = {
       '/api/v1/bot-cards/bind', { method: 'POST', body: { card_id: cardId, source }, token }
     ),
 
+  useBotCard: (token: string, code: string, source: string = 'manual') =>
+    request<{ result: string; binding?: { id?: string; card_id: string; citizen_id?: string; status: string; bot?: { id: string; name: string; slug: string }; created_at?: string } }>(
+      '/api/v1/bot-cards/use', { method: 'POST', body: { code, source }, token }
+    ),
+
   getMyBotBindings: (token: string) =>
     request<{ bindings: { id: string; card_id: string; status: string; bot: { name: string; slug: string; avatar?: string }; created_at: string }[] }>(
       '/api/v1/me/bot-bindings', { token }

@@ -13,6 +13,11 @@ type BindRequest struct {
 	Source string `json:"source"` // register | manual | scan | link
 }
 
+type UseCardRequest struct {
+	Code   string `json:"code"`
+	Source string `json:"source,omitempty"`
+}
+
 type CardResponse struct {
 	Card *CardDTO `json:"card"`
 }
@@ -24,6 +29,11 @@ type CardWithMetaResponse struct {
 
 type BindingResponse struct {
 	Binding *BindingDTO `json:"binding"`
+}
+
+type UseCardResponse struct {
+	Binding *BindingDTO `json:"binding,omitempty"`
+	Result  string      `json:"result"`
 }
 
 type BindingsListResponse struct {
@@ -38,14 +48,15 @@ type ErrorResponse struct {
 // ── DTOs ──
 
 type CardDTO struct {
-	ID          string  `json:"id"`
-	Slug        string  `json:"slug"`
-	Code        string  `json:"code"`
-	Bot         BotDTO  `json:"bot"`
-	HumanURL    string  `json:"human_url"`
-	AgentURL    string  `json:"agent_url,omitempty"`
-	SkillSlug   string  `json:"skill_slug,omitempty"`
-	Status      string  `json:"status"`
+	ID          string    `json:"id"`
+	Slug        string    `json:"slug"`
+	Code        string    `json:"code"`
+	Bot         BotDTO    `json:"bot"`
+	HumanURL    string    `json:"human_url"`
+	AgentURL    string    `json:"agent_url,omitempty"`
+	SkillSlug   string    `json:"skill_slug,omitempty"`
+	Status      string    `json:"status"`
+	ExpiresAt   time.Time `json:"expires_at"`
 }
 
 type BotDTO struct {
@@ -89,6 +100,7 @@ type BotCard struct {
 	AgentURL    string
 	SkillSlug   string
 	Status      string
+	ExpiresAt   time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }

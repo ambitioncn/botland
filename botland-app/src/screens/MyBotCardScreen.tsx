@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, ScrollView, Share, Linking, Alert } from 'react-native';
 import api from '../services/api';
 import auth from '../services/auth';
@@ -12,12 +12,14 @@ type BotCardData = {
   agent_url?: string;
   skill_slug?: string;
   status: string;
+  expires_at: string;
 };
 
 export default function MyBotCardScreen({ navigation }: { navigation: any }) {
   const [card, setCard] = useState<BotCardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [nowTs, setNowTs] = useState(Date.now());
 
   useEffect(() => {
     navigation?.setOptions?.({ title: '我的名片' });
@@ -34,6 +36,20 @@ export default function MyBotCardScreen({ navigation }: { navigation: any }) {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    const t = setInterval(() => setNowTs(Date.now()), 60000);
+    return () => clearInterval(t);
+  }, []);
+
+  const expiryInfo = useMemo(() => {
+    if (!card?.expires_at) return null;
+    const exp = new Date(card.expires_at).getTime();
+    const diffMs = exp - nowTs;
+    if (diffMs <= 0) return { expired: true, text: 'Bot Card 已过期，请重新分享新的名片' };
+    const mins = Math.max(1, Math.ceil(diffMs / 60000));
+    return { expired: false, text: `该 Bot Card 还有 ${mins} 分钟过期` };
+  }, [card?.expires_at, nowTs]);
 
   const copyCode = async () => {
     try {
@@ -61,6 +77,13 @@ export default function MyBotCardScreen({ navigation }: { navigation: any }) {
           <Text style={s.codeLabel}>名片码</Text>
           <Text style={s.codeValue}>{card.code}</Text>
         </View>
+        {expiryInfo ? (
+          <View style={[s.expiryBox, expiryInfo.expired ? s.expiryExpired : s.expiryActive]}>
+            <Text style={[s.expiryText, expiryInfo.expired ? s.expiryTextExpired : s.expiryTextActive]}>
+              {expiryInfo.text}
+            </Text>
+          </View>
+        ) : null}
       </View>
 
       <TouchableOpacity style={s.btn} onPress={copyCode}>
@@ -93,6 +116,12 @@ const s = StyleSheet.create({
   codeBox: { backgroundColor: '#1a1a1a', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 16, alignItems: 'center' },
   codeLabel: { fontSize: 10, color: '#666', marginBottom: 2 },
   codeValue: { fontSize: 16, fontWeight: '700', color: '#ff6b35', fontFamily: 'monospace', letterSpacing: 2 },
+  expiryBox: { marginTop: 14, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14, width: '100%' },
+  expiryActive: { backgroundColor: 'rgba(255,107,53,0.12)', borderWidth: 1, borderColor: 'rgba(255,107,53,0.28)' },
+  expiryExpired: { backgroundColor: 'rgba(255,80,80,0.10)', borderWidth: 1, borderColor: 'rgba(255,80,80,0.26)' },
+  expiryText: { fontSize: 13, textAlign: 'center', fontWeight: '600' },
+  expiryTextActive: { color: '#ffb08a' },
+  expiryTextExpired: { color: '#ff8a8a' },
   btn: { backgroundColor: '#ff6b35', borderRadius: 12, padding: 16, alignItems: 'center', width: '100%', marginBottom: 12 },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   btnSecondary: { backgroundColor: '#111', borderRadius: 12, padding: 16, alignItems: 'center', width: '100%', marginBottom: 12, borderWidth: 1, borderColor: '#222' },

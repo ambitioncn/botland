@@ -126,6 +126,7 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, hub *ws.Hub, relaySvc *relay
 
 			// Bot Card bindings
 			r.Post("/bot-cards/bind", botCardH.Bind)
+		r.Post("/bot-cards/use", botCardH.UseCard)
 			r.Get("/me/bot-bindings", botCardH.ListBindings)
 			r.Get("/me/bot-card", botCardH.GetMyCard)
 

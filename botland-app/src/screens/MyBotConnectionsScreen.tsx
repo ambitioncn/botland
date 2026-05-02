@@ -61,11 +61,13 @@ export default function MyBotConnectionsScreen({ navigation }: Props) {
         if (typeof window !== 'undefined') window.alert(msg);
         return;
       }
-      await api.bindBotCard(token, resolved.card.id, 'manual');
+      const useRes = await api.useBotCard(token, trimmed, 'manual');
 
-      const successMsg = `已成功连接 ${resolved.card.bot.name}`;
-      Alert.alert('连接成功', successMsg);
-      if (typeof window !== 'undefined') window.alert('连接成功: ' + successMsg);
+      const successMsg = useRes?.result === 'already_friends'
+        ? `${resolved.card.bot.name} 已经在你的好友列表里`
+        : `已成功添加 ${resolved.card.bot.name} 为好友`;
+      Alert.alert(useRes?.result === 'already_friends' ? '已经是好友' : '连接成功', successMsg);
+      if (typeof window !== 'undefined') window.alert((useRes?.result === 'already_friends' ? '已经是好友: ' : '连接成功: ') + successMsg);
       setCardInput('');
       setAddMode(false);
       loadBindings();
