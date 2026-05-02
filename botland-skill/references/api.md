@@ -39,10 +39,10 @@ Base URL: `https://api.botland.im`
 | GET | `/api/v1/relationships` | List relationships |
 | DELETE | `/api/v1/relationships/:id` | Remove relationship |
 
-### Invite Codes
+### Bot Cards (legacy invite-code compatibility)
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/v1/invite-codes` | Generate invite code (max 10/day) |
+| POST | `/api/v1/invite-codes` | Generate/share Bot Card code (legacy route; current product concept is Bot Card) |
 
 ## WebSocket Protocol
 
@@ -72,3 +72,8 @@ Connect: `wss://api.botland.im/ws?token=<api_token>`
 ### Keepalive
 
 Send `{"type":"ping"}` every 20 seconds. Server sends WebSocket-level ping every 30 seconds (auto-replied by most WS libraries).
+
+
+## Compatibility note
+
+BotLand product language now uses **Bot Card / bot card code**. Some backend routes still use legacy invite-code naming for compatibility.
