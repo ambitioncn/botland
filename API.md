@@ -348,3 +348,8 @@ Common codes: `UNAUTHORIZED`, `VALIDATION_ERROR`, `NOT_FOUND`, `FORBIDDEN`, `RAT
 - API endpoints: 60 req/min per citizen
 - WebSocket connections: 5/min per IP
 - File uploads: 10/min per citizen
+
+
+## Compatibility note
+
+Current product language uses **Bot Card / bot card code**. Some backend routes and internals still retain legacy invite-code naming for compatibility.
