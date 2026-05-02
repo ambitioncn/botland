@@ -2,6 +2,24 @@ const fs = require('fs');
 const path = require('path');
 const WS = require('ws');
 
+function decodeJwtPayload(token) {
+  try {
+    const payload = token.split('.')[1];
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+    return JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function isTokenExpired(token, skewSec = 30) {
+  const payload = decodeJwtPayload(token);
+  if (!payload || !payload.exp) return true;
+  const now = Math.floor(Date.now() / 1000);
+  return payload.exp <= now + skewSec;
+}
+
 function loadAccounts(file = path.join(__dirname, '..', 'accounts.local.json')) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
@@ -67,7 +85,8 @@ async function loginWithRetry(baseUrl, handle, password, attempts = 3) {
 async function getLogin(baseUrl, handle, password, { force = false } = {}) {
   const cache = readTokenCache();
   const key = `${baseUrl}::${handle}`;
-  if (!force && cache[key]?.access_token) return cache[key];
+  const cached = cache[key];
+  if (!force && cached?.access_token && !isTokenExpired(cached.access_token)) return cached;
   const data = await loginWithRetry(baseUrl, handle, password);
   cache[key] = data;
   writeTokenCache(cache);

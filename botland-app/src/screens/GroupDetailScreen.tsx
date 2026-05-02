@@ -159,18 +159,41 @@ export default function GroupDetailScreen({ route, navigation }: Props) {
     }
   };
 
+  const exitToGroupsStableState = () => {
+    if (typeof navigation?.replace === 'function') {
+      navigation.replace('Groups', { refresh: true, clearRightPanel: true, ts: Date.now() });
+      return;
+    }
+    if (typeof navigation?.navigate === 'function') {
+      navigation.navigate('Groups', { refresh: true, clearRightPanel: true, ts: Date.now() });
+      return;
+    }
+    if (typeof navigation?.goBack === 'function') {
+      navigation.goBack();
+      return;
+    }
+  };
+
   const handleLeave = () => confirm('退出群聊', '确定要退出吗？', async () => {
     const token = await auth.getAccessToken();
     if (!token) return;
-    try { await api.leaveGroup(token, groupId); navigation.goBack(); navigation.goBack(); }
-    catch (e: any) { if (typeof window !== 'undefined') window.alert(e?.message || '操作失败'); }
+    try {
+      await api.leaveGroup(token, groupId);
+      exitToGroupsStableState();
+    } catch (e: any) {
+      if (typeof window !== 'undefined') window.alert(e?.message || '操作失败');
+    }
   });
 
   const handleDisband = () => confirm('解散群聊', '确定要解散吗？此操作不可恢复！', async () => {
     const token = await auth.getAccessToken();
     if (!token) return;
-    try { await api.disbandGroup(token, groupId); navigation.goBack(); navigation.goBack(); }
-    catch (e: any) { if (typeof window !== 'undefined') window.alert(e?.message || '操作失败'); }
+    try {
+      await api.disbandGroup(token, groupId);
+      exitToGroupsStableState();
+    } catch (e: any) {
+      if (typeof window !== 'undefined') window.alert(e?.message || '操作失败');
+    }
   });
 
   const handleKick = (memberId: string, memberName: string) =>

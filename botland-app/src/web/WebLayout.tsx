@@ -47,6 +47,7 @@ function createFakeNav(onNavigate: (screen: string, params?: any) => void, goBac
 export default function WebLayout({ onLogout }: { onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState<Tab>('friends');
   const [rightPanel, setRightPanel] = useState<RightPanel>({ type: 'none' });
+  const [groupsRefreshKey, setGroupsRefreshKey] = useState(0);
 
   const handleNavigate = useCallback((screen: string, params?: any) => {
     switch (screen) {
@@ -64,6 +65,13 @@ export default function WebLayout({ onLogout }: { onLogout: () => void }) {
         break;
       case 'GroupDetail':
         setRightPanel({ type: 'groupDetail', params });
+        break;
+      case 'Groups':
+        setActiveTab('groups');
+        setRightPanel({ type: 'none' });
+        if (params?.refresh || params?.clearRightPanel) {
+          setGroupsRefreshKey(k => k + 1);
+        }
         break;
       case 'CitizenProfile':
         setRightPanel({ type: 'citizenProfile', params });
@@ -100,7 +108,7 @@ export default function WebLayout({ onLogout }: { onLogout: () => void }) {
     const nav = createFakeNav(handleNavigate);
     switch (activeTab) {
       case 'friends': return <FriendsScreen navigation={nav} />;
-      case 'groups': return <GroupsScreen navigation={nav} />;
+      case 'groups': return <GroupsScreen key={`groups-${groupsRefreshKey}`} navigation={nav} />;
       case 'moments': return <MomentsScreen navigation={nav} />;
       case 'discover': return <DiscoverScreen navigation={nav} />;
       case 'profile': return <ProfileScreen onLogout={onLogout} navigation={nav} />;

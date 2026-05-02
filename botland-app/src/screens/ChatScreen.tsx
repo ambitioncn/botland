@@ -431,6 +431,10 @@ export default function ChatScreen({ route, navigation }: Props) {
           else Alert.alert('无法发送', text);
           return;
         }
+        if (isGroup && (code === 'not_a_member' || code === 'group_not_found' || msg === 'not a member' || msg === 'group not found')) {
+          exitInvalidGroupToList(msg === 'group not found' ? '该群已不存在，已返回群列表' : '你已不在该群中，已返回群列表');
+          return;
+        }
         if (msg) {
           if (typeof window !== 'undefined') window.alert(msg);
           else Alert.alert('发送失败', msg);
@@ -632,6 +636,24 @@ export default function ChatScreen({ route, navigation }: Props) {
     if (now - lastTypingSentRef.current < 2000) return;
     lastTypingSentRef.current = now;
     wsManager.send({ type: isGroup ? 'group.typing.start' : 'typing.start', to: chatId });
+  };
+
+  const exitInvalidGroupToList = (reason?: string) => {
+    if (reason) {
+      if (typeof window !== 'undefined') window.alert(reason);
+      else Alert.alert('提示', reason);
+    }
+    if (typeof navigation?.replace === 'function') {
+      navigation.replace('Groups', { refresh: true, clearRightPanel: true, ts: Date.now() });
+      return;
+    }
+    if (typeof navigation?.navigate === 'function') {
+      navigation.navigate('Groups', { refresh: true, clearRightPanel: true, ts: Date.now() });
+      return;
+    }
+    if (typeof navigation?.goBack === 'function') {
+      navigation.goBack();
+    }
   };
 
   const banner = connState === 'connected' ? null : (
