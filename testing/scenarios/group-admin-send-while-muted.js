@@ -8,8 +8,8 @@ const { loadAccounts, request, getLogin, connectWS, waitForOpen, send, sleep } =
     const adminUser = cfg.actors.lobster_receiver;
     if (!owner?.citizen_id || !adminUser?.citizen_id) throw new Error('owner/admin citizen_id missing');
 
-    const ownerLogin = await getLogin(cfg.baseUrl, owner.handle, owner.password, { force: true });
-    const adminLogin = await getLogin(cfg.baseUrl, adminUser.handle, adminUser.password, { force: true });
+    const ownerLogin = await getLogin(cfg.baseUrl, owner.handle, owner.password);
+    const adminLogin = await getLogin(cfg.baseUrl, adminUser.handle, adminUser.password);
 
     const groupName = `Muted Admin Group ${Date.now()}`;
     const created = await request(cfg.baseUrl, '/api/v1/groups', {

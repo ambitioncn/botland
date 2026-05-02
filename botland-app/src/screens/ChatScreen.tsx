@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback, useSyncExternalStore } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet,
   KeyboardAvoidingView, Platform, Image, Alert, ActivityIndicator, ActionSheetIOS,
@@ -108,19 +108,6 @@ function replySummary(msg: StoredMessage): string {
   return '[消息]';
 }
 
-function ReactionBar({ reactions }: { reactions?: { emoji: string; count: number }[] }) {
-  if (!reactions || reactions.length === 0) return null;
-  return (
-    <View style={s.reactionBar}>
-      {reactions.map((r, idx) => (
-        <View key={`${r.emoji}_${idx}`} style={s.reactionChip}>
-          <Text style={s.reactionText}>{r.emoji} {r.count}</Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
 function ReplyPreviewBlock({ reply, onPress }: { reply?: MessageReplyPreview; onPress?: () => void }) {
   if (!reply) return null;
   const content = (
@@ -146,21 +133,6 @@ export default function ChatScreen({ route, navigation }: Props) {
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMoreHistory, setHasMoreHistory] = useState(true);
-
-  const [groupUnavailableHandled, setGroupUnavailableHandled] = useState(false);
-
-  const handleGroupUnavailable = useCallback((message?: string) => {
-    if (!isGroup || groupUnavailableHandled) return;
-    setGroupUnavailableHandled(true);
-    const text = message || '你已不在该群聊中，正在返回群列表';
-    if (typeof window !== 'undefined') window.alert(text);
-    else Alert.alert('群聊不可用', text);
-    if (navigation.replace) navigation.replace('Groups');
-    else {
-      navigation.goBack?.();
-      navigation.goBack?.();
-    }
-  }, [isGroup, groupUnavailableHandled, navigation]);
 
   const scrollToReply = async (replyToId?: string) => {
     if (!replyToId) return;
@@ -317,13 +289,9 @@ export default function ChatScreen({ route, navigation }: Props) {
   const [memberList, setMemberList] = useState<{citizen_id:string;display_name:string}[]>([]);
   const [mentionFilter, setMentionFilter] = useState('');
   const [groupInfo, setGroupInfo] = useState<{announcement?: string; muted_all?: boolean} | null>(null);
-  const typingSnap = useSyncExternalStore(
-    (cb) => wsManager.subscribeTyping(chatId, cb),
-    () => wsManager.getTypingSnapshot(chatId),
-    () => wsManager.getTypingSnapshot(chatId)
-  );
-  const peerTyping = !!typingSnap.active;
-  const peerTypingName = typingSnap.name || '';
+  const [peerTyping, setPeerTyping] = useState(false);
+  const [peerTypingName, setPeerTypingName] = useState('');
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingSentRef = useRef(0);
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -373,51 +341,10 @@ export default function ChatScreen({ route, navigation }: Props) {
           return [...fresh, ...prev].sort((a, b) => a.timestamp - b.timestamp);
         });
       }
-    } catch (e: any) {
-      const msg = e?.message || '';
-      if (msg.includes('not a member') || msg.includes('group not found')) handleGroupUnavailable('该群聊已不可访问，正在返回群列表');
-    }
-  }, [isGroup, groupId, handleGroupUnavailable]);
+    } catch {}
+  }, [isGroup, groupId]);
 
   useEffect(() => { void loadGroupHistory(); }, [loadGroupHistory]);
-
-  const loadDMHistory = useCallback(async () => {
-    if (isGroup) return;
-    const token = await auth.getAccessToken();
-    if (!token) return;
-    try {
-      const history = await api.getDMHistory(token, friendId, undefined, 50);
-      if (history && history.length > 0) {
-        const myId = wsManager.getCitizenId() || '';
-        const mapped: StoredMessage[] = history.reverse().map((m: any) => {
-          const p = m.payload || {};
-          const ctype = p.content_type || 'text';
-          return {
-            id: m.id, chatId: friendId, fromId: m.sender_id, fromName: m.sender_name,
-            text: p.text,
-            segments: p.segments,
-            imageUrl: ctype === 'image' ? p.url : undefined,
-            videoUrl: ctype === 'video' ? p.url : undefined,
-            audioUrl: ctype === 'voice' ? p.url : undefined,
-            durationMs: p.duration_ms,
-            replyTo: p.reply_to,
-            replyPreview: p.reply_preview,
-            reactions: p.reactions,
-            contentType: ctype,
-            mine: m.sender_id === myId,
-            timestamp: new Date(m.created_at).getTime(), status: 'delivered',
-          };
-        });
-        setMessages(prev => {
-          const existIds = new Set(prev.map(p => p.id));
-          const fresh = mapped.filter(m => !existIds.has(m.id));
-          return [...fresh, ...prev].sort((a, b) => a.timestamp - b.timestamp);
-        });
-      }
-    } catch {}
-  }, [isGroup, friendId]);
-
-  useEffect(() => { if (!isGroup) void loadDMHistory(); }, [isGroup, loadDMHistory]);
 
   useEffect(() => {
     if (!isGroup) return;
@@ -428,20 +355,16 @@ export default function ChatScreen({ route, navigation }: Props) {
         const g = await api.getGroup(token, groupId);
         setMemberList((g as any).members || []);
         setGroupInfo({ announcement: (g as any).announcement, muted_all: (g as any).muted_all });
-      } catch (e: any) {
-        const msg = e?.message || '';
-        if (msg.includes('not a member') || msg.includes('group not found')) handleGroupUnavailable('你已不在该群聊中，正在返回群列表');
-      }
+      } catch {}
     })();
-  }, [isGroup, groupId, handleGroupUnavailable]);
+  }, [isGroup, groupId]);
 
   useEffect(() => {
     wsManager.connect();
     const unsubState = wsManager.onStateChange((state) => {
       setConnState(state);
-      if (state === 'connected') {
-        if (isGroup) void loadGroupHistory();
-        else void loadDMHistory();
+      if (state === 'connected' && isGroup) {
+        void loadGroupHistory();
       }
     });
     const unsubMsg = wsManager.onMessage((data) => {
@@ -458,7 +381,7 @@ export default function ChatScreen({ route, navigation }: Props) {
           replyPreview: data.payload?.reply_preview,
           contentType: ctype, mine: data.from !== 'system' && false, timestamp: Date.now(), status: 'delivered',
         };
-        setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
+        setMessages(prev => [...prev, msg]);
         messageStore.save(msg);
         if (data.id) wsManager.send({ type: 'message.ack', id: data.id, to: data.from });
       }
@@ -479,23 +402,6 @@ export default function ChatScreen({ route, navigation }: Props) {
         setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
         messageStore.save(msg);
       }
-
-      if (data.type === 'message.reaction') {
-        const { message_id: messageId, emoji } = data.payload || {};
-        if (messageId && emoji) {
-          setMessages(prev => prev.map(m => {
-            if (m.id !== messageId) return m;
-            const existing = Array.isArray(m.reactions) ? [...m.reactions] : [];
-            const idx = existing.findIndex((r: any) => r.emoji === emoji);
-            if (idx >= 0) existing[idx] = { ...existing[idx], count: (existing[idx].count || 0) + 1 };
-            else existing.push({ emoji, count: 1 });
-            const next = { ...m, reactions: existing };
-            void messageStore.updateReactions(m.id, existing as any);
-            return next;
-          }));
-        }
-      }
-
       if (data.type === 'error') {
         const code = data.payload?.code;
         const msg = data.payload?.message;
@@ -536,6 +442,22 @@ export default function ChatScreen({ route, navigation }: Props) {
         if (msgId && (status === 'delivered' || status === 'read')) {
           setMessages(prev => prev.map(m => m.id === msgId ? { ...m, status } : m));
           messageStore.updateStatus(msgId, status);
+        }
+      }
+      if ((data.type === 'typing.start' || data.type === 'group.typing.start') && data.from !== wsManager.getCitizenId()) {
+        const isRelevant = isGroup ? data.to === groupId : data.from === friendId;
+        if (isRelevant) {
+          setPeerTyping(true);
+          setPeerTypingName(data.from?.slice(-6) || '');
+          if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+          typingTimerRef.current = setTimeout(() => setPeerTyping(false), 4000);
+        }
+      }
+      if ((data.type === 'typing.stop' || data.type === 'group.typing.stop') && data.from !== wsManager.getCitizenId()) {
+        const isRelevant = isGroup ? data.to === groupId : data.from === friendId;
+        if (isRelevant) {
+          setPeerTyping(false);
+          if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
         }
       }
     });
@@ -719,26 +641,6 @@ export default function ChatScreen({ route, navigation }: Props) {
   );
 
 
-  const sendReaction = (item: StoredMessage, emoji: string) => {
-    if (!item?.id) return;
-    const target = chatId;
-    wsManager.send({
-      type: 'message.reaction',
-      to: target,
-      payload: { message_id: item.id, emoji },
-    });
-    setMessages(prev => prev.map(m => {
-      if (m.id !== item.id) return m;
-      const existing = Array.isArray(m.reactions) ? [...m.reactions] : [];
-      const idx = existing.findIndex((r: any) => r.emoji === emoji);
-      if (idx >= 0) existing[idx] = { ...existing[idx], count: (existing[idx].count || 0) + 1 };
-      else existing.push({ emoji, count: 1 });
-      const next = { ...m, reactions: existing };
-      void messageStore.updateReactions(m.id, existing as any);
-      return next;
-    }));
-  };
-
   const beginReply = (item: StoredMessage) => {
     setReplyingTo({
       id: item.id,
@@ -752,22 +654,16 @@ export default function ChatScreen({ route, navigation }: Props) {
   const onMessageLongPress = (item: StoredMessage) => {
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions({
-        options: ['取消', '回复', '❤️', '👍', '😂'],
+        options: ['取消', '回复'],
         cancelButtonIndex: 0,
       }, (buttonIndex) => {
         if (buttonIndex === 1) beginReply(item);
-        if (buttonIndex === 2) sendReaction(item, '❤️');
-        if (buttonIndex === 3) sendReaction(item, '👍');
-        if (buttonIndex === 4) sendReaction(item, '😂');
       });
       return;
     }
     Alert.alert('消息操作', '选择要执行的操作', [
       { text: '取消', style: 'cancel' },
       { text: '回复', onPress: () => beginReply(item) },
-      { text: '❤️', onPress: () => sendReaction(item, '❤️') },
-      { text: '👍', onPress: () => sendReaction(item, '👍') },
-      { text: '😂', onPress: () => sendReaction(item, '😂') },
     ]);
   };
 
@@ -809,7 +705,6 @@ export default function ChatScreen({ route, navigation }: Props) {
                 );
               })()}</Text>
             )}
-            <ReactionBar reactions={item.reactions as any} />
           </TouchableOpacity>
           {item.mine && item.status === 'failed' && (
             <TouchableOpacity onPress={() => resendMessage(item)} style={s.resendRow}><Text style={s.statusFailed}>发送失败</Text><Text style={s.resendBtn}> 点击重发</Text></TouchableOpacity>
@@ -857,7 +752,7 @@ export default function ChatScreen({ route, navigation }: Props) {
         </View>
       )}
       {replyingTo && <View style={s.replyComposer}><View style={{flex:1}}><Text style={s.replyComposerTitle}>回复 {replyingTo.fromName || replyingTo.fromId || '消息'}</Text><Text style={s.replyComposerText} numberOfLines={1}>{replyingTo.text || '[消息]'}</Text></View><TouchableOpacity onPress={() => setReplyingTo(null)}><Text style={s.replyComposerClose}>×</Text></TouchableOpacity></View>}
-      {peerTyping && <View testID="typing-indicator" accessibilityLabel="typing-indicator" style={s.typingBar}><Text style={s.typingText}>{isGroup ? `${peerTypingName} ` : ''}正在输入...</Text></View>}
+      {peerTyping && <View style={s.typingBar} accessibilityLabel="typing-indicator"><Text style={s.typingText}>{isGroup ? `${peerTypingName} ` : ''}正在输入...</Text></View>}
       {recording && <View style={s.recordingBar}><Text style={s.recordingText}>🎙️ 录音中 {formatDuration(recordingMs)} · 松开发送 / 点×取消</Text><TouchableOpacity onPress={cancelRecording}><Text style={s.recordingCancel}>取消</Text></TouchableOpacity></View>}
       <View style={s.inputRow}>
         <TouchableOpacity style={s.imgBtn} onPress={() => sendMedia('images')} disabled={sending || !!recording}>
@@ -948,7 +843,4 @@ const s = StyleSheet.create({
   replyComposerTitle: { color: '#ff6b35', fontSize: 12, fontWeight: '700' },
   replyComposerText: { color: '#bbb', fontSize: 12, marginTop: 2 },
   replyComposerClose: { color: '#888', fontSize: 26, marginLeft: 10, lineHeight: 26 },
-  reactionBar: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
-  reactionChip: { backgroundColor: 'rgba(0,0,0,0.18)', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4 },
-  reactionText: { color: '#fff', fontSize: 12 },
 });

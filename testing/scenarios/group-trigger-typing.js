@@ -10,7 +10,7 @@ function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
     const groupId = process.argv[2];
     if (!sender?.handle || !sender?.password || !groupId) throw new Error('usage: group-trigger-typing <groupId>');
 
-    const loginData = await getLogin(cfg.baseUrl, sender.handle, sender.password, { force: true });
+    const loginData = await getLogin(cfg.baseUrl, sender.handle, sender.password);
     const ws = connectWS(cfg.wsUrl, loginData.access_token);
     await waitForOpen(ws);
     send(ws, { type: 'group.typing.start', to: groupId });

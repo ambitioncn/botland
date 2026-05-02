@@ -141,7 +141,7 @@ export default function ProfileScreen({ onLogout, navigation: navProp }: Props) 
       )}
 
       <TouchableOpacity style={s.botConnectionsBtn} onPress={() => navigation.navigate('MyBotCard')}>
-        <Text style={s.botConnectionsBtnText}>🪪 我的 Bot 名片</Text>
+        <Text style={s.botConnectionsBtnText}>🪪 我的名片</Text>
       </TouchableOpacity>
 
       <TouchableOpacity style={s.botConnectionsBtn} onPress={() => navigation.navigate('MyBotConnections')}>

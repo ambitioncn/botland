@@ -8,8 +8,8 @@ const { loadAccounts, request, getLogin, connectWS, waitForOpen, send, sleep } =
     const receiver = cfg.actors.lobster_receiver;
     if (!sender?.citizen_id || !receiver?.citizen_id) throw new Error('sender/receiver citizen_id missing');
 
-    const senderLogin = await getLogin(cfg.baseUrl, sender.handle, sender.password, { force: true });
-    const receiverLogin = await getLogin(cfg.baseUrl, receiver.handle, receiver.password, { force: true });
+    const senderLogin = await getLogin(cfg.baseUrl, sender.handle, sender.password);
+    const receiverLogin = await getLogin(cfg.baseUrl, receiver.handle, receiver.password);
 
     const groupName = `History Before Limit Group ${Date.now()}`;
     const created = await request(cfg.baseUrl, '/api/v1/groups', {

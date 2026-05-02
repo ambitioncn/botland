@@ -7,8 +7,8 @@ const { loadAccounts, request, getLogin, sleep } = require('../drivers/botlandCl
     const owner = cfg.actors.lobster_sender;
     const member = cfg.actors.lobster_receiver;
 
-    const ownerLogin = await getLogin(cfg.baseUrl, owner.handle, owner.password, { force: true });
-    const memberLogin = await getLogin(cfg.baseUrl, member.handle, member.password, { force: true });
+    const ownerLogin = await getLogin(cfg.baseUrl, owner.handle, owner.password);
+    const memberLogin = await getLogin(cfg.baseUrl, member.handle, member.password);
 
     const groupName = `System DB Check Group ${Date.now()}`;
     const created = await request(cfg.baseUrl, '/api/v1/groups', {

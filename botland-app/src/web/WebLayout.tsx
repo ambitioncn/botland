@@ -30,10 +30,9 @@ type RightPanel =
   | { type: 'myBotCard' };
 
 // Fake navigation object that intercepts navigate() calls
-function createFakeNav(onNavigate: (screen: string, params?: any) => void, goBack?: () => void, replace?: (screen: string, params?: any) => void) {
+function createFakeNav(onNavigate: (screen: string, params?: any) => void, goBack?: () => void) {
   return {
     navigate: onNavigate,
-    replace: replace || onNavigate,
     goBack: goBack || (() => {}),
     addListener: (event: string, cb: () => void) => {
       if (event === 'focus') cb();
@@ -48,12 +47,10 @@ function createFakeNav(onNavigate: (screen: string, params?: any) => void, goBac
 export default function WebLayout({ onLogout }: { onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState<Tab>('friends');
   const [rightPanel, setRightPanel] = useState<RightPanel>({ type: 'none' });
-  const [groupsRefreshKey, setGroupsRefreshKey] = useState(0);
 
   const handleNavigate = useCallback((screen: string, params?: any) => {
     switch (screen) {
       case 'Chat':
-        if (params?.chatType === 'group') setActiveTab('groups');
         setRightPanel({ type: 'chat', params });
         break;
       case 'FriendRequests':
@@ -89,17 +86,7 @@ export default function WebLayout({ onLogout }: { onLogout: () => void }) {
     setRightPanel({ type: 'none' });
   }, []);
 
-  const replace = useCallback((screen: string, params?: any) => {
-    if (screen === 'Groups') {
-      setActiveTab('groups');
-      setRightPanel({ type: 'none' });
-      setGroupsRefreshKey(k => k + 1);
-      return;
-    }
-    handleNavigate(screen, params);
-  }, [handleNavigate]);
-
-  const leftNav = createFakeNav(handleNavigate, undefined, replace);
+  const leftNav = createFakeNav(handleNavigate);
 
   const tabs: { key: Tab; icon: string; label: string }[] = [
     { key: 'friends', icon: '👥', label: '好友' },
@@ -113,7 +100,7 @@ export default function WebLayout({ onLogout }: { onLogout: () => void }) {
     const nav = createFakeNav(handleNavigate);
     switch (activeTab) {
       case 'friends': return <FriendsScreen navigation={nav} />;
-      case 'groups': return <GroupsScreen key={`groups-${groupsRefreshKey}`} navigation={nav} />;
+      case 'groups': return <GroupsScreen navigation={nav} />;
       case 'moments': return <MomentsScreen navigation={nav} />;
       case 'discover': return <DiscoverScreen navigation={nav} />;
       case 'profile': return <ProfileScreen onLogout={onLogout} navigation={nav} />;
@@ -121,7 +108,7 @@ export default function WebLayout({ onLogout }: { onLogout: () => void }) {
   };
 
   const renderRightPanel = () => {
-    const nav = createFakeNav(handleNavigate, goBack, replace);
+    const nav = createFakeNav(handleNavigate, goBack);
     switch (rightPanel.type) {
       case 'none':
         return (
@@ -163,10 +150,7 @@ export default function WebLayout({ onLogout }: { onLogout: () => void }) {
           <TouchableOpacity
             key={t.key}
             style={[s.sidebarItem, activeTab === t.key && s.sidebarActive]}
-            onPress={() => {
-              setActiveTab(t.key);
-              if (t.key === 'groups') setRightPanel({ type: 'none' });
-            }}
+            onPress={() => { setActiveTab(t.key); }}
           >
             <Text style={s.sidebarIcon}>{t.icon}</Text>
             <Text style={[s.sidebarLabel, activeTab === t.key && s.sidebarLabelActive]}>{t.label}</Text>
@@ -175,7 +159,7 @@ export default function WebLayout({ onLogout }: { onLogout: () => void }) {
       </View>
 
       {/* Left Panel (list) */}
-      <View key={activeTab} style={s.leftPanel}>
+      <View style={s.leftPanel}>
         {renderLeftPanel()}
       </View>
 

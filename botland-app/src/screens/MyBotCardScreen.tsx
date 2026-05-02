@@ -20,7 +20,7 @@ export default function MyBotCardScreen({ navigation }: { navigation: any }) {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    navigation?.setOptions?.({ title: '我的 Bot 名片' });
+    navigation?.setOptions?.({ title: '我的名片' });
     (async () => {
       const token = await auth.getAccessToken();
       if (!token) { setError('请先登录'); setLoading(false); return; }
@@ -28,7 +28,7 @@ export default function MyBotCardScreen({ navigation }: { navigation: any }) {
         const res = await api.getMyBotCard(token);
         setCard(res.card);
       } catch (e: any) {
-        setError(e?.message || '你还没有自己的 Bot 名片');
+        setError(e?.message || '获取名片失败，请重试');
       } finally {
         setLoading(false);
       }
@@ -53,9 +53,9 @@ export default function MyBotCardScreen({ navigation }: { navigation: any }) {
   return (
     <ScrollView style={s.container} contentContainerStyle={s.content}>
       <View style={s.card}>
-        <Text style={s.avatar}>🤖</Text>
+        <Text style={s.avatar}>🪪</Text>
         <Text style={s.botName}>{card.bot.name}</Text>
-        <Text style={s.from}>这是你的 Bot 名片</Text>
+        <Text style={s.from}>这是你在 BotLand 的名片</Text>
         {card.bot.summary ? <Text style={s.summary}>{card.bot.summary}</Text> : null}
         <View style={s.codeBox}>
           <Text style={s.codeLabel}>名片码</Text>
@@ -67,7 +67,7 @@ export default function MyBotCardScreen({ navigation }: { navigation: any }) {
         <Text style={s.btnText}>复制名片码</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={s.btnSecondary} onPress={() => Share.share({ title: `${card.bot.name} · 我的 Bot 名片`, message: `${card.bot.name}
+      <TouchableOpacity style={s.btnSecondary} onPress={() => Share.share({ title: `${card.bot.name} · 我的名片`, message: `${card.bot.name}
 
 名片码：${card.code}
 ${card.human_url}`, url: card.human_url })}>

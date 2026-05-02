@@ -11,7 +11,6 @@ type Props = { route: any; navigation: any };
 export default function GroupDetailScreen({ route, navigation }: Props) {
   const { groupId } = route.params;
   const [group, setGroup] = useState<GroupInfo | null>(null);
-  const [groupUnavailableHandled, setGroupUnavailableHandled] = useState(false);
   const [myId, setMyId] = useState('');
   const [editingName, setEditingName] = useState(false);
   const [newName, setNewName] = useState('');
@@ -25,19 +24,6 @@ export default function GroupDetailScreen({ route, navigation }: Props) {
   const [selectedInvite, setSelectedInvite] = useState<Set<string>>(new Set());
   const [inviting, setInviting] = useState(false);
 
-  const handleGroupUnavailable = (message?: string) => {
-    if (groupUnavailableHandled) return;
-    setGroupUnavailableHandled(true);
-    const text = message || '该群聊已不可访问，正在返回群列表';
-    if (typeof window !== 'undefined') window.alert(text);
-    else Alert.alert('群聊不可用', text);
-    if ((navigation as any).replace) (navigation as any).replace('Groups');
-    else {
-      navigation.goBack?.();
-      navigation.goBack?.();
-    }
-  };
-
   const load = async () => {
     const token = await auth.getAccessToken();
     if (!token) return;
@@ -48,12 +34,7 @@ export default function GroupDetailScreen({ route, navigation }: Props) {
       ]);
       setGroup(g as GroupInfo);
       setMyId((me as any).id || (me as any).citizen_id || '');
-    } catch (e: any) {
-      const msg = e?.message || '';
-      if (msg.includes('not a member') || msg.includes('group not found')) {
-        handleGroupUnavailable('该群聊详情已不可访问，正在返回群列表');
-      }
-    }
+    } catch {}
   };
 
   useEffect(() => { load(); }, [groupId]);
@@ -181,27 +162,15 @@ export default function GroupDetailScreen({ route, navigation }: Props) {
   const handleLeave = () => confirm('退出群聊', '确定要退出吗？', async () => {
     const token = await auth.getAccessToken();
     if (!token) return;
-    try {
-      await api.leaveGroup(token, groupId);
-      if (typeof window !== 'undefined') window.alert('你已退出该群聊');
-      else Alert.alert('已退出群聊');
-      navigation.goBack();
-      navigation.goBack();
-    }
-    catch (e: any) { if (typeof window !== 'undefined') window.alert(e?.message || '操作失败'); else Alert.alert('错误', e?.message || '操作失败'); }
+    try { await api.leaveGroup(token, groupId); navigation.goBack(); navigation.goBack(); }
+    catch (e: any) { if (typeof window !== 'undefined') window.alert(e?.message || '操作失败'); }
   });
 
   const handleDisband = () => confirm('解散群聊', '确定要解散吗？此操作不可恢复！', async () => {
     const token = await auth.getAccessToken();
     if (!token) return;
-    try {
-      await api.disbandGroup(token, groupId);
-      if (typeof window !== 'undefined') window.alert('群聊已解散');
-      else Alert.alert('群聊已解散');
-      navigation.goBack();
-      navigation.goBack();
-    }
-    catch (e: any) { if (typeof window !== 'undefined') window.alert(e?.message || '操作失败'); else Alert.alert('错误', e?.message || '操作失败'); }
+    try { await api.disbandGroup(token, groupId); navigation.goBack(); navigation.goBack(); }
+    catch (e: any) { if (typeof window !== 'undefined') window.alert(e?.message || '操作失败'); }
   });
 
   const handleKick = (memberId: string, memberName: string) =>

@@ -17,8 +17,8 @@ async function tryGetGroup(baseUrl, groupId, token) {
     const newOwner = cfg.actors.lobster_receiver;
     if (!oldOwner?.citizen_id || !newOwner?.citizen_id) throw new Error('owner/member citizen_id missing');
 
-    const oldOwnerLogin = await getLogin(cfg.baseUrl, oldOwner.handle, oldOwner.password, { force: true });
-    const newOwnerLogin = await getLogin(cfg.baseUrl, newOwner.handle, newOwner.password, { force: true });
+    const oldOwnerLogin = await getLogin(cfg.baseUrl, oldOwner.handle, oldOwner.password);
+    const newOwnerLogin = await getLogin(cfg.baseUrl, newOwner.handle, newOwner.password);
 
     const groupName = `Transfer Group ${Date.now()}`;
     const created = await request(cfg.baseUrl, '/api/v1/groups', {

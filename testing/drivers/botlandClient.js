@@ -15,17 +15,27 @@ function writeTokenCache(cache) {
 }
 async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-async function request(baseUrl, pathname, { method = 'GET', token, body } = {}) {
+async function request(baseUrl, pathname, { method = 'GET', token, body, attempts = 3 } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`${baseUrl}${pathname}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(`request failed: ${res.status} ${method} ${pathname} ${JSON.stringify(data)}`);
-  return data;
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    const res = await fetch(`${baseUrl}${pathname}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    let data = null;
+    try { data = await res.json(); } catch { data = null; }
+    if (res.ok) return data;
+    const err = new Error(`request failed: ${res.status} ${method} ${pathname} ${JSON.stringify(data)}`);
+    lastErr = err;
+    if (res.status !== 429 || i === attempts - 1) throw err;
+    const retryAfter = Number(res.headers.get('retry-after') || 0);
+    const waitMs = retryAfter > 0 ? retryAfter * 1000 : 1500 * (i + 1);
+    await sleep(waitMs);
+  }
+  throw lastErr;
 }
 
 async function login(baseUrl, handle, password) {

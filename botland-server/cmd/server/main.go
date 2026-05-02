@@ -67,13 +67,10 @@ func main() {
 			relaySvc.RouteMessage(client.CitizenID, env)
 		case protocol.TypeMessageAck:
 			relaySvc.HandleAck(client.CitizenID, env)
-		case protocol.TypeTypingStart, protocol.TypeTypingStop, protocol.TypeGroupTypingStart, protocol.TypeGroupTypingStop:
-			logger.Info("typing event inbound", "type", env.Type, "from", client.CitizenID, "to", env.To)
-			if env.To != "" && len(env.To) > 6 && env.To[:6] == "group_" {
-				relaySvc.HandleGroupTyping(client.CitizenID, env)
-			} else {
-				relaySvc.HandleTyping(client.CitizenID, env)
-			}
+		case protocol.TypeTypingStart, protocol.TypeTypingStop:
+			relaySvc.HandleTyping(client.CitizenID, env)
+		case protocol.TypeGroupTypingStart, protocol.TypeGroupTypingStop:
+			relaySvc.HandleGroupTyping(client.CitizenID, env)
 		case protocol.TypeGroupMessageSend:
 			relaySvc.RouteMessage(client.CitizenID, env)
 		case protocol.TypeMessageReaction:

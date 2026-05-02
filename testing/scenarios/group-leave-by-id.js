@@ -8,7 +8,7 @@ const { loadAccounts, request, getLogin, sleep } = require('../drivers/botlandCl
     const groupId = process.argv[2];
     if (!groupId) throw new Error('groupId required');
 
-    const memberLogin = await getLogin(cfg.baseUrl, member.handle, member.password, { force: true });
+    const memberLogin = await getLogin(cfg.baseUrl, member.handle, member.password);
     const leaveResp = await request(cfg.baseUrl, `/api/v1/groups/${groupId}/leave`, {
       method: 'POST',
       token: memberLogin.access_token,

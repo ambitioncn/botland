@@ -24,18 +24,12 @@ export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'rec
 export type InboundHandler = (data: any) => void;
 
 type StateListener = (state: ConnectionState) => void;
-export type TypingSnapshot = { active: boolean; name?: string; from?: string };
-type TypingListener = (snapshot: TypingSnapshot) => void;
-const EMPTY_TYPING: TypingSnapshot = { active: false, name: '', from: '' };
 
 class WSManager {
   private ws: WebSocket | null = null;
   private state: ConnectionState = 'disconnected';
   private stateListeners = new Set<StateListener>();
   private messageHandlers = new Set<InboundHandler>();
-  private typingState = new Map<string, TypingSnapshot>();
-  private typingListeners = new Map<string, Set<TypingListener>>();
-  private typingTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private pongTimer: ReturnType<typeof setTimeout> | null = null;
@@ -95,34 +89,6 @@ class WSManager {
     return () => { this.stateListeners.delete(listener); };
   }
 
-  onTypingChange(chatKey: string, listener: TypingListener): () => void {
-    let set = this.typingListeners.get(chatKey);
-    if (!set) {
-      set = new Set<TypingListener>();
-      this.typingListeners.set(chatKey, set);
-    }
-    set.add(listener);
-    listener(this.typingState.get(chatKey) || EMPTY_TYPING);
-    return () => {
-      const curr = this.typingListeners.get(chatKey);
-      if (!curr) return;
-      curr.delete(listener);
-      if (curr.size === 0) this.typingListeners.delete(chatKey);
-    };
-  }
-
-  getTyping(chatKey: string): TypingSnapshot {
-    return this.typingState.get(chatKey) || EMPTY_TYPING;
-  }
-
-  subscribeTyping(chatKey: string, listener: () => void): () => void {
-    return this.onTypingChange(chatKey, () => listener());
-  }
-
-  getTypingSnapshot(chatKey: string): TypingSnapshot {
-    return this.getTyping(chatKey);
-  }
-
   getState(): ConnectionState { return this.state; }
   getCitizenId(): string { return this.citizenId; }
 
@@ -160,8 +126,6 @@ class WSManager {
           this.clearPongTimeout();
           return;
         }
-
-        this.handleTypingEvent(data);
 
         // Dispatch to all handlers
         this.messageHandlers.forEach(h => {
@@ -243,50 +207,6 @@ class WSManager {
       try { this.ws.close(); } catch {}
       this.ws = null;
     }
-  }
-
-  private emitTyping(chatKey: string): void {
-    const snap = this.typingState.get(chatKey) || EMPTY_TYPING;
-    const listeners = this.typingListeners.get(chatKey);
-    if (!listeners) return;
-    listeners.forEach((l) => {
-      try { l(snap); } catch {}
-    });
-  }
-
-  private setTyping(chatKey: string, snapshot: TypingSnapshot): void {
-    this.typingState.set(chatKey, snapshot);
-    this.emitTyping(chatKey);
-  }
-
-  private clearTyping(chatKey: string): void {
-    this.typingState.set(chatKey, EMPTY_TYPING);
-    const timer = this.typingTimers.get(chatKey);
-    if (timer) {
-      clearTimeout(timer);
-      this.typingTimers.delete(chatKey);
-    }
-    this.emitTyping(chatKey);
-  }
-
-  private handleTypingEvent(data: any): void {
-    if (!data || data.from === this.citizenId) return;
-    const t = data.type;
-    if (t !== 'typing.start' && t !== 'typing.stop' && t !== 'group.typing.start' && t !== 'group.typing.stop') return;
-
-    const chatKey = t.startsWith('group.') ? String(data.to || '') : String(data.from || '');
-    if (!chatKey) return;
-
-    if (t.endsWith('.start') || t === 'typing.start') {
-      this.setTyping(chatKey, { active: true, name: data.fromName || data.from?.slice(-6) || '', from: data.from });
-      const existing = this.typingTimers.get(chatKey);
-      if (existing) clearTimeout(existing);
-      const timer = setTimeout(() => this.clearTyping(chatKey), 4000);
-      this.typingTimers.set(chatKey, timer);
-      return;
-    }
-
-    this.clearTyping(chatKey);
   }
 
   private setState(s: ConnectionState): void {

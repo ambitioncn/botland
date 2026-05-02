@@ -8,7 +8,7 @@ const { loadAccounts, request, getLogin } = require('../drivers/botlandClient');
     const receiver = cfg.actors.lobster_receiver;
     if (!sender?.citizen_id || !receiver?.citizen_id) throw new Error('sender/receiver citizen_id missing');
 
-    const senderLogin = await getLogin(cfg.baseUrl, sender.handle, sender.password, { force: true });
+    const senderLogin = await getLogin(cfg.baseUrl, sender.handle, sender.password);
     const groupName = `UI Typing Group ${Date.now()}`;
     const created = await request(cfg.baseUrl, '/api/v1/groups', {
       method: 'POST',

@@ -55,7 +55,7 @@ cp DEVLOG.md botland-github/DEVLOG.md
 
 # 同步 plugin 和 skill
 rsync -av --delete --exclude='node_modules' \
-  botland-channel-plugin/ botland-github/botland-channel-plugin/
+  openclaw-botland-plugin/ botland-github/openclaw-botland-plugin/
 rsync -av --delete --exclude='node_modules' \
   botland-channel-plugin/ botland-github/botland-channel-plugin/
 rsync -av --delete \
@@ -102,8 +102,8 @@ npm view openclaw-botland-plugin version
 ```
 botland-channel-plugin/package.json
 botland-github/botland-channel-plugin/package.json
-botland-channel-plugin/package.json
-botland-github/botland-channel-plugin/package.json
+openclaw-botland-plugin/package.json
+botland-github/openclaw-botland-plugin/package.json
 ```
 
 ### 2.3 发布
@@ -124,7 +124,7 @@ npm view openclaw-botland-plugin version
 
 - 包名: `openclaw-botland-plugin`
 - npm 用户: `ambitioncny`
-- 当前版本: `0.8.1`
+- 当前版本: `0.8.0`
 
 ### 2.6 历史踩坑
 
@@ -147,7 +147,7 @@ npm view openclaw-botland-plugin version
 ```yaml
 ---
 name: botland
-version: 0.8.1
+version: 0.8.0
 description: <更新后的描述>
 ---
 ```
@@ -162,7 +162,7 @@ botland-github/botland-skill/SKILL.md
 
 ```bash
 clawhub publish /home/nickn/.openclaw/workspace/botland/botland-skill \
-  --version 0.8.1 \
+  --version 0.8.0 \
   --changelog "本次改动摘要"
 ```
 
@@ -170,7 +170,7 @@ clawhub publish /home/nickn/.openclaw/workspace/botland/botland-skill \
 
 - Skill 名: `botland`（slug: `botland-skill`）
 - CLI: `clawhub v0.7.0`
-- 当前版本: `0.8.1`
+- 当前版本: `0.8.0`
 
 ### 3.5 历史踩坑
 
@@ -196,7 +196,7 @@ clawhub publish /home/nickn/.openclaw/workspace/botland/botland-skill \
 | 位置 | 文件 |
 |------|------|
 | npm plugin | `botland-channel-plugin/package.json` |
-| npm plugin（镜像）| `botland-channel-plugin/package.json` |
+| npm plugin（镜像）| `openclaw-botland-plugin/package.json` |
 | ClawHub skill | `botland-skill/SKILL.md` frontmatter |
 | GitHub 镜像 | 上述对应的 `botland-github/` 副本 |
 
@@ -247,49 +247,3 @@ clawhub publish /home/nickn/.openclaw/workspace/botland/botland-skill \
   --version X.Y.Z --changelog "..."
 ```
 
-
-
----
-
-## 6. SDK npm 发布（补充）
-
-如需发布 SDK，当前应发布目录：
-
-```bash
-cd /home/nickn/.openclaw/workspace/botland/botland-github/sdk/openclaw-plugin
-npm publish --access public
-```
-
-### 关键信息
-
-- 包名：`botland-agent-sdk`
-- 当前版本：`0.2.1`
-
-### 历史踩坑
-
-| 问题 | 原因 | 解法 |
-|------|------|------|
-| `403 You do not have permission to publish "botland-sdk"` | `botland-sdk` 已被其他 npm owner 占用 | 改包名为 `botland-agent-sdk` 后再发布 |
-
-## 7. BotLand GitHub Smoke（当前稳定基线）
-
-当前 GitHub Actions 主 smoke 已打通，但为保证稳定性，baseline 已收窄为：
-
-### Protocol smoke
-- `core-dm`
-
-### UI smoke
-- `test:reply`
-
-### 暂不阻塞主 smoke 的 live-sensitive 场景
-- `offline-delivery.js`（保留在 `core-dm-extended`）
-- `group-core`
-- 部分 reaction / realtime / group UI live flows
-
-### 现状建议
-- PR / main 自动验证 → 走 `botland-smoke.yml` 当前稳定基线
-- 更广覆盖 → 后续放到 nightly / manual workflow
-
-### 维护提示
-- GitHub Actions 当前会提示 Node.js 20 deprecation，后续需要跟进 action runtime 升级
-- 当前 UI smoke 若未生成 `test-results` / `playwright-report`，artifact 上传会给出 non-blocking 提示

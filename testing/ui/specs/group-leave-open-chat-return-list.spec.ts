@@ -27,10 +27,10 @@ test('left open group chat returns cleanly to refreshed group list', async ({ pa
   const cfg = loadAccounts();
   const viewer = cfg.actors.lobster_receiver;
 
-  const seed = await runJsonScenario('group-disband-open-chat-seed.js');
+  const seed = await runJsonScenario('group-leave-open-chat-seed.js');
   const groupId = seed?.details?.groupId;
   const groupName = seed?.details?.groupName;
-  if (!groupId || !groupName) throw new Error('group-disband-open-chat-seed missing details');
+  if (!groupId || !groupName) throw new Error('group-leave-open-chat-seed missing details');
 
   await loginBotLand(page, viewer.handle, viewer.password);
   await page.waitForLoadState('networkidle');

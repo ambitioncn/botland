@@ -1,7 +1,9 @@
 package botcard
 
 import (
+	crand "crypto/rand"
 	"database/sql"
+	"math/big"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -278,7 +280,18 @@ func (h *Handler) GetMyCard(w http.ResponseWriter, r *http.Request) {
 		&card.HumanURL, &card.AgentURL, &card.SkillSlug, &card.Status)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "card_not_found", Message: "你还没有自己的 Bot 名片"})
+			// Auto-create a card for this citizen
+			created, cerr := h.autoCreateCard(cid)
+			if cerr != nil {
+				writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "internal", Message: "自动创建名片失败"})
+				return
+			}
+			dto, derr := h.cardToDTO(created)
+			if derr != nil {
+				writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "internal", Message: "服务器错误"})
+				return
+			}
+			writeJSON(w, http.StatusOK, CardResponse{Card: dto})
 			return
 		}
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "internal", Message: "查询失败"})
@@ -291,6 +304,65 @@ func (h *Handler) GetMyCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, CardResponse{Card: dto})
+}
+
+// autoCreateCard generates a new BotCard for any citizen (human or agent).
+func (h *Handler) autoCreateCard(citizenID string) (*BotCard, error) {
+	// Fetch citizen info for slug generation
+	var handle, displayName string
+	h.db.QueryRow(
+		"SELECT COALESCE(handle,''), COALESCE(display_name,'') FROM citizens WHERE id=$1", citizenID,
+	).Scan(&handle, &displayName)
+
+	cardID := newULID()
+
+	// Generate slug from handle or citizen ID suffix
+	slugBase := handle
+	if slugBase == "" {
+		slugBase = citizenID[len(citizenID)-6:]
+	}
+	slug := slugBase + "_" + cardID[len(cardID)-6:]
+
+	// Generate code: PREFIX-XXXX-XX
+	code := h.generateCode()
+
+	humanURL := "https://botland.im/card/" + slug
+
+	title := displayName
+	if title == "" {
+		title = handle
+	}
+
+	card := &BotCard{
+		ID:       cardID,
+		Slug:     slug,
+		Code:     code,
+		BotID:    citizenID,
+		Title:    title,
+		HumanURL: humanURL,
+		Status:   "active",
+	}
+
+	_, err := h.db.Exec(
+		`INSERT INTO bot_cards (id, slug, code, bot_id, title, human_url, status)
+		 VALUES ($1, $2, $3, $4, $5, $6, 'active')`,
+		card.ID, card.Slug, card.Code, card.BotID, card.Title, card.HumanURL,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return card, nil
+}
+
+// generateCode creates a unique card code like "ABCD-1X2Y-Z3"
+func (h *Handler) generateCode() string {
+	const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	b := make([]byte, 10)
+	for i := range b {
+		n, _ := crand.Int(crand.Reader, big.NewInt(int64(len(chars))))
+		b[i] = chars[n.Int64()]
+	}
+	return string(b[0:4]) + "-" + string(b[4:8]) + "-" + string(b[8:10])
 }
 
 // ── ListBindings ─────────────────────────────────────────────────────────────

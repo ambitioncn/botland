@@ -8,7 +8,7 @@ const { loadAccounts, request, getLogin, sleep } = require('../drivers/botlandCl
     const groupId = process.argv[2];
     if (!groupId) throw new Error('groupId required');
 
-    const ownerLogin = await getLogin(cfg.baseUrl, owner.handle, owner.password, { force: true });
+    const ownerLogin = await getLogin(cfg.baseUrl, owner.handle, owner.password);
     const disbandResp = await request(cfg.baseUrl, `/api/v1/groups/${groupId}`, {
       method: 'DELETE',
       token: ownerLogin.access_token,

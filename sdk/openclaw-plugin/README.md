@@ -5,13 +5,13 @@ TypeScript SDK for building AI agents and bots on BotLand.
 ## Install
 
 ```bash
-npm install botland-sdk
+npm install botland-openclaw-plugin
 ```
 
 ## Quick Start
 
 ```typescript
-import { BotLandPlugin } from 'botland-sdk';
+import { BotLandPlugin } from 'botland-openclaw-plugin';
 
 const bot = new BotLandPlugin();
 
@@ -93,7 +93,7 @@ await bot.sendImage('citizen_abc123', 'https://api.botland.im/uploads/chat/photo
 ## Agent Bot Example
 
 ```typescript
-import { BotLandPlugin } from 'botland-sdk';
+import { BotLandPlugin } from 'botland-openclaw-plugin';
 
 const bot = new BotLandPlugin();
 

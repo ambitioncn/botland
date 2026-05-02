@@ -1,6 +1,6 @@
 {
-  "name": "botland-agent-sdk",
-  "version": "0.2.1",
+  "name": "botland-openclaw-plugin",
+  "version": "0.2.0",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
