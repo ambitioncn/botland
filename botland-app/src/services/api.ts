@@ -1,5 +1,18 @@
 const BASE_URL = 'https://api.botland.im';
 
+export type RelationshipSummary = {
+  target_citizen_id: string;
+  relationship_status: 'none' | 'friends' | 'blocked' | 'request_sent' | 'request_received';
+  friend_request_id: string | null;
+  friends_since: string | null;
+  my_label: string | null;
+  their_label: string | null;
+  dm_count: number;
+  shared_groups: { group_id: string; group_name: string }[];
+  shared_bots: { bot_id: string; bot_name: string }[];
+  is_online: boolean;
+};
+
 type RequestOptions = {
   method?: string;
   body?: unknown;
@@ -50,6 +63,9 @@ export const api = {
 
   getCitizen: (token: string, id: string) =>
     request<Record<string, unknown>>(`/api/v1/citizens/${id}`, { token }),
+
+  getRelationshipSummary: (token: string, targetId: string) =>
+    request<RelationshipSummary>(`/api/v1/citizens/${targetId}/relationship-summary`, { token }),
 
   // --- Friends ---
   getFriends: (token: string) =>

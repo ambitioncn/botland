@@ -35,6 +35,29 @@ type UpdateLabelBody struct {
 	Label string `json:"label"`
 }
 
+type relationshipSummaryGroup struct {
+	GroupID   string `json:"group_id"`
+	GroupName string `json:"group_name"`
+}
+
+type relationshipSummaryBot struct {
+	BotID   string `json:"bot_id"`
+	BotName string `json:"bot_name"`
+}
+
+type RelationshipSummaryResponse struct {
+	TargetCitizenID    string                     `json:"target_citizen_id"`
+	RelationshipStatus string                     `json:"relationship_status"`
+	FriendRequestID    *string                    `json:"friend_request_id"`
+	FriendsSince       *string                    `json:"friends_since"`
+	MyLabel            *string                    `json:"my_label"`
+	TheirLabel         *string                    `json:"their_label"`
+	DMCount            int                        `json:"dm_count"`
+	SharedGroups       []relationshipSummaryGroup `json:"shared_groups"`
+	SharedBots         []relationshipSummaryBot   `json:"shared_bots"`
+	IsOnline           bool                       `json:"is_online"`
+}
+
 // SendFriendRequest creates a friend request
 func (h *Handler) SendFriendRequest(w http.ResponseWriter, r *http.Request) {
 	citizenID := r.Context().Value("citizen_id").(string)
@@ -145,6 +168,146 @@ func (h *Handler) ListFriendRequests(w http.ResponseWriter, r *http.Request) {
 		requests = []map[string]interface{}{}
 	}
 	writeJSON(w, 200, map[string]interface{}{"requests": requests, "total": len(requests)})
+}
+
+// GetRelationshipSummary returns aggregate relationship context for a target citizen.
+func (h *Handler) GetRelationshipSummary(w http.ResponseWriter, r *http.Request) {
+	citizenID := r.Context().Value("citizen_id").(string)
+	targetID := chi.URLParam(r, "citizenID")
+	if targetID == "" {
+		writeError(w, 400, "VALIDATION_ERROR", "citizenID is required")
+		return
+	}
+
+	var exists bool
+	if err := h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM citizens WHERE id=$1 AND status='active')", targetID).Scan(&exists); err != nil {
+		writeError(w, 500, "INTERNAL", "server error")
+		return
+	}
+	if !exists {
+		writeError(w, 404, "NOT_FOUND", "citizen not found")
+		return
+	}
+
+	resp := RelationshipSummaryResponse{
+		TargetCitizenID:    targetID,
+		RelationshipStatus: "none",
+		DMCount:            0,
+		SharedGroups:       []relationshipSummaryGroup{},
+		SharedBots:         []relationshipSummaryBot{},
+		IsOnline:           h.isOnlineFunc != nil && h.isOnlineFunc(targetID),
+	}
+
+	aID, bID := sortIDs(citizenID, targetID)
+	var status string
+	var myLabel, theirLabel sql.NullString
+	var createdAt time.Time
+	err := h.db.QueryRow(`
+		SELECT r.status,
+			CASE WHEN r.citizen_a_id = $1 THEN r.label_a_to_b ELSE r.label_b_to_a END AS my_label,
+			CASE WHEN r.citizen_a_id = $1 THEN r.label_b_to_a ELSE r.label_a_to_b END AS their_label,
+			r.created_at
+		FROM relationships r
+		WHERE r.citizen_a_id=$2 AND r.citizen_b_id=$3
+	`, citizenID, aID, bID).Scan(&status, &myLabel, &theirLabel, &createdAt)
+	if err != nil && err != sql.ErrNoRows {
+		writeError(w, 500, "INTERNAL", "server error")
+		return
+	}
+	if err == nil {
+		if myLabel.Valid {
+			resp.MyLabel = &myLabel.String
+		}
+		if theirLabel.Valid {
+			resp.TheirLabel = &theirLabel.String
+		}
+		switch status {
+		case "active":
+			resp.RelationshipStatus = "friends"
+			formatted := createdAt.Format(time.RFC3339)
+			resp.FriendsSince = &formatted
+		case "blocked":
+			resp.RelationshipStatus = "blocked"
+		}
+	}
+
+	if resp.RelationshipStatus == "none" {
+		var requestID, fromID string
+		err = h.db.QueryRow(`
+			SELECT id, from_id
+			FROM friend_requests
+			WHERE ((from_id=$1 AND to_id=$2) OR (from_id=$2 AND to_id=$1)) AND status='pending'
+			ORDER BY created_at DESC
+			LIMIT 1
+		`, citizenID, targetID).Scan(&requestID, &fromID)
+		if err != nil && err != sql.ErrNoRows {
+			writeError(w, 500, "INTERNAL", "server error")
+			return
+		}
+		if err == nil {
+			resp.FriendRequestID = &requestID
+			if fromID == citizenID {
+				resp.RelationshipStatus = "request_sent"
+			} else {
+				resp.RelationshipStatus = "request_received"
+			}
+		}
+	}
+
+	if err := h.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM message_relay mr
+		WHERE (mr.from_id = $1 AND mr.to_id = $2) OR (mr.from_id = $2 AND mr.to_id = $1)
+	`, citizenID, targetID).Scan(&resp.DMCount); err != nil {
+		writeError(w, 500, "INTERNAL", "server error")
+		return
+	}
+
+	groupRows, err := h.db.Query(`
+		SELECT g.id, g.name
+		FROM groups g
+		JOIN group_members gm1 ON gm1.group_id = g.id
+		JOIN group_members gm2 ON gm2.group_id = g.id
+		WHERE gm1.citizen_id = $1 AND gm2.citizen_id = $2 AND g.status = 'active'
+		ORDER BY g.updated_at DESC
+		LIMIT 5
+	`, citizenID, targetID)
+	if err != nil {
+		writeError(w, 500, "INTERNAL", "server error")
+		return
+	}
+	for groupRows.Next() {
+		var group relationshipSummaryGroup
+		if scanErr := groupRows.Scan(&group.GroupID, &group.GroupName); scanErr == nil {
+			resp.SharedGroups = append(resp.SharedGroups, group)
+		}
+	}
+	groupRows.Close()
+
+	botRows, err := h.db.Query(`
+		SELECT DISTINCT c.id, c.display_name
+		FROM bot_card_bindings b1
+		JOIN bot_card_bindings b2 ON b1.card_id = b2.card_id
+		JOIN bot_cards bc ON bc.id = b1.card_id
+		JOIN citizens c ON c.id = bc.bot_id
+		WHERE b1.citizen_id = $1 AND b2.citizen_id = $2
+			AND b1.status = 'connected' AND b2.status = 'connected'
+		ORDER BY c.display_name
+		LIMIT 5
+	`, citizenID, targetID)
+	if err != nil {
+		writeError(w, 500, "INTERNAL", "server error")
+		return
+	}
+	for botRows.Next() {
+		var bot relationshipSummaryBot
+		if scanErr := botRows.Scan(&bot.BotID, &bot.BotName); scanErr == nil {
+			resp.SharedBots = append(resp.SharedBots, bot)
+		}
+	}
+	botRows.Close()
+
+	writeJSON(w, 200, resp)
 }
 
 // AcceptFriendRequest accepts a pending request
