@@ -48,7 +48,7 @@ export default function MyBotConnectionsScreen({ navigation }: Props) {
       const resolved = await api.resolveBotCard(trimmed);
       if (!resolved?.card) {
         const msg = '名片不存在';
-        Alert.alert('连接失败', msg);
+        Alert.alert('添加失败', msg);
         if (typeof window !== 'undefined') window.alert(msg);
         return;
       }
@@ -57,7 +57,7 @@ export default function MyBotConnectionsScreen({ navigation }: Props) {
       const token = await auth.getAccessToken();
       if (!token) {
         const msg = '请先登录';
-        Alert.alert('连接失败', msg);
+        Alert.alert('添加失败', msg);
         if (typeof window !== 'undefined') window.alert(msg);
         return;
       }
@@ -66,15 +66,15 @@ export default function MyBotConnectionsScreen({ navigation }: Props) {
       const successMsg = useRes?.result === 'already_friends'
         ? `${resolved.card.bot.name} 已经在你的好友列表里`
         : `已成功添加 ${resolved.card.bot.name} 为好友`;
-      Alert.alert(useRes?.result === 'already_friends' ? '已经是好友' : '连接成功', successMsg);
-      if (typeof window !== 'undefined') window.alert((useRes?.result === 'already_friends' ? '已经是好友: ' : '连接成功: ') + successMsg);
+      Alert.alert(useRes?.result === 'already_friends' ? '已经是好友' : '添加成功', successMsg);
+      if (typeof window !== 'undefined') window.alert((useRes?.result === 'already_friends' ? '已经是好友: ' : '添加成功: ') + successMsg);
       setCardInput('');
       setAddMode(false);
       loadBindings();
     } catch (e: any) {
       const errMsg = e?.message || '无效的名片码';
-      Alert.alert('连接失败', errMsg);
-      if (typeof window !== 'undefined') window.alert('连接失败: ' + errMsg);
+      Alert.alert('添加失败', errMsg);
+      if (typeof window !== 'undefined') window.alert('添加失败: ' + errMsg);
     } finally {
       setBinding(false);
     }
@@ -89,11 +89,11 @@ export default function MyBotConnectionsScreen({ navigation }: Props) {
         <Text style={s.botName}>{item.bot.name}</Text>
         <Text style={s.botSlug}>@{item.bot.slug}</Text>
         <Text style={s.connectedAt}>
-          已连接 · {new Date(item.created_at).toLocaleDateString('zh-CN')}
+          已添加为好友 · {new Date(item.created_at).toLocaleDateString('zh-CN')}
         </Text>
       </View>
       <View style={s.statusBadge}>
-        <Text style={s.statusText}>已连接</Text>
+        <Text style={s.statusText}>好友</Text>
       </View>
     </View>
   );
@@ -102,7 +102,7 @@ export default function MyBotConnectionsScreen({ navigation }: Props) {
     <View style={s.container}>
       {/* Header action */}
       <TouchableOpacity style={s.addBtn} onPress={() => setAddMode(!addMode)}>
-        <Text style={s.addBtnText}>{addMode ? '取消' : '+ 添加 Bot 名片'}</Text>
+        <Text style={s.addBtnText}>{addMode ? '取消' : '+ 通过 Bot Card 添加好友'}</Text>
       </TouchableOpacity>
 
       {/* Add card input */}
@@ -110,7 +110,7 @@ export default function MyBotConnectionsScreen({ navigation }: Props) {
         <View style={s.addSection}>
           <TextInput
             style={s.input}
-            placeholder="输入名片码或粘贴名片链接"
+            placeholder="输入 Bot Card 名片码或粘贴名片链接"
             placeholderTextColor="#666"
             value={cardInput}
             onChangeText={setCardInput}
@@ -120,7 +120,7 @@ export default function MyBotConnectionsScreen({ navigation }: Props) {
             {binding ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
-              <Text style={s.bindBtnText}>连接</Text>
+              <Text style={s.bindBtnText}>添加好友</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -134,11 +134,11 @@ export default function MyBotConnectionsScreen({ navigation }: Props) {
       ) : bindings.length === 0 ? (
         <View style={s.empty}>
           <Text style={s.emptyIcon}>🔗</Text>
-          <Text style={s.emptyTitle}>还没有连接任何 bot</Text>
-          <Text style={s.emptyDesc}>通过 Bot 名片码连接你的第一个 bot</Text>
+          <Text style={s.emptyTitle}>还没有添加任何 Bot 好友</Text>
+          <Text style={s.emptyDesc}>通过 Bot Card 名片码添加你的第一个 Bot 好友</Text>
           {!addMode && (
             <TouchableOpacity style={s.emptyBtn} onPress={() => setAddMode(true)}>
-              <Text style={s.emptyBtnText}>添加 Bot 名片</Text>
+              <Text style={s.emptyBtnText}>通过 Bot Card 添加好友</Text>
             </TouchableOpacity>
           )}
         </View>

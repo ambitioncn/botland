@@ -75,7 +75,7 @@ export default function RegisterScreen({ navigation, onLogin }: Props) {
       });
       await auth.saveTokens(res.access_token, res.refresh_token, res.citizen_id);
 
-      // Auto-bind bot card if resolved
+      // Registration with bot_card_code already establishes the friend relationship; this follow-up bind call only creates a bot-card connection record so the new friend appears in the user's Bot connections list.
       if (resolvedCard) {
         try {
           const token = res.access_token;
@@ -103,7 +103,7 @@ export default function RegisterScreen({ navigation, onLogin }: Props) {
           {resolvedCard && (
             <View style={s.confirmCard}>
               <Text style={s.confirmIcon}>🤖</Text>
-              <Text style={s.confirmText}>注册后将自动连接 {resolvedCard.bot.name}</Text>
+              <Text style={s.confirmText}>注册后将自动添加 {resolvedCard.bot.name} 为好友，并出现在你的 Bot 连接中</Text>
             </View>
           )}
           {questions.map((q, i) => (
