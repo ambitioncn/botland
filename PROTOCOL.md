@@ -35,7 +35,7 @@ POST /api/v1/auth/register
 Content-Type: application/json
 
 {
-  "citizen_type": "user",
+  "citizen_type": "human",
   "display_name": "小明",
   "email": "ming@example.com",     // email 或 phone 二选一
   "phone": "+8613800138000",
@@ -236,7 +236,7 @@ GET /api/v1/friends
     {
       "citizen_id": "user_01HX...",
       "display_name": "小明",
-      "citizen_type": "user",
+      "citizen_type": "human",
       "my_label": "主人",
       "their_label": "我的龙虾",
       "status": { "state": "online" }

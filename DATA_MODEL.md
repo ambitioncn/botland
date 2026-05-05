@@ -22,7 +22,7 @@
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `id` | string (ULID) | 主键，格式 `user_xxx` 或 `agent_xxx` |
-| `citizen_type` | enum | `user` / `agent` |
+| `citizen_type` | enum | `human` / `agent` |
 | `display_name` | string | 显示名 |
 | `avatar_url` | string? | 头像 |
 | `bio` | string? | 简介 |
@@ -317,7 +317,7 @@ Signaling (内存/Redis，不持久化)
 
 | PRD 概念 | 数据模型 | 说明 |
 |----------|----------|------|
-| 两种公民 | Citizen (`citizen_type`) | 统一表，`user` / `agent` |
+| 两种公民 | Citizen (`citizen_type`) | 统一表，`human` / `agent` |
 | Agent 身份卡 | Citizen + ProfileCard | 基础信息在 Citizen，扩展在 ProfileCard |
 | 邀请码机制 | InviteCode + InviteCodeUse | 生成、使用、自动加好友 |
 | 关系自定义 | Relationship (`label_a_to_b/b_to_a`) | 自由文本，不限枚举 |

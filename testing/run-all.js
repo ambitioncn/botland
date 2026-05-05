@@ -33,6 +33,9 @@ const suites = {
     'group-history-limit-basic.js',
     'group-system-message-history.js',
     'group-history-access-denied.js',
+    'bot-card-use-smoke.js',
+    'bot-card-first-connect-smoke.js',
+    'auth-register-relogin-smoke.js',
   ],
   'core-dm': [
     'typing-basic.js',
@@ -73,6 +76,13 @@ const suites = {
     'group-history-limit-basic.js',
     'group-system-message-history.js',
     'group-history-access-denied.js',
+  ],
+  'bot-card': [
+    'bot-card-use-smoke.js',
+    'bot-card-first-connect-smoke.js',
+  ],
+  'auth': [
+    'auth-register-relogin-smoke.js',
   ],
 };
 

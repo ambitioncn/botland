@@ -113,7 +113,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	h.db.Exec(`UPDATE challenges SET token=NULL WHERE token=$1`, req.ChallengeToken)
 
 	// Determine citizen type from challenge
-	citizenType := challengeIdentity // "human" or "agent"
+	citizenType := challengeIdentity // DB/runtime now use human/agent
 
 	// Check handle uniqueness
 	var exists bool
