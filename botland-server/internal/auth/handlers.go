@@ -174,16 +174,11 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Handle optional bot card code / legacy invite code → auto-friend
+	// Handle optional Bot Card code → auto-friend + binding
 	var autoFriend *AutoFriendInfo
 	botCardCode := strings.TrimSpace(req.BotCardCode)
-	legacyInviteCode := strings.TrimSpace(req.InviteCode)
-	resolvedCardCode := botCardCode
-	if resolvedCardCode == "" {
-		resolvedCardCode = legacyInviteCode
-	}
-	if resolvedCardCode != "" {
-		autoFriend = h.processBotCardCode(citizenID, resolvedCardCode)
+	if botCardCode != "" {
+		autoFriend = h.processBotCardCode(citizenID, botCardCode)
 	}
 
 	// Generate tokens
@@ -328,34 +323,42 @@ func (h *Handler) CheckHandle(w http.ResponseWriter, r *http.Request) {
 
 // --- Invite Code Processing ---
 
-func (h *Handler) processBotCardCode(newCitizenID, inviteCode string) *AutoFriendInfo {
-	var codeID, issuerID string
+func (h *Handler) processBotCardCode(newCitizenID, code string) *AutoFriendInfo {
+	var cardID, botID, status string
 	err := h.db.QueryRow(
-		`SELECT id, issuer_id FROM invite_codes WHERE code=$1 AND status='active' AND expires_at > NOW()`,
-		inviteCode,
-	).Scan(&codeID, &issuerID)
-	if err != nil {
+		`SELECT id, bot_id, status FROM bot_cards WHERE code=$1 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1`,
+		code,
+	).Scan(&cardID, &botID, &status)
+	if err != nil || status != "active" {
+		return nil
+	}
+	if botID == newCitizenID {
 		return nil
 	}
 
-	// Record use
-	useID := NewULID()
-	h.db.Exec(`INSERT INTO invite_code_uses (id, code_id, agent_id) VALUES ($1, $2, $3)`, useID, codeID, newCitizenID)
+	// Upsert binding
+	bindID := NewULID()
+	_, _ = h.db.Exec(
+		`INSERT INTO bot_card_bindings (id, card_id, citizen_id, source, status)
+		 VALUES ($1, $2, $3, 'register', 'connected')
+		 ON CONFLICT (citizen_id, card_id) DO UPDATE SET status='connected'`,
+		bindID, cardID, newCitizenID,
+	)
 
 	// Auto-friend
 	relID := NewULID()
-	aID, bID := sortIDs(issuerID, newCitizenID)
-	h.db.Exec(
+	aID, bID := sortIDs(botID, newCitizenID)
+	_, _ = h.db.Exec(
 		`INSERT INTO relationships (id, citizen_a_id, citizen_b_id, status, initiated_by)
 		 VALUES ($1, $2, $3, 'active', $4)
 		 ON CONFLICT (citizen_a_id, citizen_b_id) DO NOTHING`,
 		relID, aID, bID, newCitizenID,
 	)
 
-	var issuerName, issuerHandle string
-	h.db.QueryRow("SELECT display_name, COALESCE(handle,'') FROM citizens WHERE id=$1", issuerID).Scan(&issuerName, &issuerHandle)
+	var botName, botHandle string
+	_ = h.db.QueryRow("SELECT display_name, COALESCE(handle,'') FROM citizens WHERE id=$1", botID).Scan(&botName, &botHandle)
 
-	return &AutoFriendInfo{CitizenID: issuerID, DisplayName: issuerName, Handle: issuerHandle}
+	return &AutoFriendInfo{CitizenID: botID, DisplayName: botName, Handle: botHandle}
 }
 
 // --- Helpers ---
