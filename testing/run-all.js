@@ -36,6 +36,7 @@ const suites = {
     'bot-card-use-smoke.js',
     'bot-card-first-connect-smoke.js',
     'auth-register-relogin-smoke.js',
+    'agent-register-botcard-autofriend-smoke.js',
   ],
   'core-dm': [
     'typing-basic.js',
@@ -83,6 +84,7 @@ const suites = {
   ],
   'auth': [
     'auth-register-relogin-smoke.js',
+    'agent-register-botcard-autofriend-smoke.js',
   ],
 };
 
