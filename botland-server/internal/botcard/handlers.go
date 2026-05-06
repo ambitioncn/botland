@@ -321,19 +321,40 @@ func (h *Handler) UseCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bindID := newULID()
-	_, err = h.db.Exec(
-		`INSERT INTO bot_card_bindings (id, card_id, citizen_id, source, status)
-		 VALUES ($1, $2, $3, $4, 'connected')
-		 ON CONFLICT (citizen_id, card_id) DO UPDATE SET status = 'connected', source = EXCLUDED.source`,
-		bindID, card.ID, cid, source,
-	)
-	if err != nil {
+	bindID := ""
+	err = h.db.QueryRow(
+		`SELECT id FROM bot_card_bindings WHERE citizen_id=$1 AND card_id=$2 LIMIT 1`,
+		cid, card.ID,
+	).Scan(&bindID)
+	if err == nil {
+		_, err = h.db.Exec(
+			`UPDATE bot_card_bindings SET status='connected', source=$1 WHERE id=$2`,
+			source, bindID,
+		)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "internal", Message: "添加失败"})
+			return
+		}
+	} else if err == sql.ErrNoRows {
+		bindID = newULID()
+		_, err = h.db.Exec(
+			`INSERT INTO bot_card_bindings (id, card_id, citizen_id, source, status)
+			 VALUES ($1, $2, $3, $4, 'connected')`,
+			bindID, card.ID, cid, source,
+		)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "internal", Message: "添加失败"})
+			return
+		}
+	} else {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "internal", Message: "添加失败"})
 		return
 	}
 
-	h.autoFriend(cid, card.BotID)
+	if err := h.autoFriend(cid, card.BotID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "internal", Message: "添加失败"})
+		return
+	}
 	bot := h.fetchBot(card.BotID)
 	writeJSON(w, http.StatusOK, UseCardResponse{
 		Result: "connected",
@@ -577,18 +598,19 @@ func (h *Handler) fetchBot(botID string) BotDTO {
 	return BotDTO{ID: botID, Slug: handle, Name: name}
 }
 
-func (h *Handler) autoFriend(citizenID, botID string) {
+func (h *Handler) autoFriend(citizenID, botID string) error {
 	aID, bID := citizenID, botID
 	if aID > bID {
 		aID, bID = bID, aID
 	}
 	relID := newULID()
-	h.db.Exec(
+	_, err := h.db.Exec(
 		`INSERT INTO relationships (id, citizen_a_id, citizen_b_id, status, initiated_by)
 		 VALUES ($1, $2, $3, 'active', $4)
 		 ON CONFLICT (citizen_a_id, citizen_b_id) DO UPDATE SET status = 'active'`,
 		relID, aID, bID, citizenID,
 	)
+	return err
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
