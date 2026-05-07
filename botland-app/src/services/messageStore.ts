@@ -11,6 +11,12 @@ export type MessageReplyPreview = {
   contentType?: string;
 };
 
+export type MessageReaction = {
+  emoji: string;
+  count: number;
+  myReaction: boolean;
+};
+
 export type StoredMessage = {
   id: string;
   chatId: string;       // the other party's citizen_id
@@ -28,6 +34,7 @@ export type StoredMessage = {
   mine: boolean;
   timestamp: number;     // unix ms
   status: 'sent' | 'delivered' | 'read' | 'failed';
+  reactions?: MessageReaction[];
 };
 
 // Chat summary for conversation list

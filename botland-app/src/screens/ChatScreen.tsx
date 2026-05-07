@@ -497,6 +497,30 @@ export default function ChatScreen({ route, navigation }: Props) {
           messageStore.updateStatus(msgId, status);
         }
       }
+      // Handle inbound reactions (both DM and group)
+      if ((data.type === 'message.reaction' || data.type === 'group.message.reaction') && data.payload?.message_id) {
+        const targetChatId = isGroup ? groupId : friendId;
+        const msgId = data.payload.message_id;
+        const emoji = data.payload.emoji || '❤️';
+        const myId = wsManager.getCitizenId();
+        const reactedByMe = data.from === myId;
+        setMessages(prev => prev.map(m => {
+          if (m.id !== msgId) return m;
+          const existing = m.reactions || [];
+          const idx = existing.findIndex(r => r.emoji === emoji);
+          let updated: StoredMessage['reactions'];
+          if (idx >= 0) {
+            // Update existing reaction
+            updated = existing.map((r, i) => i === idx
+              ? { ...r, count: reactedByMe && !r.myReaction ? r.count + 1 : r.count, myReaction: r.myReaction || reactedByMe }
+              : r
+            );
+          } else {
+            updated = [...existing, { emoji, count: 1, myReaction: reactedByMe }];
+          }
+          return { ...m, reactions: updated };
+        }));
+      }
       if ((data.type === 'typing.start' || data.type === 'group.typing.start') && data.from !== wsManager.getCitizenId()) {
         const isRelevant = isGroup ? data.to === groupId : data.from === friendId;
         if (isRelevant) {
@@ -785,6 +809,16 @@ export default function ChatScreen({ route, navigation }: Props) {
               {item.status === 'sent' ? '✓' : item.status === 'delivered' ? '✓✓' : item.status === 'read' ? '✓✓ 已读' : ''}
             </Text>
           )}
+          {item.reactions && item.reactions.length > 0 && (
+            <View style={s.reactionsRow}>
+              {item.reactions.map((r, i) => (
+                <View key={i} style={[s.reactionChip, r.myReaction && s.reactionChipMine]}>
+                  <Text style={s.reactionEmoji}>{r.emoji}</Text>
+                  {r.count > 1 && <Text style={s.reactionCount}>{r.count}</Text>}
+                </View>
+              ))}
+            </View>
+          )}
         </View>
       </View>
     );
@@ -887,6 +921,11 @@ const s = StyleSheet.create({
   statusFailed: { color: '#ff6b6b', fontSize: 10 },
   resendRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 2 },
   resendBtn: { color: '#ff6b35', fontSize: 10, fontWeight: '600' },
+  reactionsRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 4 },
+  reactionChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1e1e1e', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2, marginRight: 4, marginBottom: 2 },
+  reactionChipMine: { backgroundColor: '#ff6b35' },
+  reactionEmoji: { fontSize: 12 },
+  reactionCount: { fontSize: 10, color: '#888', marginLeft: 2 },
   inputRow: { flexDirection: 'row', alignItems: 'center', padding: 8, borderTopWidth: 1, borderTopColor: '#222', backgroundColor: '#111' },
   imgBtn: { padding: 8 },
   imgIcon: { fontSize: 22 },
