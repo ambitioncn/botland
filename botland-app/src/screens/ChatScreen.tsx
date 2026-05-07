@@ -814,7 +814,7 @@ export default function ChatScreen({ route, navigation }: Props) {
               {item.reactions.map((r, i) => (
                 <View key={i} style={[s.reactionChip, r.myReaction && s.reactionChipMine]}>
                   <Text style={s.reactionEmoji}>{r.emoji}</Text>
-                  {r.count > 1 && <Text style={s.reactionCount}>{r.count}</Text>}
+                  {(r.count > 1 || r.myReaction) && <Text style={s.reactionCount}>{r.count}</Text>}
                 </View>
               ))}
             </View>
