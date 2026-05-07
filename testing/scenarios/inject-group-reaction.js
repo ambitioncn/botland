@@ -20,6 +20,9 @@ const { loadAccounts, getLogin, connectWS, waitForOpen, send } = require('../dri
       payload: { message_id: messageId, emoji: '❤️' },
     });
 
+    // Wait briefly to ensure server processes it
+    await new Promise(r => setTimeout(r, 500));
+
     result.ok = true;
     result.details.groupId = groupId;
     result.details.messageId = messageId;

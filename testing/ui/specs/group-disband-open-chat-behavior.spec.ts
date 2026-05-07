@@ -46,6 +46,7 @@ test('after disbanding an open group chat, returning to list no longer shows the
   await runJsonScenario('group-disband-by-id.js', [groupId]);
 
   await groupsTab.click();
+  await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1500);
   await expect(page.getByText(groupName, { exact: false })).toHaveCount(0);
 });
