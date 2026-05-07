@@ -61,7 +61,7 @@ test('reaction chip appears on a visible group message in chat UI', async ({ pag
   await loginBotLand(page, viewer.handle, viewer.password);
   await page.waitForLoadState('networkidle');
   // Wait for groups tab to appear (rate-limit may delay UI)
-  await expect(page.getByText('群聊', { exact: true })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText('群聊', { exact: true })).toBeVisible({ timeout: 20000 });
   await page.getByText('群聊', { exact: true }).click();
   await expect(page.getByText(groupName, { exact: false })).toBeVisible({ timeout: 10000 });
   await page.getByText(groupName, { exact: false }).click();

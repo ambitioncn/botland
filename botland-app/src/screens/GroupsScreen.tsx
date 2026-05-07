@@ -21,7 +21,7 @@ export default function GroupsScreen({ navigation }: Props) {
     const token = await auth.getAccessToken();
     if (!token) return;
     try {
-      const data = await api.listGroups(token);
+      const data = await api.listGroups(token, Date.now());
       setGroups(Array.isArray(data) ? data : []);
     } catch {}
   }, []);

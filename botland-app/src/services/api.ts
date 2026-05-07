@@ -198,9 +198,9 @@ export const api = {
       '/api/v1/groups', { method: 'POST', body: { name, member_ids: memberIds, description }, token }
     ),
 
-  listGroups: (token: string) =>
+  listGroups: (token: string, ts?: number) =>
     request<{ id: string; name: string; owner_id: string; member_count: number; avatar_url?: string }[]>(
-      '/api/v1/groups', { token }
+      ts ? `/api/v1/groups?_=${ts}` : '/api/v1/groups', { token }
     ),
 
   getGroup: (token: string, groupId: string) =>
