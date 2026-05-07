@@ -6,7 +6,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   webServer: {
-    command: './node_modules/.bin/expo start --web',
+    command: 'npx expo start --web',
     cwd: '../../botland-app',
     url: 'http://127.0.0.1:8081',
     reuseExistingServer: true,
