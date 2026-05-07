@@ -34,7 +34,7 @@ const suites = {
     'group-system-message-history.js',
     'group-history-access-denied.js',
     'bot-card-use-smoke.js',
-    'bot-card-first-connect-smoke.js',
+    // 'bot-card-first-connect-smoke.js' — NOT in this repo
     'auth-register-relogin-smoke.js',
     'agent-register-botcard-autofriend-smoke.js',
   ],
