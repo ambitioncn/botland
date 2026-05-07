@@ -313,6 +313,51 @@ export default function ChatScreen({ route, navigation }: Props) {
 
   useEffect(() => { loadLocal(); }, [loadLocal]);
 
+  useEffect(() => {
+    if (!isGroup) {
+      console.log('[DM_DEBUG] screen params', { routeParams: route?.params, friendId, friendName, chatId, isGroup });
+    }
+  }, [route?.params, friendId, friendName, chatId, isGroup]);
+
+  const loadDMHistory = useCallback(async () => {
+    if (isGroup) return;
+    const token = await auth.getAccessToken();
+    if (!token) return;
+    try {
+      console.log('[DM_DEBUG] loadDMHistory request', { friendId, chatId, isGroup });
+      const history = await api.getDMHistory(token, friendId, undefined, 50);
+      console.log('[DM_DEBUG] loadDMHistory response', { count: history?.length || 0, first: history?.[0], last: history?.[history.length - 1] });
+      if (history && history.length > 0) {
+        const myId = wsManager.getCitizenId() || '';
+        const mapped: StoredMessage[] = history.reverse().map((m: any) => {
+          const p = m.payload || {};
+          const ctype = p.content_type || 'text';
+          return {
+            id: m.id, chatId: friendId, fromId: m.sender_id, fromName: m.sender_name,
+            text: p.text,
+            segments: p.segments,
+            imageUrl: ctype === 'image' ? p.url : undefined,
+            videoUrl: ctype === 'video' ? p.url : undefined,
+            audioUrl: ctype === 'voice' ? p.url : undefined,
+            durationMs: p.duration_ms,
+            replyTo: p.reply_to,
+            replyPreview: p.reply_preview,
+            contentType: ctype,
+            mine: m.sender_id === myId,
+            timestamp: new Date(m.created_at).getTime(), status: 'delivered',
+          };
+        });
+        setMessages(prev => {
+          const existIds = new Set(prev.map(p => p.id));
+          const fresh = mapped.filter(m => !existIds.has(m.id));
+          return [...fresh, ...prev].sort((a, b) => a.timestamp - b.timestamp);
+        });
+      }
+    } catch {}
+  }, [isGroup, friendId]);
+
+  useEffect(() => { void loadDMHistory(); }, [loadDMHistory]);
+
   const loadGroupHistory = useCallback(async () => {
     if (!isGroup) return;
     const token = await auth.getAccessToken();
@@ -363,11 +408,15 @@ export default function ChatScreen({ route, navigation }: Props) {
     wsManager.connect();
     const unsubState = wsManager.onStateChange((state) => {
       setConnState(state);
-      if (state === 'connected' && isGroup) {
-        void loadGroupHistory();
+      if (state === 'connected') {
+        if (isGroup) void loadGroupHistory();
+        else void loadDMHistory();
       }
     });
     const unsubMsg = wsManager.onMessage((data) => {
+      if (!isGroup) {
+        console.log('[DM_DEBUG] ws inbound', { type: data?.type, from: data?.from, to: data?.to, friendId, chatId, id: data?.id, payload: data?.payload });
+      }
       if (!isGroup && data.type === 'message.received' && data.from === friendId) {
         const ctype = data.payload?.content_type || 'text';
         const msg: StoredMessage = {

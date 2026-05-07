@@ -237,7 +237,7 @@ export const api = {
     if (before) params.append('before', before);
     if (limit) params.append('limit', String(limit));
     return request<{ id: string; sender_id: string; sender_name: string; to_id: string; payload: any; created_at: string }[]>(
-      `/api/v1/messages/history?\${params.toString()}`, { token }
+      `/api/v1/messages/history?${params.toString()}`, { token }
     );
   },
 
