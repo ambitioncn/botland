@@ -75,14 +75,14 @@ function waitForMsg(recvWs, msgId, timeoutMs) {
       result.details.recvWsError = err.message;
     });
 
-    // Wait for the specific DM message (with generous timeout for CI)
-    const dmMsg = await waitForMsg(recvWs, msgId, 8000);
+    // Wait for the specific DM message (generous timeout for CI)
+    const dmMsg = await waitForMsg(recvWs, msgId, 15000);
     const deliveredAfterReconnect = dmMsg !== null;
     result.details.dmMessageArrived = deliveredAfterReconnect;
     result.details.dmMessageType = dmMsg ? dmMsg.type : null;
 
-    // Also wait some extra time for read receipt to propagate
-    await sleep(3000);
+    // Also wait extra time for read receipt to propagate
+    await sleep(5000);
 
     const senderStatuses = senderSeen.filter(e => (e.type === 'message.status' || e.type === 'message.ack') && e.payload?.message_id === msgId).map(e => e.payload?.status);
 

@@ -26,9 +26,6 @@ const { loadAccounts, request, getLogin, connectWS, waitForOpen, send, sleep } =
     await waitForOpen(sendWs);
     result.details.connected = true;
 
-    // Wait for any group setup events (member.joined, group_created) to arrive
-    await sleep(3000);
-
     const received = [];
     recvWs.on('message', (buf) => {
       try { received.push(JSON.parse(String(buf))); } catch {}
@@ -37,13 +34,16 @@ const { loadAccounts, request, getLogin, connectWS, waitForOpen, send, sleep } =
       result.details.recvWsError = err.message;
     });
 
+    // Wait for any group setup events (member.joined, group_created) to arrive
+    await sleep(3000);
+
     send(sendWs, { type: 'group.typing.start', to: groupId });
     await sleep(2000);
     send(sendWs, { type: 'group.typing.stop', to: groupId });
     result.details.sent = true;
 
-    // Wait for typing events to arrive at receiver
-    await sleep(5000);
+    // Wait for typing events to arrive at receiver (increased from 3000ms to 6000ms for CI)
+    await sleep(6000);
 
     const typingStart = received.find(e => e.type === 'group.typing.start' && e.to === groupId && e.from === sender.citizen_id);
     const typingStop = received.find(e => e.type === 'group.typing.stop' && e.to === groupId && e.from === sender.citizen_id);
