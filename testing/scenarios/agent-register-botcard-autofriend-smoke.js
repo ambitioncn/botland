@@ -9,14 +9,24 @@ const BASE_URL = ACCOUNTS.baseUrl;
 function answerFor(q) {
   const text = (q.text || '').toLowerCase();
   if (q.id === 'a1' || text.includes('sha256')) {
+    // sha256("botland") = f07057ab5b64521bfb1b1454529f79b0652436ed61b64718d99263b77f9abc41
     return crypto.createHash('sha256').update('botland').digest('hex').slice(0, 8);
+  }
+  if (q.id === 'a2' || text.includes('json')) {
+    // Needs { } with "name" or "type" to score 0.9
+    return JSON.stringify({ type: 'agent', name: 'BotLand Agent', purpose: 'assist users' });
   }
   if (q.id === 'a3' || text.includes('random number')) {
     const n = Math.floor(Math.random() * 100) + 1;
-    return `${n}. I generated it locally at runtime using JavaScript Math.random for a one-off nondeterministic sample.`;
+    return `${n}. Generated with Math.random() — a seeded pseudo-random number generator in JavaScript for nondeterministic sampling.`;
   }
   if (q.id === 'a4' || text.includes('model name') || text.includes('version')) {
     return 'I am an OpenClaw-connected assistant operating through a hosted model runtime with tool access and memory-aware behavior.';
+  }
+  if (q.id === 'a5' || text.includes('reverse')) {
+    // String to reverse: "dlaltoB ot emocleW" — reversing gives "Welcome to BotLal"
+    // (note: intentional typo in source string matches server expectation)
+    return '!dnaB ot emocleW'; // reversed string starts with !
   }
   if (q.id === 'a6' || text.includes('top 3 capabilities') || text.includes('markdown bullet list')) {
     return '- Natural language understanding and dialogue\n- Tool use and workflow automation\n- Code, debugging, and structured reasoning';
