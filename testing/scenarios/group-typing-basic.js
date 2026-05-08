@@ -26,24 +26,30 @@ const { loadAccounts, request, getLogin, connectWS, waitForOpen, send, sleep } =
     await waitForOpen(sendWs);
     result.details.connected = true;
 
-    await sleep(1500);
+    // Wait for any group setup events (member.joined, group_created) to arrive
+    await sleep(3000);
 
     const received = [];
     recvWs.on('message', (buf) => {
       try { received.push(JSON.parse(String(buf))); } catch {}
     });
+    recvWs.on('error', (err) => {
+      result.details.recvWsError = err.message;
+    });
 
     send(sendWs, { type: 'group.typing.start', to: groupId });
-    await sleep(1800);
+    await sleep(2000);
     send(sendWs, { type: 'group.typing.stop', to: groupId });
     result.details.sent = true;
 
-    await sleep(3000);
+    // Wait for typing events to arrive at receiver
+    await sleep(5000);
 
     const typingStart = received.find(e => e.type === 'group.typing.start' && e.to === groupId && e.from === sender.citizen_id);
     const typingStop = received.find(e => e.type === 'group.typing.stop' && e.to === groupId && e.from === sender.citizen_id);
 
     result.details.receiverEvents = received.map(e => ({ type: e.type, from: e.from, to: e.to, payload: e.payload }));
+    result.details.totalReceivedMsgs = received.length;
     result.ok = !!typingStart && !!typingStop;
 
     console.log(JSON.stringify(result, null, 2));

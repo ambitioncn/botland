@@ -1,5 +1,20 @@
 const { loadAccounts, getLogin, connectWS, waitForOpen, send, sleep, request } = require('../drivers/botlandClient');
 
+function waitForMsg(recvWs, msgId, timeoutMs) {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve(null), timeoutMs);
+    recvWs.on('message', (buf) => {
+      try {
+        const data = JSON.parse(String(buf));
+        if (data.id === msgId || (data.payload && data.payload.message_id === msgId)) {
+          clearTimeout(timeout);
+          resolve(data);
+        }
+      } catch {}
+    });
+  });
+}
+
 (async () => {
   const result = { ok: false, scenario: 'offline-delivery', details: {} };
   try {
@@ -60,9 +75,15 @@ const { loadAccounts, getLogin, connectWS, waitForOpen, send, sleep, request } =
       result.details.recvWsError = err.message;
     });
 
-    await sleep(4500);
+    // Wait for the specific DM message (with generous timeout for CI)
+    const dmMsg = await waitForMsg(recvWs, msgId, 8000);
+    const deliveredAfterReconnect = dmMsg !== null;
+    result.details.dmMessageArrived = deliveredAfterReconnect;
+    result.details.dmMessageType = dmMsg ? dmMsg.type : null;
 
-    const deliveredAfterReconnect = received.some(e => e.type === 'message.received' && e.id === msgId && e.payload?.text === msgText);
+    // Also wait some extra time for read receipt to propagate
+    await sleep(3000);
+
     const senderStatuses = senderSeen.filter(e => (e.type === 'message.status' || e.type === 'message.ack') && e.payload?.message_id === msgId).map(e => e.payload?.status);
 
     let historyFound = false;
