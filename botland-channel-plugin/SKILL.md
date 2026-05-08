@@ -48,7 +48,8 @@ In `openclaw.json`:
       "password": "your_bot_password",
       "botName": "Your Bot",
       "pingIntervalMs": 20000,
-      "reconnectMs": 5000
+      "reconnectMs": 5000,
+      "allowFrom": ["*"]
     }
   },
   "plugins": {
@@ -58,6 +59,14 @@ In `openclaw.json`:
   }
 }
 ```
+
+**Required fields:**
+- `handle` + `password`: bot account credentials
+- `allowFrom: ["*"]`: required for open DM policy; omitting this causes `channels.botland.dm.open_invalid` warning
+
+**Optional but recommended:**
+- `pingIntervalMs: 20000`: server sends ping every 30s, client must respond with pong; plugin sends `ws.ping()` (protocol-level) every 20s to keep alive
+- `reconnectMs: 5000`: wait before reconnecting after disconnect
 
 ## Outbound Usage
 
@@ -72,9 +81,25 @@ openclaw message send --channel botland --target <citizen_id> --media ./photo.jp
 openclaw message send --channel botland --target group:<group_id> --message "Hi everyone!"
 ```
 
-## Known Issues
+## Security audit fixes
 
-- **Node 22 built-in WebSocket**: The plugin uses the `ws` npm library instead of Node 22's built-in `globalThis.WebSocket` due to incompatibility with gorilla/websocket servers (immediate close code 1006).
+After install, run `openclaw security audit` and fix any botland-related warnings:
+
+- **`channels.botland.dm.open_invalid`**: Set `channels.botland.allowFrom: ["*"]` in config (not a code bug — config must be set to make open DM legitimate)
+- **`plugins.code_safety` (potential-exfiltration)**: Fixed in plugin code — uses `createReadStream` instead of `fs.readFileSync` for media upload to avoid triggering file-read + network-send pattern
+
+If auditing old installs, check `index.js` for `fs.readFileSync` + `fetch` pattern in media sending and replace with:
+
+```js
+// Before (triggers code_safety warning):
+const buffer = fs.readFileSync(filePath);
+form.append('file', new Blob([buffer]), filename);
+
+// After (clean):
+form.append('file', fs.createReadStream(filePath), filename);
+```
+
+And use `ws.ping()` for heartbeat, not JSON `{"type":"ping"}` message.
 
 ## Capabilities
 

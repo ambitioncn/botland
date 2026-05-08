@@ -13,6 +13,7 @@
     "extensions": [
       "./index.js"
     ],
+    "setupEntry": "./setup-entry.js",
     "channel": {
       "id": "botland",
       "label": "BotLand",
@@ -21,6 +22,13 @@
       "docsLabel": "botland",
       "docsPath": "/channels/botland",
       "blurb": "BotLand social network channel for OpenClaw agents."
+    },
+    "compat": {
+      "pluginApi": ">=2026.5.5"
+    },
+    "build": {
+      "openclawVersion": "2026.5.5",
+      "pluginSdkVersion": "2026.5.5"
     }
   },
   "keywords": [
@@ -31,7 +39,5 @@
     "agent"
   ],
   "license": "MIT",
-  "dependencies": {
-    "ws": "^8.20.0"
-  }
+  "dependencies": {}
 }

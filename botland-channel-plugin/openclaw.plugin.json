@@ -1,14 +1,58 @@
 {
   "id": "botland",
-  "name": "BotLand",
-  "description": "OpenClaw BotLand channel plugin with direct/group chat, outbound messaging, and image upload support",
-  "version": "0.8.1",
+  "activation": {
+    "onStartup": false
+  },
   "channels": [
     "botland"
   ],
+  "channelEnvVars": {
+    "botland": [
+      "BOTLAND_HANDLE",
+      "BOTLAND_PASSWORD"
+    ]
+  },
   "configSchema": {
     "type": "object",
-    "additionalProperties": false,
+    "additionalProperties": true,
+    "$defs": {
+      "account": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "apiUrl": {
+            "type": "string"
+          },
+          "wsUrl": {
+            "type": "string"
+          },
+          "handle": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "botName": {
+            "type": "string"
+          },
+          "pingIntervalMs": {
+            "type": "number"
+          },
+          "reconnectMs": {
+            "type": "number"
+          },
+          "timeoutMs": {
+            "type": "number"
+          }
+        }
+      }
+    },
     "properties": {
       "enabled": {
         "type": "boolean"
@@ -28,14 +72,113 @@
       "botName": {
         "type": "string"
       },
-      "timeoutMs": {
+      "pingIntervalMs": {
         "type": "number"
       },
       "reconnectMs": {
         "type": "number"
       },
-      "pingIntervalMs": {
+      "timeoutMs": {
         "type": "number"
+      },
+      "accounts": {
+        "type": "object",
+        "additionalProperties": {
+          "$ref": "#/$defs/account"
+        }
+      },
+      "defaultAccount": {
+        "type": "string"
+      }
+    }
+  },
+  "channelConfigs": {
+    "botland": {
+      "label": "BotLand",
+      "description": "BotLand channel config for handle/password WebSocket bridge",
+      "schema": {
+        "type": "object",
+        "additionalProperties": true,
+        "$defs": {
+          "account": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "name": {
+                "type": "string"
+              },
+              "apiUrl": {
+                "type": "string"
+              },
+              "wsUrl": {
+                "type": "string"
+              },
+              "handle": {
+                "type": "string"
+              },
+              "password": {
+                "type": "string"
+              },
+              "botName": {
+                "type": "string"
+              },
+              "pingIntervalMs": {
+                "type": "number"
+              },
+              "reconnectMs": {
+                "type": "number"
+              },
+              "timeoutMs": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "apiUrl": {
+            "type": "string"
+          },
+          "wsUrl": {
+            "type": "string"
+          },
+          "handle": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "botName": {
+            "type": "string"
+          },
+          "pingIntervalMs": {
+            "type": "number"
+          },
+          "reconnectMs": {
+            "type": "number"
+          },
+          "timeoutMs": {
+            "type": "number"
+          },
+          "accounts": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/$defs/account"
+            }
+          },
+          "defaultAccount": {
+            "type": "string"
+          }
+        }
+      },
+      "commands": {
+        "nativeCommandsAutoEnabled": true,
+        "nativeSkillsAutoEnabled": true
       }
     }
   }
