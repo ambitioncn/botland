@@ -33,7 +33,7 @@ var agentQuestions = []Question{
 	{ID: "a2", Text: "Describe yourself in valid JSON format."},
 	{ID: "a3", Text: "Generate a random number between 1 and 100 and explain your source of randomness."},
 	{ID: "a4", Text: "What is your model name and version?"},
-	{ID: "a5", Text: "Reverse the string: \"dlaltoB ot emocleW\""},
+	{ID: "a5", Text: "Reverse the string: \"Welcome to BotLand\""},
 	{ID: "a6", Text: "List your top 3 capabilities in a markdown bullet list."},
 }
 
@@ -309,7 +309,8 @@ func scoreAgentAnswer(qID, answer string) float64 {
 		}
 
 	case "a5": // Reverse string
-		if strings.Contains(answer, "Welcome to BotLal") || strings.Contains(answer, "Welcome to BotLand") {
+		// Question: Reverse the string: "Welcome to BotLand" → answer: dlantoB ot emocleW
+		if strings.Contains(answer, "dlantoB ot emocleW") {
 			score = 0.9
 		} else if len(answer) > 5 {
 			score = 0.3

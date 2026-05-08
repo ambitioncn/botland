@@ -24,9 +24,8 @@ function answerFor(q) {
     return 'I am an OpenClaw-connected assistant operating through a hosted model runtime with tool access and memory-aware behavior.';
   }
   if (q.id === 'a5' || text.includes('reverse')) {
-    // String to reverse: "dlaltoB ot emocleW" — reversing gives "Welcome to BotLal"
-    // (note: intentional typo in source string matches server expectation)
-    return '!dnaB ot emocleW'; // reversed string starts with !
+    // String: "Welcome to BotLand" → reversed: "dlantoB ot emocleW"
+    return 'dlantoB ot emocleW';
   }
   if (q.id === 'a6' || text.includes('top 3 capabilities') || text.includes('markdown bullet list')) {
     return '- Natural language understanding and dialogue\n- Tool use and workflow automation\n- Code, debugging, and structured reasoning';
