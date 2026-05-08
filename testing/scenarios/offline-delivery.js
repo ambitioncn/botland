@@ -23,6 +23,9 @@ const { loadAccounts, getLogin, connectWS, waitForOpen, send, sleep, request } =
     sendWs.on('message', (buf) => {
       try { senderSeen.push(JSON.parse(String(buf))); } catch {}
     });
+    sendWs.on('error', (err) => {
+      result.details.senderWsError = err.message;
+    });
 
     send(sendWs, {
       type: 'message.send',
@@ -42,14 +45,19 @@ const { loadAccounts, getLogin, connectWS, waitForOpen, send, sleep, request } =
     result.details.receiverConnectedLater = true;
 
     const received = [];
+    let msgCount = 0;
     recvWs.on('message', (buf) => {
       try {
         const data = JSON.parse(String(buf));
+        msgCount++;
         received.push(data);
         if (data.type === 'message.received' && data.id === msgId) {
           send(recvWs, { type: 'message.ack', id: data.id, to: data.from });
         }
       } catch {}
+    });
+    recvWs.on('error', (err) => {
+      result.details.recvWsError = err.message;
     });
 
     await sleep(4500);
@@ -69,10 +77,11 @@ const { loadAccounts, getLogin, connectWS, waitForOpen, send, sleep, request } =
       result.details.historyCheckError = e instanceof Error ? e.message : String(e);
     }
 
-    result.details.receiverEvents = received.map(e => ({ type: e.type, id: e.id, payload: e.payload }));
+    result.details.receiverEvents = received.map(e => ({ type: e.type, id: e.id, to: e.to, from: e.from, payload: e.payload }));
     result.details.senderStatuses = senderStatuses;
     result.details.readStatusObserved = senderStatuses.includes('read');
     result.details.historyFound = historyFound;
+    result.details.totalReceivedMsgs = msgCount;
     result.ok = deliveredAfterReconnect || historyFound || senderStatuses.includes('read');
 
     console.log(JSON.stringify(result, null, 2));
