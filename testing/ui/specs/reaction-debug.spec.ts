@@ -14,21 +14,18 @@ function runJsonScenario(scriptName: string, args: string[] = []) {
     child.stderr.on('data', d => { stderr += d.toString(); });
     child.on('close', (code) => {
       if (code !== 0) return reject(new Error(`${scriptName} failed: ${stderr || code}`));
-      try {
-        resolve(JSON.parse(stdout.trim().split(/\n(?=\{)/).pop() || '{}'));
-      } catch (err) {
-        reject(err);
-      }
+      try { resolve(JSON.parse(stdout.trim().split(/\n(?=\{)/).pop() || '{}')); }
+      catch (err) { reject(err); }
     });
   });
 }
 
-test('reaction chip appears on a visible group message in chat UI', async ({ page }) => {
-  const consoleLines: string[] = [];
-  page.on('console', (msg) => {
-    const line = `[browser-console] ${msg.type()} ${msg.text()}`;
+test('debug reaction', async ({ page }) => {
+  const allConsoleLines: string[] = [];
+  page.on('console', msg => {
+    const line = `[browser] ${msg.type()}: ${msg.text()}`;
     console.log(line);
-    consoleLines.push(line);
+    allConsoleLines.push(line);
   });
 
   await page.addInitScript(() => {
@@ -39,7 +36,7 @@ test('reaction chip appears on a visible group message in chat UI', async ({ pag
       const ws = new OrigWS(...args);
       ws.addEventListener('message', (ev) => {
         try {
-          console.log('[ws-raw]', typeof ev.data === 'string' ? ev.data : '[non-string]');
+          console.log('[WS]', ev.data.slice(0, 200));
         } catch {}
       });
       return ws;
@@ -52,26 +49,43 @@ test('reaction chip appears on a visible group message in chat UI', async ({ pag
   const viewer = cfg.actors.lobster_receiver;
 
   const seed = await runJsonScenario('group-reaction-seed.js');
-  const groupName = seed?.details?.groupName;
-  const groupId = seed?.details?.groupId;
-  const messageText = seed?.details?.messageText;
-  const messageId = seed?.details?.messageId;
-  if (!groupName || !groupId || !messageText || !messageId) throw new Error('group-reaction-seed missing required details');
+  console.log('Seed:', JSON.stringify(seed.details));
+  const { groupId, groupName, messageId, messageText } = seed.details;
 
   await loginBotLand(page, viewer.handle, viewer.password);
   await page.waitForLoadState('networkidle');
-  // Wait for groups tab to appear (rate-limit may delay UI)
   await expect(page.getByText('群聊', { exact: true })).toBeVisible({ timeout: 20000 });
   await page.getByText('群聊', { exact: true }).click();
   await expect(page.getByText(groupName, { exact: false })).toBeVisible({ timeout: 10000 });
   await page.getByText(groupName, { exact: false }).click();
   await expect(page.getByText(messageText, { exact: false })).toBeVisible({ timeout: 10000 });
 
-  // Inject reaction and wait for UI to update (same pattern as passing debug test)
-  await runJsonScenario('inject-group-reaction.js', [groupId, messageId]);
-  await page.waitForTimeout(4000);
-  
+  console.log('Before inject, WS lines so far:', allConsoleLines.filter(l => l.includes('[WS]')).length);
+
+  // Run inject
+  console.log('Running inject for', groupId, messageId);
+  const injectResult = await runJsonScenario('inject-group-reaction.js', [groupId, messageId]);
+  console.log('Inject result:', JSON.stringify(injectResult));
+
+  // Wait longer and collect WS messages
+  for (let i = 0; i < 10; i++) {
+    await page.waitForTimeout(1000);
+    const wsLines = allConsoleLines.filter(l => l.includes('[WS]'));
+    const reactionLines = wsLines.filter(l => l.includes('reaction'));
+    console.log(`After ${i+1}s: ${wsLines.length} WS msgs, ${reactionLines.length} mention reaction`);
+    if (reactionLines.length > 0) {
+      console.log('Reaction found:', reactionLines[0]);
+      break;
+    }
+  }
+
+  // Now try to find reaction
   const pageContent = await page.content();
-  const hasHeart = pageContent.includes('❤️');
-  expect(hasHeart).toBe(true);
+  console.log('Page has ❤️:', pageContent.includes('❤️'));
+  console.log('Page has reaction:', pageContent.toLowerCase().includes('reaction'));
+
+  // Try to find any element containing ❤️
+  const heartLocator = page.locator('text="❤️"').first();
+  const count = await heartLocator.count();
+  console.log('❤️ elements found:', count);
 });

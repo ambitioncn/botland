@@ -15,17 +15,17 @@ const { loadAccounts, getLogin, connectWS, waitForOpen, send } = require('../dri
     await waitForOpen(ws);
     console.error('[inject] WS connected, sending reaction to', groupId, 'for msg', messageId);
 
-    const isGroup = groupId.startsWith('group_');
     send(ws, {
-      type: isGroup ? 'group.message.reaction' : 'message.reaction',
+      type: 'message.reaction',
       id: `rx_${Date.now()}`,
       to: groupId,
       payload: { message_id: messageId, emoji: '❤️' },
     });
 
     // Wait briefly to ensure server processes it
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 2000));
 
+    // Check what messages come back on the WS
     result.ok = true;
     result.details.groupId = groupId;
     result.details.messageId = messageId;

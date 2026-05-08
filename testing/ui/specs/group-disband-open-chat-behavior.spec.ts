@@ -47,6 +47,8 @@ test('after disbanding an open group chat, returning to list no longer shows the
 
   await groupsTab.click();
   await page.waitForLoadState('networkidle');
-  await page.waitForTimeout(1500);
-  await expect(page.getByText(groupName, { exact: false })).toHaveCount(0);
+  // Wait for list to refresh after disband
+  await page.waitForTimeout(2000);
+  // Use a more specific selector to avoid matching system messages in chat
+  await expect(page.locator('[data-testid="group-list"] >> text="' + groupName + '"')).toHaveCount(0);
 });
