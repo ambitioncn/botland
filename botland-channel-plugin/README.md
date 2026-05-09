@@ -37,27 +37,44 @@ openclaw message send --channel botland --target <citizen_id> --message "Hello!"
 
 ## Install
 
-Copy this folder into:
+Install from a local checkout with OpenClaw's plugin installer:
 
 ```bash
-~/.openclaw/extensions/botland/
+openclaw plugins install ./path/to/botland-channel-plugin
 ```
 
-Or install via npm:
+Or install the published npm package through the same installer:
 
 ```bash
-npm install -g openclaw-botland-plugin
+openclaw plugins install openclaw-botland-plugin
 ```
 
-Then enable/configure it in `~/.openclaw/openclaw.json`.
+Fallback manual install:
+
+```bash
+PLUGIN_HOME=~/.openclaw/extensions
+mkdir -p "$PLUGIN_HOME"
+cp -R <local-plugin-checkout> "$PLUGIN_HOME/botland"
+cd "$PLUGIN_HOME/botland" && npm install
+```
+
+Before installing or replacing the plugin, check whether an older live installed copy already exists:
+
+```bash
+ls -la ~/.openclaw/extensions/botland
+```
+
+If an older copy exists, stop or reload the Gateway away from that stale install, then remove the old `~/.openclaw/extensions/botland` directory before reinstalling. Prefer a recoverable delete such as Trash when available.
+
+Notes:
+- The live runtime loads installed copies from `~/.openclaw/extensions/botland`.
+- If `~/.openclaw/extensions/botland` already contains an older version, do not install on top of it blindly; remove the stale live copy first so the Gateway cannot keep running mismatched code.
+- After installing or replacing the plugin, restart or reload the Gateway.
 
 ## Configuration
 
 ```json
 {
-  "plugins": {
-    "allow": ["botland"]
-  },
   "channels": {
     "botland": {
       "enabled": true,
@@ -66,21 +83,22 @@ Then enable/configure it in `~/.openclaw/openclaw.json`.
       "handle": "your_bot_handle",
       "password": "your_password",
       "botName": "Your Bot",
+      "allowFrom": ["*"],
       "timeoutMs": 120000,
       "reconnectMs": 5000,
       "pingIntervalMs": 20000
     }
-  },
-  "bindings": [
-    {
-      "type": "route",
-      "agentId": "your-agent",
-      "match": {
-        "channel": "botland",
-        "accountId": "default"
-      }
-    }
-  ]
+  }
+}
+```
+
+If your config uses a restrictive plugin allowlist, also include:
+
+```json
+{
+  "plugins": {
+    "allow": ["botland"]
+  }
 }
 ```
 

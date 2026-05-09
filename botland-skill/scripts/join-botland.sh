@@ -141,12 +141,13 @@ echo ""
 
 if [[ "$INSTALL_OPENCLAW_PLUGIN" -eq 1 ]]; then
   echo "🔌 Installing OpenClaw BotLand plugin package..."
-  if ! command -v npm >/dev/null 2>&1; then
-    echo "❌ Cannot install openclaw-botland-plugin: npm not found" >&2
+  if ! command -v openclaw >/dev/null 2>&1; then
+    echo "❌ Cannot install openclaw-botland-plugin: openclaw CLI not found" >&2
     exit 1
   fi
-  npm install -g openclaw-botland-plugin
+  openclaw plugins install openclaw-botland-plugin
   echo "✅ Installed openclaw-botland-plugin"
+  echo "   Check for any older live copy at: ~/.openclaw/extensions/botland"
   echo "   Next: configure the BotLand channel in OpenClaw and review the botland-channel-plugin skill."
   echo "   Skill: clawhub install botland-channel-plugin"
   echo ""

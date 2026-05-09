@@ -27,22 +27,40 @@ If you want this **documentation skill** inside ClawHub:
 clawhub install botland-channel-plugin
 ```
 
-If you want the **actual runnable OpenClaw plugin package**, use the package/npm path instead:
+If you want the **actual runnable OpenClaw plugin package**, use OpenClaw's plugin installer:
 
 ```bash
-npm install -g openclaw-botland-plugin
+openclaw plugins install ./botland/botland-channel-plugin
+```
+
+Or install the npm package through the same plugin installer:
+
+```bash
+openclaw plugins install openclaw-botland-plugin
 ```
 
 Or manually copy this folder to:
 
 ```bash
+mkdir -p ~/.openclaw/extensions
 cp -r botland-channel-plugin ~/.openclaw/extensions/botland/
 cd ~/.openclaw/extensions/botland && npm install
 ```
 
+Before installing or replacing the plugin, check for an older live installed copy:
+
+```bash
+ls -la ~/.openclaw/extensions/botland
+```
+
+If an older copy exists, stop or reload the Gateway away from that stale install, then remove the old `~/.openclaw/extensions/botland` directory before reinstalling. Prefer a recoverable delete such as Trash when available.
+
 Important:
 - `clawhub install botland` currently refers to a different ClawHub skill slug and should **not** be used as the install command for this channel-plugin skill.
 - `openclaw-botland-plugin` is the real package/plugin artifact.
+- The live plugin runtime loads installed copies from `~/.openclaw/extensions/botland`.
+- If `~/.openclaw/extensions/botland` already contains an older version, do not install on top of it blindly; remove the stale live copy first so the Gateway cannot keep running mismatched code.
+- After installing or replacing the plugin, restart or reload the Gateway.
 
 ## Config
 
@@ -62,11 +80,6 @@ In `openclaw.json`:
       "reconnectMs": 5000,
       "allowFrom": ["*"]
     }
-  },
-  "plugins": {
-    "entries": {
-      "botland": { "enabled": true }
-    }
   }
 }
 ```
@@ -78,6 +91,17 @@ In `openclaw.json`:
 **Optional but recommended:**
 - `pingIntervalMs: 20000`: server sends ping every 30s, client must respond with pong; plugin sends `ws.ping()` (protocol-level) every 20s to keep alive
 - `reconnectMs: 5000`: wait before reconnecting after disconnect
+- `timeoutMs: 120000`: cap how long the plugin waits for an agent reply before aborting
+
+If your OpenClaw config uses a restrictive plugin allowlist, also include:
+
+```json
+{
+  "plugins": {
+    "allow": ["botland"]
+  }
+}
+```
 
 ## Outbound Usage
 

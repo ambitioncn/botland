@@ -30,6 +30,45 @@ const DEFAULT_TIMEOUT_MS = 120000;
 let cachedToken = null;
 let cachedCitizenId = null;
 let _activeWs = null;
+const recentInboundDirectKeys = new Map();
+const pendingOutboundStatuses = new Map();
+
+function markInboundDirectSeen(key, ttlMs = 60_000) {
+  const now = Date.now();
+  for (const [existingKey, expiresAt] of recentInboundDirectKeys) {
+    if (expiresAt <= now) recentInboundDirectKeys.delete(existingKey);
+  }
+  const existingExpiry = recentInboundDirectKeys.get(key);
+  if (existingExpiry && existingExpiry > now) return true;
+  recentInboundDirectKeys.set(key, now + ttlMs);
+  return false;
+}
+
+function buildInboundDirectDedupKey(msg, text) {
+  if (typeof msg?.id === "string" && msg.id.trim()) return `id:${msg.id}`;
+  const ts = msg?.ts || msg?.timestamp || "";
+  return `sig:${msg?.from || ""}:${msg?.to || ""}:${ts}:${text}`;
+}
+
+function settlePendingOutboundStatus(messageId, statusEnvelope) {
+  if (!messageId) return false;
+  const pending = pendingOutboundStatuses.get(messageId);
+  if (!pending) return false;
+  pendingOutboundStatuses.delete(messageId);
+  clearTimeout(pending.timeoutHandle);
+  pending.resolve(statusEnvelope);
+  return true;
+}
+
+function waitForOutboundStatus(messageId, timeoutMs) {
+  return new Promise((resolve) => {
+    const timeoutHandle = setTimeout(() => {
+      pendingOutboundStatuses.delete(messageId);
+      resolve(null);
+    }, timeoutMs);
+    pendingOutboundStatuses.set(messageId, { resolve, timeoutHandle });
+  });
+}
 
 async function readWsEventDataAsText(data) {
   if (typeof data === 'string') return data;
@@ -64,27 +103,151 @@ async function ensureToken(account, log) {
   return data.access_token;
 }
 
+async function sendViaActiveWs({ target, message, media, cfg, accountId, awaitAckMs = 0, maxAttempts = 1 }) {
+  const log = getPluginApi()?.logger;
+  const account = resolveAccount(cfg, accountId);
+  const ws = _activeWs;
+  if (!ws || ws.readyState !== WS.OPEN) {
+    return { success: false, error: 'BotLand WebSocket is not connected' };
+  }
+  if (!target) {
+    return { success: false, error: 'Missing target' };
+  }
+  const isGroup = target.startsWith('group:') || target.startsWith('group_');
+  const to = isGroup ? target.replace(/^group:/, '') : target;
+  const msgType = isGroup ? 'group.message.send' : 'message.send';
+  if (!isGroup && message && typeof message === 'object' && message.reaction && typeof message.reaction === 'object') {
+    const msgId = `out_${Date.now()}`;
+    ws.send(JSON.stringify({ type: 'message.reaction', id: msgId, to, payload: message.reaction }));
+    return { success: true, messageId: msgId };
+  }
+  if (media) {
+    try {
+      const token = await ensureToken(account, log);
+      const { createReadStream } = await import('fs');
+      const { basename } = await import('path');
+      const mediaPath = media.path || media.filePath || media;
+      const filename = typeof mediaPath === 'string' ? basename(mediaPath) : 'file';
+      const fileStream = createReadStream(mediaPath);
+      const formData = new FormData();
+      formData.append('file', fileStream, filename);
+      const uploadRes = await fetch(`${account.apiUrl}/api/v1/media/upload?category=chat`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const uploadData = await uploadRes.json();
+      if (!uploadRes.ok) {
+        throw new Error(uploadData?.error?.message || 'Upload failed');
+      }
+      ws.send(JSON.stringify({
+        type: msgType,
+        id: msgId,
+        to,
+        payload: { content_type: 'image', url: uploadData.url, text: message || '' },
+      }));
+      return { success: true, messageId: msgId };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+  if (message) {
+    let lastAckStatus = null;
+    for (let attempt = 1; attempt <= Math.max(1, maxAttempts); attempt += 1) {
+      const msgId = `out_${Date.now()}_${attempt}`;
+      ws.send(JSON.stringify({ type: msgType, id: msgId, to, payload: { content_type: 'text', text: message } }));
+      if (!awaitAckMs || isGroup) {
+        return { success: true, messageId: msgId };
+      }
+      const ack = await waitForOutboundStatus(msgId, awaitAckMs);
+      if (ack?.payload?.status === 'delivered' || ack?.payload?.status === 'read') {
+        return { success: true, messageId: msgId, status: ack.payload.status };
+      }
+      lastAckStatus = ack?.payload?.status || null;
+      log?.warn?.(
+        `[${CHANNEL_ID}] no delivery ack for outbound direct message ${msgId} to ${to} (attempt ${attempt}/${Math.max(1, maxAttempts)})`,
+      );
+    }
+    return {
+      success: false,
+      error: lastAckStatus
+        ? `BotLand outbound text send did not confirm delivery (${lastAckStatus})`
+        : 'BotLand outbound text send did not confirm delivery',
+    };
+  }
+  return { success: false, error: 'No message or media provided' };
+}
+
+function buildInboundEnvelope({ cfg, runtime, route, channelLabel, fromLabel, body, timestamp }) {
+  const storePath = runtime.channel.session.resolveStorePath(cfg.session?.store, {
+    agentId: route.agentId,
+  });
+  const previousTimestamp = runtime.channel.session.readSessionUpdatedAt({
+    storePath,
+    sessionKey: route.sessionKey,
+  });
+  const envelopeOptions = runtime.channel.reply.resolveEnvelopeFormatOptions(cfg);
+  return {
+    storePath,
+    body: runtime.channel.reply.formatAgentEnvelope({
+      channel: channelLabel,
+      from: fromLabel,
+      body,
+      timestamp,
+      previousTimestamp,
+      envelope: envelopeOptions,
+    }),
+  };
+}
+
 function extractReplyText(payload) {
   const visited = new Set();
   const fragments = [];
   const visit = (value) => {
     const direct = typeof value === "string" ? value.trim() : "";
-    if (direct) { fragments.push(direct); return; }
+    if (direct) {
+      fragments.push(direct);
+      return;
+    }
     if (!value || typeof value !== "object") return;
     if (visited.has(value)) return;
     visited.add(value);
-    if (Array.isArray(value)) { for (const item of value) visit(item); return; }
-    if (value.type === "text" && typeof value.text === "string") { visit(value.text); return; }
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    if (value.type === "text" && typeof value.text === "string") {
+      visit(value.text);
+      return;
+    }
     for (const key of ["text", "body", "content", "message", "markdown", "channelData"]) {
       if (key in value) visit(value[key]);
     }
   };
   visit(payload);
-  return fragments.filter((f, i) => fragments.indexOf(f) === i).join("\n\n").trim();
+  return fragments.filter((entry, index) => fragments.indexOf(entry) === index).join("\n\n").trim();
 }
 
-async function runAgentReply(params) {
-  const { account, cfg, from, text, senderName } = params;
+function resolveVisibleOutboundPayload(payload) {
+  const directText = typeof payload?.text === "string" ? payload.text.trim() : "";
+  const mediaUrls = Array.isArray(payload?.mediaUrls)
+    ? payload.mediaUrls.filter((entry) => typeof entry === "string" && entry.trim())
+    : payload?.mediaUrl
+      ? [payload.mediaUrl]
+      : [];
+  if (directText || mediaUrls.length > 0) {
+    return { text: directText, mediaUrls, usedLegacyTextFallback: false };
+  }
+  const legacyText = extractReplyText(payload);
+  return {
+    text: legacyText,
+    mediaUrls,
+    usedLegacyTextFallback: Boolean(legacyText),
+  };
+}
+
+async function dispatchInboundDirectDm(params) {
+  const { account, cfg, from, text, senderName, ws, timestamp } = params;
   const runtime = getRuntime();
   const logger = getPluginApi().logger;
   const route = runtime.channel.routing.resolveAgentRoute({
@@ -93,29 +256,105 @@ async function runAgentReply(params) {
     accountId: account.accountId,
     peer: { kind: "direct", id: from },
   });
-  const sessionKey = route.sessionKey || `${CHANNEL_ID}:direct:${from}`;
-  const replyParts = [];
-  const ctxPayload = runtime.channel.reply.finalizeInboundContext({
-    Body: text, BodyForAgent: text, RawBody: text, CommandBody: text,
-    From: from, To: account.botName, SessionKey: sessionKey, AccountId: route.accountId,
-    ChatType: "direct", ConversationLabel: senderName || from, SenderName: senderName || from,
-    SenderId: from, CommandAuthorized: true, Provider: CHANNEL_ID, Surface: CHANNEL_ID,
-    OriginatingChannel: CHANNEL_ID, OriginatingTo: from,
+  const { storePath, body } = buildInboundEnvelope({
+    cfg,
+    runtime,
+    route,
+    channelLabel: "BotLand",
+    fromLabel: senderName || from,
+    body: text,
+    timestamp,
   });
-  const storePath = runtime.channel.session.resolveStorePath(cfg.session?.store, { agentId: route.agentId });
-  await runtime.channel.session.recordInboundSession({ storePath, sessionKey: ctxPayload.SessionKey ?? sessionKey, ctx: ctxPayload, onRecordError: () => {} });
+  const messageId = `in_${Date.now()}`;
+  const ctxPayload = runtime.channel.reply.finalizeInboundContext({
+    Body: body,
+    BodyForAgent: text,
+    RawBody: text,
+    CommandBody: text,
+    From: from,
+    // For direct DMs, the current conversation target is the peer we should reply to,
+    // not the bot account itself. This keeps message-tool default delivery aimed at
+    // the sender instead of looping back to the bot's own BotLand ID.
+    To: from,
+    SessionKey: route.sessionKey,
+    AccountId: route.accountId ?? account.accountId,
+    ChatType: "direct",
+    ConversationLabel: senderName || from,
+    SenderName: senderName || from,
+    SenderId: from,
+    Provider: CHANNEL_ID,
+    Surface: CHANNEL_ID,
+    MessageSid: messageId,
+    MessageSidFull: messageId,
+    Timestamp: timestamp,
+    CommandAuthorized: true,
+    OriginatingChannel: CHANNEL_ID,
+    OriginatingTo: from,
+  });
+  let deliveredContent = false;
   const abortController = new AbortController();
-  const timeoutHandle = setTimeout(() => abortController.abort(new Error(`Timed out after ${account.timeoutMs}ms`)), account.timeoutMs);
+  const timeoutHandle = setTimeout(
+    () => abortController.abort(new Error(`Timed out after ${account.timeoutMs}ms`)),
+    account.timeoutMs,
+  );
   try {
+    await runtime.channel.session.recordInboundSession({
+      storePath,
+      sessionKey: ctxPayload.SessionKey ?? route.sessionKey,
+      ctx: ctxPayload,
+      onRecordError: (error) =>
+        logger.error(
+          `[${CHANNEL_ID}] session record error: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+    });
     await runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
       ctx: ctxPayload,
       cfg,
       dispatcherOptions: {
-        deliver: async (outbound) => {
-          const chunk = extractReplyText(outbound);
-          if (chunk) replyParts.push(chunk);
+        deliver: async (payload) => {
+          const { text: replyText, mediaUrls, usedLegacyTextFallback } =
+            resolveVisibleOutboundPayload(payload);
+          if (!replyText && mediaUrls.length === 0) {
+            logger?.debug?.(`[${CHANNEL_ID}] skipping empty normalized outbound payload`);
+            return;
+          }
+          if (usedLegacyTextFallback) {
+            logger?.debug?.(
+              `[${CHANNEL_ID}] recovered visible reply text from legacy outbound payload keys for ${from}`,
+            );
+          }
+          deliveredContent = true;
+          if (replyText && ws.readyState === WS.OPEN) {
+            const result = await sendViaActiveWs({
+              target: from,
+              message: replyText,
+              cfg,
+              accountId: account.accountId,
+              awaitAckMs: 2000,
+              maxAttempts: 2,
+            });
+            if (!result?.success) {
+              throw new Error(result?.error || "BotLand outbound text send failed");
+            }
+          }
+        for (const mediaUrl of mediaUrls) {
+          if (ws.readyState !== WS.OPEN) break;
+          const result = await sendViaActiveWs({
+            target: from,
+            message: "",
+            media: mediaUrl,
+            cfg,
+            accountId: account.accountId,
+          });
+          if (!result?.success) {
+              throw new Error(result?.error || "BotLand outbound media send failed");
+            }
+          }
         },
-        onError: (error, info) => logger.error(`[${CHANNEL_ID}] dispatcher error kind=${info.kind} message=${error instanceof Error ? error.message : String(error)}`),
+        onError: (error, info) =>
+          logger.error(
+            `[${CHANNEL_ID}] dispatcher error kind=${info.kind} message=${error instanceof Error ? error.message : String(error)}`,
+          ),
       },
       replyOptions: {
         abortSignal: abortController.signal,
@@ -125,8 +364,10 @@ async function runAgentReply(params) {
     });
   } finally {
     clearTimeout(timeoutHandle);
+    if (!deliveredContent) {
+      logger?.warn?.(`[${CHANNEL_ID}] no visible outbound reply content for inbound DM from ${from}`);
+    }
   }
-  return replyParts.join("\n\n").trim();
 }
 
 async function connectBotland(params) {
@@ -159,23 +400,45 @@ async function connectBotland(params) {
       });
       ws.addEventListener('message', (event) => {
         void (async () => {
+          let senderId = null;
           try {
             const raw = await readWsEventDataAsText(event.data);
             const msg = JSON.parse(raw);
+            if (msg.type === 'message.status') {
+              settlePendingOutboundStatus(msg.payload?.message_id, msg);
+              return;
+            }
             const isDirect = msg.type === 'message.received' && msg.from;
             if (!isDirect) return;
             const text = msg.payload?.text ?? '';
             if (!text.trim()) return;
-            const senderId = msg.from;
+            if (cachedCitizenId && msg.from === cachedCitizenId) {
+              log?.debug?.(`[${CHANNEL_ID}] ignoring echoed self message ${msg.id || '<no-id>'}`);
+              return;
+            }
+            const dedupKey = buildInboundDirectDedupKey(msg, text.trim());
+            if (markInboundDirectSeen(dedupKey)) {
+              log?.debug?.(`[${CHANNEL_ID}] skipping duplicate inbound direct message ${dedupKey}`);
+              return;
+            }
+            senderId = msg.from;
             const senderName = msg.payload?.sender_name || msg.sender_name || msg.from;
             if (ws.readyState === WS.OPEN) ws.send(JSON.stringify({ type: 'typing.start', to: senderId }));
-            const reply = await runAgentReply({ account, cfg, from: senderId, text, senderName });
-            if (ws.readyState === WS.OPEN) ws.send(JSON.stringify({ type: 'typing.stop', to: senderId }));
-            if (reply && ws.readyState === WS.OPEN) {
-              ws.send(JSON.stringify({ type: 'message.send', id: `out_${Date.now()}`, to: senderId, payload: { content_type: 'text', text: reply } }));
-            }
+            await dispatchInboundDirectDm({
+              account,
+              cfg,
+              from: senderId,
+              text,
+              senderName,
+              ws,
+              timestamp: msg.ts || msg.timestamp || Date.now(),
+            });
           } catch (err) {
             log?.error?.(`[${CHANNEL_ID}] inbound processing error: ${err instanceof Error ? err.message : String(err)}`);
+          } finally {
+            if (senderId && ws.readyState === WS.OPEN) {
+              ws.send(JSON.stringify({ type: 'typing.stop', to: senderId }));
+            }
           }
         })();
       });
@@ -315,62 +578,53 @@ const botlandPlugin = {
       looksLikeId: (value) => Boolean(value.trim()),
       hint: '<citizen_id>',
     },
-    send: async ({ target, message, media, cfg, accountId }) => {
-      const log = getPluginApi()?.logger;
-      const account = resolveAccount(cfg, accountId);
-      const ws = _activeWs;
-      if (!ws || ws.readyState !== WS.OPEN) {
-        return { success: false, error: 'BotLand WebSocket is not connected' };
+    send: async ({ target, message, media, cfg, accountId }) =>
+      await sendViaActiveWs({ target, message, media, cfg, accountId }),
+  },
+  outbound: {
+    deliveryMode: "direct",
+    sendText: async ({ cfg, to, text, accountId }) => {
+      const result = await sendViaActiveWs({ target: to, message: text, cfg, accountId });
+      if (!result?.success) {
+        throw new Error(result?.error || 'BotLand outbound text send failed');
       }
-      if (!target) {
-        return { success: false, error: 'Missing target' };
+      return { channel: CHANNEL_ID, messageId: result.messageId || '' };
+    },
+    sendMedia: async ({ cfg, to, text, mediaUrl, accountId }) => {
+      const result = await sendViaActiveWs({
+        target: to,
+        message: text ?? '',
+        media: mediaUrl,
+        cfg,
+        accountId,
+      });
+      if (!result?.success) {
+        throw new Error(result?.error || 'BotLand outbound media send failed');
       }
-      const isGroup = target.startsWith('group:') || target.startsWith('group_');
-      const to = isGroup ? target.replace(/^group:/, '') : target;
-      const msgType = isGroup ? 'group.message.send' : 'message.send';
-      const msgId = `out_${Date.now()}`;
-      if (!isGroup && message && typeof message === 'object' && message.reaction && typeof message.reaction === 'object') {
-        ws.send(JSON.stringify({ type: 'message.reaction', id: msgId, to, payload: message.reaction }));
-        return { success: true };
-      }
-      if (media) {
-        try {
-          const token = await ensureToken(account, log);
-          const { createReadStream } = await import('fs');
-          const { basename } = await import('path');
-          const mediaPath = media.path || media.filePath || media;
-          const filename = typeof mediaPath === 'string' ? basename(mediaPath) : 'file';
-          // Use createReadStream so Node 22 streams the file directly to fetch,
-          // avoiding fs.readFileSync + fetch in the same window (avoids security audit
-          // "potential-exfiltration" false-positive for legitimate media uploads).
-          const fileStream = createReadStream(mediaPath);
-          const formData = new FormData();
-          formData.append('file', fileStream, filename);
-          const uploadRes = await fetch(`${account.apiUrl}/api/v1/media/upload?category=chat`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
-            body: formData,
-          });
-          const uploadData = await uploadRes.json();
-          if (!uploadRes.ok) {
-            throw new Error(uploadData?.error?.message || 'Upload failed');
-          }
-          ws.send(JSON.stringify({
-            type: msgType,
-            id: msgId,
-            to,
-            payload: { content_type: 'image', url: uploadData.url, text: message || '' },
-          }));
-          return { success: true };
-        } catch (err) {
-          return { success: false, error: err instanceof Error ? err.message : String(err) };
+      return { channel: CHANNEL_ID, messageId: result.messageId || '' };
+    },
+    attachedResults: {
+      channel: CHANNEL_ID,
+      sendText: async ({ cfg, to, text, accountId }) => {
+        const result = await sendViaActiveWs({ target: to, message: text, cfg, accountId });
+        if (!result?.success) {
+          throw new Error(result?.error || 'BotLand outbound text send failed');
         }
-      }
-      if (message) {
-        ws.send(JSON.stringify({ type: msgType, id: msgId, to, payload: { content_type: 'text', text: message } }));
-        return { success: true };
-      }
-      return { success: false, error: 'No message or media provided' };
+        return { ok: true };
+      },
+      sendMedia: async ({ cfg, to, text, mediaUrl, accountId }) => {
+        const result = await sendViaActiveWs({
+          target: to,
+          message: text ?? '',
+          media: mediaUrl,
+          cfg,
+          accountId,
+        });
+        if (!result?.success) {
+          throw new Error(result?.error || 'BotLand outbound media send failed');
+        }
+        return { ok: true };
+      },
     },
   },
   setup: {
@@ -398,47 +652,13 @@ const botlandPlugin = {
     return { stop() { abortController.abort(); try { _activeWs?.close?.(1000, 'stop'); } catch {} _activeWs = null; } };
   },
   async sendMessage(ctx, payload) {
-    const cfg = ctx.config;
-    const log = ctx.logger;
-    const account = resolveAccount(cfg);
-    const ws = _activeWs;
-    if (!ws || ws.readyState !== WS.OPEN) return { success: false, error: 'BotLand WebSocket is not connected' };
-    const target = payload.target;
-    const message = payload.message;
-    const media = payload.media;
-    if (!target) return { success: false, error: 'Missing target' };
-    const isGroup = target.startsWith('group:') || target.startsWith('group_');
-    const to = isGroup ? target.replace(/^group:/, '') : target;
-    const msgType = isGroup ? 'group.message.send' : 'message.send';
-    const msgId = `out_${Date.now()}`;
-    if (!isGroup && message && typeof message === 'object' && message.reaction && typeof message.reaction === 'object') {
-      ws.send(JSON.stringify({ type: 'message.reaction', id: msgId, to, payload: message.reaction }));
-      return { success: true };
-    }
-    if (media) {
-      try {
-        const token = await ensureToken(account, log);
-        const { createReadStream } = await import('fs');
-        const { basename } = await import('path');
-        const mediaPath = media.path || media.filePath || media;
-        const filename = typeof mediaPath === 'string' ? basename(mediaPath) : 'file';
-        const fileStream = createReadStream(mediaPath);
-        const formData = new FormData();
-        formData.append('file', fileStream, filename);
-        const uploadRes = await fetch(`${account.apiUrl}/api/v1/media/upload?category=chat`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData });
-        const uploadData = await uploadRes.json();
-        if (!uploadRes.ok) throw new Error(uploadData?.error?.message || 'Upload failed');
-        ws.send(JSON.stringify({ type: msgType, id: msgId, to, payload: { content_type: 'image', url: uploadData.url, text: message || '' } }));
-        return { success: true };
-      } catch (err) {
-        return { success: false, error: err.message };
-      }
-    }
-    if (message) {
-      ws.send(JSON.stringify({ type: msgType, id: msgId, to, payload: { content_type: 'text', text: message } }));
-      return { success: true };
-    }
-    return { success: false, error: 'No message or media provided' };
+    return await sendViaActiveWs({
+      target: payload.target,
+      message: payload.message,
+      media: payload.media,
+      cfg: ctx.config,
+      accountId: resolveAccount(ctx.config).accountId,
+    });
   },
 };
 
