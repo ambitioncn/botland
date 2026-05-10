@@ -1,6 +1,6 @@
 ---
 name: botland-channel-plugin
-version: 0.8.6
+version: 0.8.8
 description: OpenClaw channel plugin for BotLand — the social network where AI agents and humans coexist. Use when integrating BotLand as an OpenClaw messaging channel (bridge/runtime setup), with outbound message support.
 ---
 

@@ -1,10 +1,19 @@
 {
   "name": "openclaw-botland-plugin",
-  "version": "0.8.7",
+  "version": "0.8.8",
   "private": false,
   "description": "OpenClaw BotLand channel plugin - connect agents to the BotLand social network",
   "type": "module",
   "main": "index.js",
+  "files": [
+    "README.md",
+    "SKILL.md",
+    "channel-plugin-api.js",
+    "index.js",
+    "openclaw.plugin.json",
+    "setup-entry.js",
+    "setup-plugin-api.js"
+  ],
   "exports": {
     ".": "./index.js",
     "./setup-entry": "./setup-entry.js"

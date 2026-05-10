@@ -1,5 +1,6 @@
 import { defineChannelPluginEntry } from "openclaw/plugin-sdk/channel-core";
 import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/account-id";
+import { updateLastRoute } from "openclaw/plugin-sdk/session-store-runtime";
 
 const WS = globalThis.WebSocket;
 
@@ -360,6 +361,7 @@ async function sendViaActiveWsImmediate({ target, message, media, cfg, accountId
   if (!isGroup && message && typeof message === 'object' && message.reaction && typeof message.reaction === 'object') {
     const msgId = `out_${Date.now()}`;
     ws.send(JSON.stringify({ type: 'message.reaction', id: msgId, to, payload: message.reaction }));
+    await recordOutboundTargetSession({ cfg, accountId, target });
     return { success: true, messageId: msgId };
   }
   if (media) {
@@ -387,6 +389,7 @@ async function sendViaActiveWsImmediate({ target, message, media, cfg, accountId
         to,
         payload: { content_type: 'image', url: uploadData.url, text: message || '' },
       }));
+      await recordOutboundTargetSession({ cfg, accountId, target });
       return { success: true, messageId: msgId };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };
@@ -398,10 +401,12 @@ async function sendViaActiveWsImmediate({ target, message, media, cfg, accountId
       const msgId = `out_${Date.now()}_${attempt}`;
       ws.send(JSON.stringify({ type: msgType, id: msgId, to, payload: { content_type: 'text', text: message } }));
       if (!awaitAckMs || isGroup) {
+        await recordOutboundTargetSession({ cfg, accountId, target });
         return { success: true, messageId: msgId };
       }
       const ack = await waitForOutboundStatus(msgId, awaitAckMs);
       if (ack?.payload?.status === 'delivered' || ack?.payload?.status === 'read') {
+        await recordOutboundTargetSession({ cfg, accountId, target });
         return { success: true, messageId: msgId, status: ack.payload.status };
       }
       lastAckStatus = ack?.payload?.status || null;
@@ -502,6 +507,36 @@ function buildInboundEnvelope({ cfg, runtime, route, channelLabel, fromLabel, bo
   };
 }
 
+async function recordOutboundTargetSession({ cfg, accountId, target }) {
+  const normalizedTarget = typeof target === "string" ? target.trim() : "";
+  if (!normalizedTarget) return;
+  const runtime = getRuntime();
+  const isGroup = normalizedTarget.startsWith("group:") || normalizedTarget.startsWith("group_");
+  const peer = {
+    kind: isGroup ? "group" : "direct",
+    id: isGroup ? normalizedTarget.replace(/^group:/, "") : normalizedTarget,
+  };
+  if (!peer.id) return;
+  const route = runtime.channel.routing.resolveAgentRoute({
+    cfg,
+    channel: CHANNEL_ID,
+    accountId,
+    peer,
+  });
+  const storePath = runtime.channel.session.resolveStorePath(cfg.session?.store, {
+    agentId: route.agentId,
+  });
+  await updateLastRoute({
+    storePath,
+    sessionKey: route.sessionKey,
+    deliveryContext: {
+      channel: CHANNEL_ID,
+      to: normalizedTarget,
+      accountId: route.accountId ?? accountId,
+    },
+  });
+}
+
 function extractReplyText(payload) {
   const visited = new Set();
   const fragments = [];
@@ -594,6 +629,7 @@ async function dispatchInboundDirectDm(params) {
     OriginatingTo: from,
   });
   let deliveredContent = false;
+  let dispatchResult = null;
   const abortController = new AbortController();
   const timeoutHandle = setTimeout(
     () => abortController.abort(new Error(`Timed out after ${account.timeoutMs}ms`)),
@@ -609,7 +645,7 @@ async function dispatchInboundDirectDm(params) {
           `[${CHANNEL_ID}] session record error: ${error instanceof Error ? error.message : String(error)}`,
         ),
     });
-    await runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
+    dispatchResult = await runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
       ctx: ctxPayload,
       cfg,
       dispatcherOptions: {
@@ -666,8 +702,17 @@ async function dispatchInboundDirectDm(params) {
     });
   } finally {
     clearTimeout(timeoutHandle);
-    if (!deliveredContent) {
-      logger?.warn?.(`[${CHANNEL_ID}] no visible outbound reply content for inbound DM from ${from}`);
+    const counts = dispatchResult?.counts || {};
+    const hadVisibleDispatch =
+      deliveredContent ||
+      dispatchResult?.queuedFinal === true ||
+      Number(counts.tool || 0) > 0 ||
+      Number(counts.block || 0) > 0 ||
+      Number(counts.final || 0) > 0;
+    if (!hadVisibleDispatch) {
+      logger?.debug?.(
+        `[${CHANNEL_ID}] no plugin-local visible outbound reply content observed for inbound DM from ${from}`,
+      );
     }
   }
 }
