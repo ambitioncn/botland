@@ -14,7 +14,6 @@ export type MessageReplyPreview = {
 export type MessageReaction = {
   emoji: string;
   count: number;
-  myReaction: boolean;
 };
 
 export type StoredMessage = {
@@ -30,11 +29,11 @@ export type StoredMessage = {
   segments?: MessageSegment[];
   replyTo?: string;
   replyPreview?: MessageReplyPreview;
+  reactions?: MessageReaction[];
   contentType: string;   // 'text' | 'image' | 'video' | 'voice'
   mine: boolean;
   timestamp: number;     // unix ms
   status: 'sent' | 'delivered' | 'read' | 'failed';
-  reactions?: MessageReaction[];
 };
 
 // Chat summary for conversation list
@@ -82,14 +81,24 @@ async function getDb() {
         segments TEXT,
         reply_to TEXT,
         reply_preview TEXT,
+        reactions TEXT,
         mine INTEGER NOT NULL DEFAULT 0,
         timestamp INTEGER NOT NULL,
         status TEXT DEFAULT 'sent'
       );
       CREATE INDEX IF NOT EXISTS idx_messages_chat ON messages(chat_id, timestamp);
-      ALTER TABLE messages ADD COLUMN reply_to TEXT;
-      ALTER TABLE messages ADD COLUMN reply_preview TEXT;
     `);
+    const columns = await db.getAllAsync(`PRAGMA table_info(messages)`);
+    const columnNames = new Set((columns as any[]).map((col) => col.name));
+    if (!columnNames.has('reply_to')) {
+      await db.execAsync(`ALTER TABLE messages ADD COLUMN reply_to TEXT;`);
+    }
+    if (!columnNames.has('reply_preview')) {
+      await db.execAsync(`ALTER TABLE messages ADD COLUMN reply_preview TEXT;`);
+    }
+    if (!columnNames.has('reactions')) {
+      await db.execAsync(`ALTER TABLE messages ADD COLUMN reactions TEXT;`);
+    }
     return db;
   } catch (e) {
     console.error('SQLite init error:', e);
@@ -123,10 +132,11 @@ export const messageStore = {
     const database = await getDb();
     if (!database) return;
     await database.runAsync(
-      `INSERT OR REPLACE INTO messages (id, chat_id, from_id, text, image_url, video_url, audio_url, duration_ms, content_type, segments, reply_to, reply_preview, mine, timestamp, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR REPLACE INTO messages (id, chat_id, from_id, text, image_url, video_url, audio_url, duration_ms, content_type, segments, reply_to, reply_preview, reactions, mine, timestamp, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       msg.id, msg.chatId, msg.fromId, msg.text || null, msg.imageUrl || null, msg.videoUrl || null, msg.audioUrl || null, msg.durationMs || null,
-      msg.contentType, msg.segments ? JSON.stringify(msg.segments) : null, msg.replyTo || null, msg.replyPreview ? JSON.stringify(msg.replyPreview) : null, msg.mine ? 1 : 0, msg.timestamp, msg.status
+      msg.contentType, msg.segments ? JSON.stringify(msg.segments) : null, msg.replyTo || null, msg.replyPreview ? JSON.stringify(msg.replyPreview) : null,
+      msg.reactions ? JSON.stringify(msg.reactions) : null, msg.mine ? 1 : 0, msg.timestamp, msg.status
     );
   },
 
@@ -157,6 +167,7 @@ export const messageStore = {
       segments: r.segments ? JSON.parse(r.segments) : undefined,
       replyTo: r.reply_to || undefined,
       replyPreview: r.reply_preview ? JSON.parse(r.reply_preview) : undefined,
+      reactions: r.reactions ? JSON.parse(r.reactions) : undefined,
       mine: !!r.mine,
       timestamp: r.timestamp,
       status: r.status,
@@ -183,6 +194,30 @@ export const messageStore = {
     await database.runAsync(
       `UPDATE messages SET status = ? WHERE id = ?`,
       status, messageId
+    );
+  },
+
+  /** Update message reactions */
+  async updateReactions(messageId: string, reactions: MessageReaction[]): Promise<void> {
+    if (Platform.OS === 'web') {
+      const all = webGetAll();
+      for (const chatId of Object.keys(all)) {
+        const msg = all[chatId].find(m => m.id === messageId);
+        if (msg) {
+          msg.reactions = reactions;
+          webSaveAll(all);
+          return;
+        }
+      }
+      return;
+    }
+
+    const database = await getDb();
+    if (!database) return;
+    await database.runAsync(
+      `UPDATE messages SET reactions = ? WHERE id = ?`,
+      JSON.stringify(reactions),
+      messageId
     );
   },
 

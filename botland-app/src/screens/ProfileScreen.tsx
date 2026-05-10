@@ -140,12 +140,8 @@ export default function ProfileScreen({ onLogout, navigation: navProp }: Props) 
         </>
       )}
 
-      <TouchableOpacity style={s.botConnectionsBtn} onPress={() => navigation.navigate('MyBotCard')}>
-        <Text style={s.botConnectionsBtnText}>🪪 我的名片</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={s.botConnectionsBtn} onPress={() => navigation.navigate('MyBotConnections')}>
-        <Text style={s.botConnectionsBtnText}>🤖 我的 Bot 连接</Text>
+      <TouchableOpacity style={s.botConnectionsBtn} onPress={() => navigation.navigate('FriendRequests')}>
+        <Text style={s.botConnectionsBtnText}>📬 好友请求</Text>
       </TouchableOpacity>
 
       <TouchableOpacity style={s.logoutBtn} onPress={handleLogout}>

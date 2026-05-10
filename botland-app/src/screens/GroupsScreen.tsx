@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, TextInput, Alert, Image } from 'react-native';
 import api from '../services/api';
 import auth from '../services/auth';
@@ -21,7 +20,7 @@ export default function GroupsScreen({ navigation }: Props) {
     const token = await auth.getAccessToken();
     if (!token) return;
     try {
-      const data = await api.listGroups(token, Date.now());
+      const data = await api.listGroups(token);
       setGroups(Array.isArray(data) ? data : []);
     } catch {}
   }, []);
@@ -35,9 +34,11 @@ export default function GroupsScreen({ navigation }: Props) {
     } catch {}
   }, []);
 
-  useFocusEffect(useCallback(() => {
-    loadGroups();
-  }, [loadGroups]));
+  useEffect(() => { loadGroups(); }, [loadGroups]);
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', () => loadGroups());
+    return unsub;
+  }, [navigation, loadGroups]);
 
   const onRefresh = async () => { setRefreshing(true); await loadGroups(); setRefreshing(false); };
 

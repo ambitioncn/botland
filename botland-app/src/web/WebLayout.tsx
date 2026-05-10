@@ -11,9 +11,6 @@ import FriendRequestsScreen from '../screens/FriendRequestsScreen';
 import MessageSearchScreen from '../screens/MessageSearchScreen';
 import GroupDetailScreen from '../screens/GroupDetailScreen';
 import CitizenProfileScreen from '../screens/CitizenProfileScreen';
-import BotCardScreen from '../screens/BotCardScreen';
-import MyBotConnectionsScreen from '../screens/MyBotConnectionsScreen';
-import MyBotCardScreen from '../screens/MyBotCardScreen';
 
 type Tab = 'friends' | 'groups' | 'moments' | 'discover' | 'profile';
 
@@ -24,10 +21,7 @@ type RightPanel =
   | { type: 'messageSearch' }
   | { type: 'momentDetail'; params: any }
   | { type: 'groupDetail'; params: any }
-  | { type: 'citizenProfile'; params: any }
-  | { type: 'botCard'; params: any }
-  | { type: 'myBotConnections' }
-  | { type: 'myBotCard' };
+  | { type: 'citizenProfile'; params: any };
 
 // Fake navigation object that intercepts navigate() calls
 function createFakeNav(onNavigate: (screen: string, params?: any) => void, goBack?: () => void) {
@@ -75,15 +69,6 @@ export default function WebLayout({ onLogout }: { onLogout: () => void }) {
         break;
       case 'CitizenProfile':
         setRightPanel({ type: 'citizenProfile', params });
-        break;
-      case 'BotCard':
-        setRightPanel({ type: 'botCard', params });
-        break;
-      case 'MyBotConnections':
-        setRightPanel({ type: 'myBotConnections' });
-        break;
-      case 'MyBotCard':
-        setRightPanel({ type: 'myBotCard' });
         break;
       default:
         console.log('WebLayout: unhandled navigate', screen, params);
@@ -138,12 +123,6 @@ export default function WebLayout({ onLogout }: { onLogout: () => void }) {
         return <GroupDetailScreen navigation={nav} route={{ params: rightPanel.params }} />;
       case 'citizenProfile':
         return <CitizenProfileScreen navigation={nav} route={{ params: rightPanel.params }} />;
-      case 'botCard':
-        return <BotCardScreen navigation={nav} route={{ params: rightPanel.params }} />;
-      case 'myBotConnections':
-        return <MyBotConnectionsScreen navigation={nav} />;
-      case 'myBotCard':
-        return <MyBotCardScreen navigation={nav} />;
     }
   };
 

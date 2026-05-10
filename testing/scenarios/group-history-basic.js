@@ -39,9 +39,25 @@ const { loadAccounts, request, getLogin, connectWS, waitForOpen, send, sleep } =
 
     await sleep(1800);
 
-    const history = await request(cfg.baseUrl, `/api/v1/groups/${groupId}/messages`, {
-      token: receiverLogin.access_token,
-    });
+    let history = null;
+    let historyAttempts = [];
+    let lastHistoryError = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        history = await request(cfg.baseUrl, `/api/v1/groups/${groupId}/messages`, {
+          token: receiverLogin.access_token,
+        });
+        historyAttempts.push({ attempt, ok: true, count: Array.isArray(history) ? history.length : null });
+        lastHistoryError = null;
+        break;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        historyAttempts.push({ attempt, ok: false, error: message });
+        lastHistoryError = message;
+        if (attempt < 3) await sleep(800);
+      }
+    }
+    if (lastHistoryError) throw new Error(`history fetch failed after retries: ${lastHistoryError}`);
 
     const found = sent.map(m => ({
       id: m.id,
@@ -49,6 +65,7 @@ const { loadAccounts, request, getLogin, connectWS, waitForOpen, send, sleep } =
     }));
 
     result.details.sent = sent;
+    result.details.historyAttempts = historyAttempts;
     result.details.historyCount = Array.isArray(history) ? history.length : -1;
     result.details.historySample = Array.isArray(history)
       ? history.slice(0, 5).map(h => ({ id: h.id, group_id: h.group_id, sender_id: h.sender_id, sender_name: h.sender_name, payload: h.payload, created_at: h.created_at }))

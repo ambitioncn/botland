@@ -1,18 +1,5 @@
 const BASE_URL = 'https://api.botland.im';
 
-export type RelationshipSummary = {
-  target_citizen_id: string;
-  relationship_status: 'none' | 'friends' | 'blocked' | 'request_sent' | 'request_received';
-  friend_request_id: string | null;
-  friends_since: string | null;
-  my_label: string | null;
-  their_label: string | null;
-  dm_count: number;
-  shared_groups: { group_id: string; group_name: string }[];
-  shared_bots: { bot_id: string; bot_name: string }[];
-  is_online: boolean;
-};
-
 type RequestOptions = {
   method?: string;
   body?: unknown;
@@ -45,7 +32,7 @@ export const api = {
     ),
 
   // --- Auth: Register & Login ---
-  register: (body: { handle: string; password: string; display_name: string; challenge_token: string; bot_card_code?: string; invite_code?: string }) =>
+  register: (body: { handle: string; password: string; display_name: string; challenge_token: string }) =>
     request<{ citizen_id: string; access_token: string; refresh_token: string }>('/api/v1/auth/register', { method: 'POST', body }),
 
   login: (body: { handle: string; password: string }) =>
@@ -63,9 +50,6 @@ export const api = {
 
   getCitizen: (token: string, id: string) =>
     request<Record<string, unknown>>(`/api/v1/citizens/${id}`, { token }),
-
-  getRelationshipSummary: (token: string, targetId: string) =>
-    request<RelationshipSummary>(`/api/v1/citizens/${targetId}/relationship-summary`, { token }),
 
   // --- Friends ---
   getFriends: (token: string) =>
@@ -159,48 +143,15 @@ export const api = {
 
   unregisterPushToken: (token: string) =>
     request<{ status: string }>('/api/v1/push/unregister', { method: 'POST', body: {}, token }),
-
-  // --- Bot Cards ---
-  resolveBotCard: (input: string) =>
-    request<{ card: { id: string; slug: string; code: string; bot: { id: string; slug?: string; name: string; avatar?: string; summary?: string }; human_url: string; agent_url?: string; skill_slug?: string; status: string } }>(
-      '/api/v1/bot-cards/resolve', { method: 'POST', body: { input } }
-    ),
-
-  getBotCard: (slug: string) =>
-    request<{ card: { id: string; slug: string; code: string; bot: { id: string; slug?: string; name: string; avatar?: string; summary?: string }; human_url: string; agent_url?: string; skill_slug?: string; status: string }; metadata?: Record<string, string> }>(
-      `/api/v1/bot-cards/${slug}`
-    ),
-
-  bindBotCard: (token: string, cardId: string, source: string = 'manual') =>
-    request<{ binding: { id: string; card_id: string; citizen_id: string; status: string; bot: { id: string; name: string; slug: string }; created_at: string } }>(
-      '/api/v1/bot-cards/bind', { method: 'POST', body: { card_id: cardId, source }, token }
-    ),
-
-  useBotCard: (token: string, code: string, source: string = 'manual') =>
-    request<{ result: string; binding?: { id?: string; card_id: string; citizen_id?: string; status: string; bot?: { id: string; name: string; slug: string }; created_at?: string } }>(
-      '/api/v1/bot-cards/use', { method: 'POST', body: { code, source }, token }
-    ),
-
-  getMyBotBindings: (token: string) =>
-    request<{ bindings: { id: string; card_id: string; status: string; bot: { name: string; slug: string; avatar?: string }; created_at: string }[] }>(
-      '/api/v1/me/bot-bindings', { token }
-    ),
-
-  getMyBotCard: (token: string) =>
-    request<{ card: { id: string; slug: string; code: string; bot: { id: string; slug?: string; name: string; avatar?: string; summary?: string }; human_url: string; agent_url?: string; skill_slug?: string; status: string } }>(
-      '/api/v1/me/bot-card', { token }
-    ),
-
-
   // --- Groups ---
   createGroup: (token: string, name: string, memberIds: string[], description?: string) =>
     request<{ id: string; name: string; owner_id: string; members: unknown[]; member_count: number }>(
       '/api/v1/groups', { method: 'POST', body: { name, member_ids: memberIds, description }, token }
     ),
 
-  listGroups: (token: string, ts?: number) =>
+  listGroups: (token: string) =>
     request<{ id: string; name: string; owner_id: string; member_count: number; avatar_url?: string }[]>(
-      ts ? `/api/v1/groups?_=${ts}` : '/api/v1/groups', { token }
+      '/api/v1/groups', { token }
     ),
 
   getGroup: (token: string, groupId: string) =>
@@ -248,13 +199,6 @@ export const api = {
     );
   },
 
-  // --- Invite ---
-  createBotCardCode: (token: string) =>
-    request<{ code: string }>('/api/v1/invite-codes', { method: 'POST', token }),
-
-  // legacy alias; prefer createBotCardCode in new code
-  createInviteCode: (token: string) =>
-    request<{ code: string }>('/api/v1/invite-codes', { method: 'POST', token }),
 };
 
 export function createWebSocket(token: string): WebSocket {

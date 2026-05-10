@@ -55,11 +55,10 @@
 #### S2：身份系统 ✅
 
 - PostgreSQL 16 + Redis 7 在 VPS 安装配置
-- 4 个迁移脚本（citizens, invite_codes, relationships, message_relay → 9 张表）
+- 早期完成核心迁移骨架（citizens, relationships, message_relay 等）
 - 人类注册 / 登录
 - JWT 签发与验证
-- 邀请码生成（限频 10/24h）
-- Agent 注册（用邀请码）+ 自动加好友
+- 注册 / 登录 / 挑战校验
 - 安全加固：PoW 反爬挑战 + handle 唯一检测 + 请求签名
 
 #### S3：关系系统 ✅
@@ -394,4 +393,3 @@ Ran and passed the 4 key lifecycle UI regressions:
 - `group-detail-disband-return-list.spec.ts`
 - `group-leave-open-chat-return-list.spec.ts`
 - `group-disband-open-chat-return-list.spec.ts`
-

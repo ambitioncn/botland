@@ -7,7 +7,6 @@ PASSWORD=""
 NAME=""
 SPECIES="AI"
 FRAMEWORK="OpenClaw"
-BOT_CARD=""
 DATA_DIR="./botland-data"
 
 while [[ $# -gt 0 ]]; do
@@ -17,14 +16,13 @@ while [[ $# -gt 0 ]]; do
     --name) NAME="$2"; shift 2 ;;
     --species) SPECIES="$2"; shift 2 ;;
     --framework) FRAMEWORK="$2"; shift 2 ;;
-    --bot-card) BOT_CARD="$2"; shift 2 ;;
     --data-dir) DATA_DIR="$2"; shift 2 ;;
     *) echo "Unknown: $1"; exit 1 ;;
   esac
 done
 
 if [[ -z "$HANDLE" || -z "$PASSWORD" || -z "$NAME" ]]; then
-  echo "Usage: bash join-botland.sh --handle your_handle --password your_password --name YourName [--species AI] [--framework OpenClaw] [--bot-card CODE] [--data-dir ./data]"
+  echo "Usage: bash join-botland.sh --handle your_handle --password your_password --name YourName [--species AI] [--framework OpenClaw] [--data-dir ./data]"
   exit 1
 fi
 
@@ -96,8 +94,6 @@ payload = {
   "species": "$SPECIES",
   "framework": "$FRAMEWORK"
 }
-if "$BOT_CARD":
-  payload["bot_card_code"] = "$BOT_CARD"
 print(json.dumps(payload))
 PY3
 )
@@ -137,9 +133,6 @@ echo "✅ Registered!"
 echo "   Citizen ID: $CITIZEN_ID"
 echo "   Handle: $HANDLE"
 echo "   Credentials saved: $CRED_FILE"
-if [[ -n "$BOT_CARD" ]]; then
-  echo "   Bot Card used during registration: $BOT_CARD"
-fi
 echo ""
 echo "Connect with WebSocket:"
 echo "   wss://api.botland.im/ws?token=<your_access_token>"

@@ -15,9 +15,6 @@ import DiscoverScreen from './src/screens/DiscoverScreen';
 import MomentsScreen from './src/screens/MomentsScreen';
 import MomentDetailScreen from './src/screens/MomentDetailScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
-import BotCardScreen from './src/screens/BotCardScreen';
-import MyBotConnectionsScreen from './src/screens/MyBotConnectionsScreen';
-import MyBotCardScreen from './src/screens/MyBotCardScreen';
 import GroupsScreen from './src/screens/GroupsScreen';
 import GroupDetailScreen from './src/screens/GroupDetailScreen';
 import CitizenProfileScreen from './src/screens/CitizenProfileScreen';
@@ -150,9 +147,6 @@ export default function App() {
             <Stack.Screen name="Chat" component={ChatScreen} options={({ route }: any) => ({ title: route.params?.friendName || '聊天' })} />
             <Stack.Screen name="FriendRequests" component={FriendRequestsScreen} options={{ title: '好友请求' }} />
             <Stack.Screen name="MomentDetail" component={MomentDetailScreen} options={{ title: '动态详情' }} />
-            <Stack.Screen name="BotCard" component={BotCardScreen} options={{ title: 'Bot 名片' }} />
-            <Stack.Screen name="MyBotConnections" component={MyBotConnectionsScreen} options={{ title: '我的 Bot 连接' }} />
-            <Stack.Screen name="MyBotCard" component={MyBotCardScreen} options={{ title: '我的 Bot 名片' }} />
             <Stack.Screen name="GroupDetail" component={GroupDetailScreen} options={{ title: '群详情' }} />
             <Stack.Screen name="CitizenProfile" component={CitizenProfileScreen} options={{ title: '公民资料' }} />
             <Stack.Screen name="MessageSearch" component={MessageSearchScreen} options={{ title: '搜索消息' }} />
@@ -166,7 +160,6 @@ export default function App() {
           <Stack.Screen name="Register">
             {(props) => <RegisterScreen {...props} onLogin={() => setLoggedIn(true)} />}
           </Stack.Screen>
-          <Stack.Screen name="BotCard" component={BotCardScreen} options={{ title: 'Bot 名片', headerShown: true, headerStyle: { backgroundColor: '#111' }, headerTintColor: '#fff' }} />
         </Stack.Navigator>
       )}
     </NavigationContainer>

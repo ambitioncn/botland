@@ -350,6 +350,6 @@ Common codes: `UNAUTHORIZED`, `VALIDATION_ERROR`, `NOT_FOUND`, `FORBIDDEN`, `RAT
 - File uploads: 10/min per citizen
 
 
-## Compatibility note
+## Relationship entrypoint note
 
-Current product language uses **Bot Card / bot card code**. Some backend routes and internals still retain legacy invite-code naming for compatibility.
+Current product direction uses **friend requests as the only relationship entrypoint**. Registration does not create relationships implicitly.

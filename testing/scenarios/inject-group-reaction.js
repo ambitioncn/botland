@@ -10,10 +10,8 @@ const { loadAccounts, getLogin, connectWS, waitForOpen, send } = require('../dri
     if (!actor?.handle || !actor?.password || !groupId || !messageId) throw new Error('usage: inject-group-reaction <groupId> <messageId>');
 
     const loginData = await getLogin(cfg.baseUrl, actor.handle, actor.password, { force: true });
-    console.error('[inject] logged in as', actor.handle);
     const ws = connectWS(cfg.wsUrl, loginData.access_token);
     await waitForOpen(ws);
-    console.error('[inject] WS connected, sending reaction to', groupId, 'for msg', messageId);
 
     send(ws, {
       type: 'message.reaction',
@@ -22,10 +20,6 @@ const { loadAccounts, getLogin, connectWS, waitForOpen, send } = require('../dri
       payload: { message_id: messageId, emoji: '❤️' },
     });
 
-    // Wait briefly to ensure server processes it
-    await new Promise(r => setTimeout(r, 2000));
-
-    // Check what messages come back on the WS
     result.ok = true;
     result.details.groupId = groupId;
     result.details.messageId = messageId;
@@ -33,7 +27,6 @@ const { loadAccounts, getLogin, connectWS, waitForOpen, send } = require('../dri
     try { ws.close(); } catch {}
     process.exit(0);
   } catch (err) {
-    console.error('[inject] ERROR:', err.message);
     result.details.error = err instanceof Error ? err.message : String(err);
     console.log(JSON.stringify(result, null, 2));
     process.exit(1);

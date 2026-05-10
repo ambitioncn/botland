@@ -25,6 +25,7 @@ This folder contains the end-to-end testing foundation for BotLand:
 - `reaction-basic.js` — `message.reaction` passes protocol validation
 - `reply-preview.js` — `reply_to + reply_preview` payload passes protocol validation
 - `dm-delivery-ack.js` — DM realtime delivery + `delivered/read` status path
+- `friend-request-dm-smoke.js` — search/profile lookup, friend request, accept, friend-list visibility, and DM delivery work end-to-end
 - `offline-delivery.js` — offline message delivery after reconnect
 
 ### Group chat core
@@ -67,6 +68,7 @@ Run grouped suites:
 ```bash
 node testing/run-all.js --suite core-dm
 node testing/run-all.js --suite core-dm-extended
+node testing/run-all.js --suite relationship
 node testing/run-all.js --suite group-core
 node testing/run-all.js --suite group-governance
 ```
@@ -80,12 +82,18 @@ Current protocol runner behavior:
 - JSON summary output via `--json-out`
 - CI smoke currently uses the narrower `core-dm` baseline; `offline-delivery.js` is kept in `core-dm-extended` instead of blocking the main smoke gate
 
+### Suite naming note
+- `group-governance` is now broader than pure governance and currently also includes group query/history coverage.
+- `relationship` is the focused smoke suite for the current friend-request-first product path.
+
 ### Current protocol counts
-- `all`: **27 scenarios**
-- `core-dm`: **6 scenarios**
+- `all`: **26 scenarios**
+- `core-dm`: **5 scenarios**
+- `core-dm-extended`: **7 scenarios**
+- `relationship`: **1 scenario**
 - `group-core`: **3 scenarios**
-- `group-governance`: **8 scenarios**
-- query/history coverage: **10 scenarios** (currently folded into `all`)
+- `group-governance`: **18 scenarios** (currently includes governance + group query/history coverage)
+- query/history coverage: **10 scenarios** (currently folded into `group-governance` and `all`)
 
 ## Current UI Automation Coverage
 
@@ -159,3 +167,4 @@ If recovery logic changes in `ChatScreen`, `GroupDetailScreen`, or `WebLayout`, 
   - group reaction relay/broadcast gap
   - group system message persistence/history compatibility
   - group history `limit` parameter implementation gap
+  - friend-request-first relationship flow is now the only intended onboarding path

@@ -61,7 +61,7 @@ export default function DiscoverScreen({ navigation }: Props) {
         {item.species ? <Text style={s.species}>{item.species}</Text> : null}
       </View>
       <TouchableOpacity style={s.addBtn} onPress={() => addFriend(item.citizen_id)}>
-        <Text style={s.addText}>+</Text>
+        <Text style={s.addText}>加好友</Text>
       </TouchableOpacity>
     </View>
   );
@@ -97,6 +97,6 @@ const s = StyleSheet.create({
   name: { color: '#fff', fontSize: 16, fontWeight: '600' },
   bio: { color: '#888', fontSize: 12, marginTop: 2 },
   species: { color: '#ff6b35', fontSize: 12, marginTop: 2 },
-  addBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#1a1a1a', justifyContent: 'center', alignItems: 'center' },
-  addText: { color: '#ff6b35', fontSize: 20, fontWeight: '700' },
+  addBtn: { minWidth: 76, height: 36, borderRadius: 18, backgroundColor: '#1a1a1a', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 12 },
+  addText: { color: '#ff6b35', fontSize: 13, fontWeight: '700' },
 });

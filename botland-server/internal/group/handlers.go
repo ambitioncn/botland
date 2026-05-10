@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/nicknnn/botland-server/internal/auth"
@@ -629,6 +630,18 @@ func (h *Handler) GetMessages(w http.ResponseWriter, r *http.Request) {
 
 	before := r.URL.Query().Get("before")
 	limit := 50
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil {
+			switch {
+			case n < 1:
+				limit = 1
+			case n > 100:
+				limit = 100
+			default:
+				limit = n
+			}
+		}
+	}
 
 	var rows *sql.Rows
 	var err error

@@ -1,20 +1,5 @@
 const { loadAccounts, getLogin, connectWS, waitForOpen, send, sleep, request } = require('../drivers/botlandClient');
 
-function waitForMsg(recvWs, msgId, timeoutMs) {
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => resolve(null), timeoutMs);
-    recvWs.on('message', (buf) => {
-      try {
-        const data = JSON.parse(String(buf));
-        if (data.id === msgId || (data.payload && data.payload.message_id === msgId)) {
-          clearTimeout(timeout);
-          resolve(data);
-        }
-      } catch {}
-    });
-  });
-}
-
 (async () => {
   const result = { ok: false, scenario: 'offline-delivery', details: {} };
   try {
@@ -38,9 +23,6 @@ function waitForMsg(recvWs, msgId, timeoutMs) {
     sendWs.on('message', (buf) => {
       try { senderSeen.push(JSON.parse(String(buf))); } catch {}
     });
-    sendWs.on('error', (err) => {
-      result.details.senderWsError = err.message;
-    });
 
     send(sendWs, {
       type: 'message.send',
@@ -60,30 +42,19 @@ function waitForMsg(recvWs, msgId, timeoutMs) {
     result.details.receiverConnectedLater = true;
 
     const received = [];
-    let msgCount = 0;
     recvWs.on('message', (buf) => {
       try {
         const data = JSON.parse(String(buf));
-        msgCount++;
         received.push(data);
         if (data.type === 'message.received' && data.id === msgId) {
           send(recvWs, { type: 'message.ack', id: data.id, to: data.from });
         }
       } catch {}
     });
-    recvWs.on('error', (err) => {
-      result.details.recvWsError = err.message;
-    });
 
-    // Wait for the specific DM message (generous timeout for CI)
-    const dmMsg = await waitForMsg(recvWs, msgId, 15000);
-    const deliveredAfterReconnect = dmMsg !== null;
-    result.details.dmMessageArrived = deliveredAfterReconnect;
-    result.details.dmMessageType = dmMsg ? dmMsg.type : null;
+    await sleep(4500);
 
-    // Also wait extra time for read receipt to propagate
-    await sleep(5000);
-
+    const deliveredAfterReconnect = received.some(e => e.type === 'message.received' && e.id === msgId && e.payload?.text === msgText);
     const senderStatuses = senderSeen.filter(e => (e.type === 'message.status' || e.type === 'message.ack') && e.payload?.message_id === msgId).map(e => e.payload?.status);
 
     let historyFound = false;
@@ -98,11 +69,10 @@ function waitForMsg(recvWs, msgId, timeoutMs) {
       result.details.historyCheckError = e instanceof Error ? e.message : String(e);
     }
 
-    result.details.receiverEvents = received.map(e => ({ type: e.type, id: e.id, to: e.to, from: e.from, payload: e.payload }));
+    result.details.receiverEvents = received.map(e => ({ type: e.type, id: e.id, payload: e.payload }));
     result.details.senderStatuses = senderStatuses;
     result.details.readStatusObserved = senderStatuses.includes('read');
     result.details.historyFound = historyFound;
-    result.details.totalReceivedMsgs = msgCount;
     result.ok = deliveredAfterReconnect || historyFound || senderStatuses.includes('read');
 
     console.log(JSON.stringify(result, null, 2));

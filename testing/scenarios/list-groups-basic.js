@@ -20,14 +20,36 @@ const { loadAccounts, request, getLogin, sleep } = require('../drivers/botlandCl
     const groupId = created.id;
     result.details.group = { id: groupId, name: groupName };
 
-    await sleep(1200);
+    await sleep(1800);
 
-    const senderList = await request(cfg.baseUrl, '/api/v1/groups', { token: senderLogin.access_token });
-    const receiverList = await request(cfg.baseUrl, '/api/v1/groups', { token: receiverLogin.access_token });
+    async function listWithRetry(token, label) {
+      const attempts = [];
+      let lastError = null;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const data = await request(cfg.baseUrl, '/api/v1/groups', { token });
+          attempts.push({ attempt, ok: true, count: Array.isArray(data) ? data.length : null });
+          return { data, attempts };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          attempts.push({ attempt, ok: false, error: message });
+          lastError = message;
+          if (attempt < 3) await sleep(800);
+        }
+      }
+      throw new Error(`${label} list failed after retries: ${lastError}`);
+    }
+
+    const senderListRes = await listWithRetry(senderLogin.access_token, 'sender');
+    const receiverListRes = await listWithRetry(receiverLogin.access_token, 'receiver');
+    const senderList = senderListRes.data;
+    const receiverList = receiverListRes.data;
 
     const senderGroup = Array.isArray(senderList) ? senderList.find(g => g.id === groupId) : null;
     const receiverGroup = Array.isArray(receiverList) ? receiverList.find(g => g.id === groupId) : null;
 
+    result.details.senderListAttempts = senderListRes.attempts;
+    result.details.receiverListAttempts = receiverListRes.attempts;
     result.details.senderCount = Array.isArray(senderList) ? senderList.length : -1;
     result.details.receiverCount = Array.isArray(receiverList) ? receiverList.length : -1;
     result.details.senderGroup = senderGroup ? {

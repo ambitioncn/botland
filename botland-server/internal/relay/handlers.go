@@ -81,6 +81,7 @@ func (s *Service) RouteMessage(from string, env *protocol.Envelope) {
 	}
 
 	if s.hub.Send(env.To, delivered) {
+		s.persistDirectMessage(from, env, "delivered")
 		// Online: send ACK back to sender
 		s.hub.Send(from, &protocol.Envelope{
 			Type: protocol.TypeMessageStatus,
@@ -92,7 +93,7 @@ func (s *Service) RouteMessage(from string, env *protocol.Envelope) {
 		s.logger.Info("message delivered realtime", "from", from, "to", env.To, "id", env.ID)
 	} else {
 		// Offline: store in relay + send push notification
-		s.storeOffline(from, env)
+		s.persistDirectMessage(from, env, "pending")
 		s.logger.Info("message stored offline", "from", from, "to", env.To, "id", env.ID)
 
 		// Send push notification
@@ -269,7 +270,7 @@ func (s *Service) RouteGroupMessage(from string, env *protocol.Envelope) {
 	s.logger.Info("group message delivered", "group", groupID, "from", from, "id", env.ID, "online", onlineCount, "total", len(members)-1)
 }
 
-func (s *Service) storeOffline(from string, env *protocol.Envelope) {
+func (s *Service) persistDirectMessage(from string, env *protocol.Envelope, status string) {
 	payload, _ := json.Marshal(map[string]interface{}{
 		"id":        env.ID,
 		"from":      from,
@@ -277,13 +278,40 @@ func (s *Service) storeOffline(from string, env *protocol.Envelope) {
 		"timestamp": env.Timestamp,
 		"payload":   env.Payload,
 	})
-	_, err := s.db.Exec(
-		`INSERT INTO message_relay (id, from_id, to_id, chat_type, payload) VALUES ($1, $2, $3, 'direct', $4)`,
-		auth.NewULID(), from, env.To, payload,
+	var deliveredAt interface{}
+	if status == "delivered" || status == "read" {
+		deliveredAt = time.Now().UTC()
+	}
+	res, err := s.db.Exec(
+		`INSERT INTO message_relay (id, from_id, to_id, chat_type, payload, status, delivered_at)
+		 VALUES ($1, $2, $3, 'direct', $4, $5, $6)
+		 ON CONFLICT (id) DO UPDATE SET
+		   from_id = EXCLUDED.from_id,
+		   to_id = EXCLUDED.to_id,
+		   payload = EXCLUDED.payload,
+		   status = CASE
+		     WHEN message_relay.status = 'read' THEN 'read'
+		     WHEN message_relay.status = 'delivered' AND EXCLUDED.status = 'pending' THEN 'delivered'
+		     ELSE EXCLUDED.status
+		   END,
+		   delivered_at = CASE
+		     WHEN EXCLUDED.status IN ('delivered', 'read') THEN COALESCE(message_relay.delivered_at, EXCLUDED.delivered_at)
+		     ELSE message_relay.delivered_at
+		   END`,
+		env.ID, from, env.To, payload, status, deliveredAt,
 	)
 	if err != nil {
-		s.logger.Error("store offline message failed", "error", err)
+		s.logger.Error("persist direct message failed", "error", err, "message_id", env.ID, "status", status)
+		return
 	}
+
+	rowsAffected, rowsErr := res.RowsAffected()
+	if rowsErr != nil {
+		s.logger.Warn("persist direct message rows-affected unavailable", "error", rowsErr, "message_id", env.ID, "status", status)
+		return
+	}
+
+	s.logger.Info("persist direct message ok", "message_id", env.ID, "status", status, "rows_affected", rowsAffected, "from", from, "to", env.To)
 }
 
 // DeliverPending pushes all pending messages to a citizen who just came online.
@@ -501,17 +529,22 @@ func (s *Service) GetDMHistory(w http.ResponseWriter, r *http.Request) {
 
 	if before != "" {
 		rows, err = s.db.Query(`
-			SELECT mr.id, mr.from_id, COALESCE(c.display_name,''), mr.to_id, mr.payload, mr.created_at
+			SELECT COALESCE(mr.payload->>'id', mr.id), mr.from_id, COALESCE(c.display_name,''), mr.to_id, mr.payload, mr.created_at
 			FROM message_relay mr
 			JOIN citizens c ON c.id = mr.from_id
 			WHERE ((mr.from_id = $1 AND mr.to_id = $2) OR (mr.from_id = $2 AND mr.to_id = $1))
-				AND mr.created_at < (SELECT created_at FROM message_relay WHERE id = $3)
+				AND mr.created_at < (
+					SELECT created_at FROM message_relay
+					WHERE COALESCE(payload->>'id', id) = $3
+					ORDER BY created_at DESC
+					LIMIT 1
+				)
 			ORDER BY mr.created_at DESC
 			LIMIT $4
 		`, citizenID, peerID, before, limit)
 	} else {
 		rows, err = s.db.Query(`
-			SELECT mr.id, mr.from_id, COALESCE(c.display_name,''), mr.to_id, mr.payload, mr.created_at
+			SELECT COALESCE(mr.payload->>'id', mr.id), mr.from_id, COALESCE(c.display_name,''), mr.to_id, mr.payload, mr.created_at
 			FROM message_relay mr
 			JOIN citizens c ON c.id = mr.from_id
 			WHERE ((mr.from_id = $1 AND mr.to_id = $2) OR (mr.from_id = $2 AND mr.to_id = $1))
@@ -595,7 +628,7 @@ func (s *Service) SearchMessages(w http.ResponseWriter, r *http.Request) {
 
 	// Search DM messages (message_relay)
 	dmRows, err := s.db.Query(`
-		SELECT mr.id, 
+		SELECT COALESCE(mr.payload->>'id', mr.id), 
 			CASE WHEN mr.from_id = $1 THEN mr.to_id ELSE mr.from_id END AS chat_id,
 			'direct' AS chat_type,
 			mr.from_id,

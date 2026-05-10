@@ -1,9 +1,7 @@
 package auth
 
 import (
-	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -33,8 +31,6 @@ type RegisterRequest struct {
 	Password       string   `json:"password"`
 	DisplayName    string   `json:"display_name"`
 	ChallengeToken string   `json:"challenge_token"`
-	BotCardCode    string   `json:"bot_card_code,omitempty"`
-	InviteCode     string   `json:"invite_code,omitempty"`
 	// Profile fields (optional)
 	Species         string   `json:"species,omitempty"`
 	Bio             string   `json:"bio,omitempty"`
@@ -50,13 +46,6 @@ type AuthResponse struct {
 	AccessToken  string      `json:"access_token,omitempty"`
 	RefreshToken string      `json:"refresh_token,omitempty"`
 	ExpiresIn    int         `json:"expires_in,omitempty"`
-	AutoFriend   interface{} `json:"auto_friend,omitempty"`
-}
-
-type AutoFriendInfo struct {
-	CitizenID   string `json:"citizen_id"`
-	DisplayName string `json:"display_name"`
-	Handle      string `json:"handle"`
 }
 
 type LoginRequest struct {
@@ -174,13 +163,6 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Handle optional Bot Card code → auto-friend + binding
-	var autoFriend *AutoFriendInfo
-	botCardCode := strings.TrimSpace(req.BotCardCode)
-	if botCardCode != "" {
-		autoFriend = h.processBotCardCode(citizenID, botCardCode)
-	}
-
 	// Generate tokens
 	accessToken, _ := h.jwt.GenerateAccessToken(citizenID, citizenType)
 	refreshToken, _ := h.jwt.GenerateRefreshToken(citizenID, citizenType)
@@ -192,9 +174,6 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresIn:    int(AccessTokenDuration.Seconds()),
-	}
-	if autoFriend != nil {
-		resp.AutoFriend = autoFriend
 	}
 
 	writeJSON(w, http.StatusCreated, resp)
@@ -262,41 +241,6 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// --- Bot Card Code (legacy invite-code compatibility) ---
-
-func (h *Handler) CreateBotCardCode(w http.ResponseWriter, r *http.Request) {
-	citizenID := r.Context().Value("citizen_id").(string)
-
-	// Rate limit: 10 per 24h (both humans and agents)
-	var count int
-	h.db.QueryRow(
-		`SELECT COUNT(*) FROM invite_codes WHERE issuer_id=$1 AND created_at > NOW() - INTERVAL '24 hours'`,
-		citizenID,
-	).Scan(&count)
-	if count >= 10 {
-		writeError(w, http.StatusTooManyRequests, "RATE_LIMIT", "max 10 invite codes per 24 hours")
-		return
-	}
-
-	code := generateBotCardCode()
-	codeID := NewULID()
-	expiresAt := time.Now().Add(7 * 24 * time.Hour) // 7 days expiry
-
-	_, err := h.db.Exec(
-		`INSERT INTO invite_codes (id, code, issuer_id, expires_at) VALUES ($1, $2, $3, $4)`,
-		codeID, code, citizenID, expiresAt,
-	)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "INTERNAL", "server error")
-		return
-	}
-
-	writeJSON(w, http.StatusCreated, map[string]interface{}{
-		"code":       code,
-		"expires_at": expiresAt.Format(time.RFC3339),
-	})
-}
-
 // --- Check Handle Availability ---
 
 func (h *Handler) CheckHandle(w http.ResponseWriter, r *http.Request) {
@@ -321,60 +265,7 @@ func (h *Handler) CheckHandle(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// --- Invite Code Processing ---
-
-func (h *Handler) processBotCardCode(newCitizenID, code string) *AutoFriendInfo {
-	var cardID, botID, status string
-	err := h.db.QueryRow(
-		`SELECT id, bot_id, status FROM bot_cards WHERE code=$1 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1`,
-		code,
-	).Scan(&cardID, &botID, &status)
-	if err != nil || status != "active" {
-		return nil
-	}
-	if botID == newCitizenID {
-		return nil
-	}
-
-	// Upsert binding
-	bindID := NewULID()
-	_, _ = h.db.Exec(
-		`INSERT INTO bot_card_bindings (id, card_id, citizen_id, source, status)
-		 VALUES ($1, $2, $3, 'register', 'connected')
-		 ON CONFLICT (citizen_id, card_id) DO UPDATE SET status='connected'`,
-		bindID, cardID, newCitizenID,
-	)
-
-	// Auto-friend
-	relID := NewULID()
-	aID, bID := sortIDs(botID, newCitizenID)
-	_, _ = h.db.Exec(
-		`INSERT INTO relationships (id, citizen_a_id, citizen_b_id, status, initiated_by)
-		 VALUES ($1, $2, $3, 'active', $4)
-		 ON CONFLICT (citizen_a_id, citizen_b_id) DO NOTHING`,
-		relID, aID, bID, newCitizenID,
-	)
-
-	var botName, botHandle string
-	_ = h.db.QueryRow("SELECT display_name, COALESCE(handle,'') FROM citizens WHERE id=$1", botID).Scan(&botName, &botHandle)
-
-	return &AutoFriendInfo{CitizenID: botID, DisplayName: botName, Handle: botHandle}
-}
-
 // --- Helpers ---
-
-func generateBotCardCode() string {
-	b := make([]byte, 5)
-	rand.Read(b)
-	return "BL-" + strings.ToUpper(hex.EncodeToString(b))
-}
-
-func sortIDs(a, b string) (string, string) {
-	if a < b {
-		return a, b
-	}
-	return b, a
-}
 
 func nilStr(s string) interface{} {
 	if s == "" {

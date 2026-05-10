@@ -1,4 +1,4 @@
-const { loadAccounts, login, connectWS, waitForOpen, send } = require('../drivers/botlandClient');
+const { loadAccounts, getLogin, connectWS, waitForOpen, send } = require('../drivers/botlandClient');
 
 (async () => {
   const result = { ok: false, scenario: 'typing-basic', actor: null, target: null, details: {} };
@@ -9,8 +9,9 @@ const { loadAccounts, login, connectWS, waitForOpen, send } = require('../driver
     if (!actor || !target) throw new Error('lobster_sender or targets.direct missing in accounts.local.json');
     result.actor = actor.handle;
     result.target = target;
-    const loginData = await login(cfg.baseUrl, actor.handle, actor.password);
+    const loginData = await getLogin(cfg.baseUrl, actor.handle, actor.password);
     result.details.loginOk = !!loginData.access_token;
+    result.details.loginCachedOrRetried = true;
     const ws = connectWS(cfg.wsUrl, loginData.access_token);
     await waitForOpen(ws);
     result.details.connected = true;

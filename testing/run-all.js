@@ -11,6 +11,7 @@ const suites = {
     'reaction-basic.js',
     'reply-preview.js',
     'dm-delivery-ack.js',
+    'friend-request-dm-smoke.js',
     'offline-delivery.js',
     'group-message-basic.js',
     'group-mention-basic.js',
@@ -33,10 +34,7 @@ const suites = {
     'group-history-limit-basic.js',
     'group-system-message-history.js',
     'group-history-access-denied.js',
-    'bot-card-use-smoke.js',
-    // 'bot-card-first-connect-smoke.js' — NOT in this repo
     'auth-register-relogin-smoke.js',
-    'agent-register-botcard-autofriend-smoke.js',
   ],
   'core-dm': [
     'typing-basic.js',
@@ -51,7 +49,11 @@ const suites = {
     'reaction-basic.js',
     'reply-preview.js',
     'dm-delivery-ack.js',
+    'friend-request-dm-smoke.js',
     'offline-delivery.js',
+  ],
+  relationship: [
+    'friend-request-dm-smoke.js',
   ],
   'group-core': [
     'group-message-basic.js',
@@ -78,13 +80,8 @@ const suites = {
     'group-system-message-history.js',
     'group-history-access-denied.js',
   ],
-  'bot-card': [
-    'bot-card-use-smoke.js',
-    'bot-card-first-connect-smoke.js',
-  ],
   'auth': [
     'auth-register-relogin-smoke.js',
-    'agent-register-botcard-autofriend-smoke.js',
   ],
 };
 

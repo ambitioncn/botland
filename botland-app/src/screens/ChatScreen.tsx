@@ -108,6 +108,20 @@ function replySummary(msg: StoredMessage): string {
   return '[消息]';
 }
 
+
+function ReactionBar({ reactions }: { reactions?: { emoji: string; count: number }[] }) {
+  if (!reactions || reactions.length === 0) return null;
+  return (
+    <View style={s.reactionBar}>
+      {reactions.map((r, idx) => (
+        <View key={`${r.emoji}_${idx}`} style={s.reactionChip}>
+          <Text style={s.reactionText}>{r.emoji} {r.count}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function ReplyPreviewBlock({ reply, onPress }: { reply?: MessageReplyPreview; onPress?: () => void }) {
   if (!reply) return null;
   const content = (
@@ -313,20 +327,12 @@ export default function ChatScreen({ route, navigation }: Props) {
 
   useEffect(() => { loadLocal(); }, [loadLocal]);
 
-  useEffect(() => {
-    if (!isGroup) {
-      console.log('[DM_DEBUG] screen params', { routeParams: route?.params, friendId, friendName, chatId, isGroup });
-    }
-  }, [route?.params, friendId, friendName, chatId, isGroup]);
-
   const loadDMHistory = useCallback(async () => {
     if (isGroup) return;
     const token = await auth.getAccessToken();
     if (!token) return;
     try {
-      console.log('[DM_DEBUG] loadDMHistory request', { friendId, chatId, isGroup });
       const history = await api.getDMHistory(token, friendId, undefined, 50);
-      console.log('[DM_DEBUG] loadDMHistory response', { count: history?.length || 0, first: history?.[0], last: history?.[history.length - 1] });
       if (history && history.length > 0) {
         const myId = wsManager.getCitizenId() || '';
         const mapped: StoredMessage[] = history.reverse().map((m: any) => {
@@ -414,9 +420,6 @@ export default function ChatScreen({ route, navigation }: Props) {
       }
     });
     const unsubMsg = wsManager.onMessage((data) => {
-      if (!isGroup) {
-        console.log('[DM_DEBUG] ws inbound', { type: data?.type, from: data?.from, to: data?.to, friendId, chatId, id: data?.id, payload: data?.payload });
-      }
       if (!isGroup && data.type === 'message.received' && data.from === friendId) {
         const ctype = data.payload?.content_type || 'text';
         const msg: StoredMessage = {
@@ -451,7 +454,25 @@ export default function ChatScreen({ route, navigation }: Props) {
         setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
         messageStore.save(msg);
       }
+
+      if (data.type === 'message.reaction') {
+        const { message_id: messageId, emoji } = data.payload || {};
+        if (messageId && emoji) {
+          setMessages(prev => prev.map(m => {
+            if (m.id !== messageId) return m;
+            const existing = Array.isArray(m.reactions) ? [...m.reactions] : [];
+            const idx = existing.findIndex((r: any) => r.emoji === emoji);
+            if (idx >= 0) existing[idx] = { ...existing[idx], count: (existing[idx].count || 0) + 1 };
+            else existing.push({ emoji, count: 1 });
+            const next = { ...m, reactions: existing };
+            void messageStore.updateReactions(m.id, existing as any);
+            return next;
+          }));
+        }
+      }
+
       if (data.type === 'error') {
+
         const code = data.payload?.code;
         const msg = data.payload?.message;
         const refId = data.payload?.ref_id;
@@ -497,41 +518,17 @@ export default function ChatScreen({ route, navigation }: Props) {
           messageStore.updateStatus(msgId, status);
         }
       }
-      // Handle inbound reactions (both DM and group)
-      if ((data.type === 'message.reaction' || data.type === 'group.message.reaction') && data.payload?.message_id) {
-        const targetChatId = isGroup ? groupId : friendId;
-        const msgId = data.payload.message_id;
-        const emoji = data.payload.emoji || '❤️';
-        const myId = wsManager.getCitizenId();
-        const reactedByMe = data.from === myId;
-        setMessages(prev => prev.map(m => {
-          if (m.id !== msgId) return m;
-          const existing = m.reactions || [];
-          const idx = existing.findIndex(r => r.emoji === emoji);
-          let updated: StoredMessage['reactions'];
-          if (idx >= 0) {
-            // Update existing reaction
-            updated = existing.map((r, i) => i === idx
-              ? { ...r, count: reactedByMe && !r.myReaction ? r.count + 1 : r.count, myReaction: r.myReaction || reactedByMe }
-              : r
-            );
-          } else {
-            updated = [...existing, { emoji, count: 1, myReaction: reactedByMe }];
-          }
-          return { ...m, reactions: updated };
-        }));
-      }
       if ((data.type === 'typing.start' || data.type === 'group.typing.start') && data.from !== wsManager.getCitizenId()) {
-        const isRelevant = isGroup ? data.to === groupId : data.from === friendId;
+        const isRelevant = isGroup ? data.to === groupId : (data.from === friendId || data.fromName === friendId);
         if (isRelevant) {
           setPeerTyping(true);
-          setPeerTypingName(data.from?.slice(-6) || '');
+          setPeerTypingName(data.fromName || data.from?.slice(-6) || '');
           if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
           typingTimerRef.current = setTimeout(() => setPeerTyping(false), 4000);
         }
       }
       if ((data.type === 'typing.stop' || data.type === 'group.typing.stop') && data.from !== wsManager.getCitizenId()) {
-        const isRelevant = isGroup ? data.to === groupId : data.from === friendId;
+        const isRelevant = isGroup ? data.to === groupId : (data.from === friendId || data.fromName === friendId);
         if (isRelevant) {
           setPeerTyping(false);
           if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
@@ -736,6 +733,27 @@ export default function ChatScreen({ route, navigation }: Props) {
   );
 
 
+
+  const sendReaction = (item: StoredMessage, emoji: string) => {
+    if (!item?.id) return;
+    const target = chatId;
+    wsManager.send({
+      type: 'message.reaction',
+      to: target,
+      payload: { message_id: item.id, emoji },
+    });
+    setMessages(prev => prev.map(m => {
+      if (m.id !== item.id) return m;
+      const existing = Array.isArray(m.reactions) ? [...m.reactions] : [];
+      const idx = existing.findIndex((r: any) => r.emoji === emoji);
+      if (idx >= 0) existing[idx] = { ...existing[idx], count: (existing[idx].count || 0) + 1 };
+      else existing.push({ emoji, count: 1 });
+      const next = { ...m, reactions: existing };
+      void messageStore.updateReactions(m.id, existing as any);
+      return next;
+    }));
+  };
+
   const beginReply = (item: StoredMessage) => {
     setReplyingTo({
       id: item.id,
@@ -749,16 +767,22 @@ export default function ChatScreen({ route, navigation }: Props) {
   const onMessageLongPress = (item: StoredMessage) => {
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions({
-        options: ['取消', '回复'],
+        options: ['取消', '回复', '❤️', '👍', '😂'],
         cancelButtonIndex: 0,
       }, (buttonIndex) => {
         if (buttonIndex === 1) beginReply(item);
+        if (buttonIndex === 2) sendReaction(item, '❤️');
+        if (buttonIndex === 3) sendReaction(item, '👍');
+        if (buttonIndex === 4) sendReaction(item, '😂');
       });
       return;
     }
     Alert.alert('消息操作', '选择要执行的操作', [
       { text: '取消', style: 'cancel' },
       { text: '回复', onPress: () => beginReply(item) },
+      { text: '❤️', onPress: () => sendReaction(item, '❤️') },
+      { text: '👍', onPress: () => sendReaction(item, '👍') },
+      { text: '😂', onPress: () => sendReaction(item, '😂') },
     ]);
   };
 
@@ -800,6 +824,7 @@ export default function ChatScreen({ route, navigation }: Props) {
                 );
               })()}</Text>
             )}
+            <ReactionBar reactions={item.reactions as any} />
           </TouchableOpacity>
           {item.mine && item.status === 'failed' && (
             <TouchableOpacity onPress={() => resendMessage(item)} style={s.resendRow}><Text style={s.statusFailed}>发送失败</Text><Text style={s.resendBtn}> 点击重发</Text></TouchableOpacity>
@@ -808,16 +833,6 @@ export default function ChatScreen({ route, navigation }: Props) {
             <Text style={[s.status, item.status === 'read' ? s.statusRead : null]}>
               {item.status === 'sent' ? '✓' : item.status === 'delivered' ? '✓✓' : item.status === 'read' ? '✓✓ 已读' : ''}
             </Text>
-          )}
-          {item.reactions && item.reactions.length > 0 && (
-            <View style={s.reactionsRow}>
-              {item.reactions.map((r, i) => (
-                <View key={i} style={[s.reactionChip, r.myReaction && s.reactionChipMine]}>
-                  <Text style={s.reactionEmoji}>{r.emoji}</Text>
-                  {(r.count > 1 || r.myReaction) && <Text style={s.reactionCount}>{r.count}</Text>}
-                </View>
-              ))}
-            </View>
           )}
         </View>
       </View>
@@ -921,11 +936,6 @@ const s = StyleSheet.create({
   statusFailed: { color: '#ff6b6b', fontSize: 10 },
   resendRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 2 },
   resendBtn: { color: '#ff6b35', fontSize: 10, fontWeight: '600' },
-  reactionsRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 4 },
-  reactionChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1e1e1e', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2, marginRight: 4, marginBottom: 2 },
-  reactionChipMine: { backgroundColor: '#ff6b35' },
-  reactionEmoji: { fontSize: 12 },
-  reactionCount: { fontSize: 10, color: '#888', marginLeft: 2 },
   inputRow: { flexDirection: 'row', alignItems: 'center', padding: 8, borderTopWidth: 1, borderTopColor: '#222', backgroundColor: '#111' },
   imgBtn: { padding: 8 },
   imgIcon: { fontSize: 22 },
@@ -953,4 +963,7 @@ const s = StyleSheet.create({
   replyComposerTitle: { color: '#ff6b35', fontSize: 12, fontWeight: '700' },
   replyComposerText: { color: '#bbb', fontSize: 12, marginTop: 2 },
   replyComposerClose: { color: '#888', fontSize: 26, marginLeft: 10, lineHeight: 26 },
+  reactionBar: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  reactionChip: { backgroundColor: 'rgba(0,0,0,0.18)', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4 },
+  reactionText: { color: '#fff', fontSize: 12 },
 });

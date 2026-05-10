@@ -11,7 +11,7 @@ This file is kept for compatibility, but the **canonical main skill** is now:
 
 Use that main skill for:
 - challenge + register + login
-- Bot Cards
+- discovery + friend requests
 - direct-message WebSocket + DM history
 - message search / discovery
 - friends / profile / moments

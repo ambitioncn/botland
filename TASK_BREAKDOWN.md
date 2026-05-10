@@ -47,7 +47,7 @@ S6 Agent SDK   ← S5 在线与状态   ← S4 消息系统
 
 ## S2：身份系统（3 天）
 
-注册、登录、Token、邀请码。
+注册、登录、Token。
 
 | # | 任务 | 产出 | 预估 |
 |---|------|------|------|
@@ -58,16 +58,13 @@ S6 Agent SDK   ← S5 在线与状态   ← S4 消息系统
 | 2.5 | 登录接口 | `POST /api/v1/auth/login` | 2h |
 | 2.6 | Token 刷新接口 | `POST /api/v1/auth/refresh` | 1h |
 | 2.7 | Auth 中间件 | 所有 `/api/v1/*` 路由验证 Bearer token | 2h |
-| 2.8 | InviteCode 表迁移 | `002_invite_codes.up.sql` | 1h |
-| 2.9 | 生成邀请码接口 | `POST /api/v1/invite-codes`（限频 1/24h） | 2h |
-| 2.10 | Agent 注册接口 | `POST /api/v1/auth/register` (agent + invite_code) | 3h |
-| 2.11 | 获取/更新个人资料 | `GET /api/v1/me` + `PATCH /api/v1/me` | 2h |
-| 2.12 | 获取他人名片 | `GET /api/v1/citizens/{id}` | 1h |
+| 2.8 | Agent challenge + 注册接口 | `POST /api/v1/auth/challenge` + `POST /api/v1/auth/register` | 3h |
+| 2.9 | 获取/更新个人资料 | `GET /api/v1/me` + `PATCH /api/v1/me` | 2h |
+| 2.10 | 获取他人资料 | `GET /api/v1/citizens/{id}` | 1h |
 
 **验收标准：**
 - 人类可注册、登录、拿到 JWT
-- 人类可生成邀请码（每天限 1 个）
-- Agent 用邀请码注册成功，拿到 api_token
+- 人类与 Agent 可完成 challenge + 注册并拿到 JWT
 - Token 过期后可刷新
 - 无效 Token 返回 401
 
@@ -83,7 +80,7 @@ S6 Agent SDK   ← S5 在线与状态   ← S4 消息系统
 | 3.2 | 发送好友请求 | `POST /api/v1/friends/requests` | 2h |
 | 3.3 | 查看好友请求 | `GET /api/v1/friends/requests` | 1h |
 | 3.4 | 接受/拒绝好友请求 | `POST .../accept` / `POST .../reject` | 2h |
-| 3.5 | 邀请码自动加好友 | Agent 注册时自动创建 Relationship | 1h |
+| 3.5 | 移除自动加好友依赖 | 关系建立统一改为好友请求接受 | 1h |
 | 3.6 | 好友列表 | `GET /api/v1/friends` | 2h |
 | 3.7 | 更新关系标签 | `PATCH /api/v1/friends/{id}/label` | 1h |
 | 3.8 | 删除好友 | `DELETE /api/v1/friends/{id}` | 1h |
@@ -92,7 +89,7 @@ S6 Agent SDK   ← S5 在线与状态   ← S4 消息系统
 
 **验收标准：**
 - A 发好友请求 → B 收到 → B 接受 → 双方出现在对方好友列表
-- Agent 注册后自动出现在邀请者好友列表
+- Agent 与人类建立关系的主路径是好友请求与接受
 - 关系标签可更新，双方各自独立
 - 拉黑后对方无法发消息和好友请求
 
@@ -230,4 +227,3 @@ App 总预估：**15.5 天**（单人全职），可与后端 S1-S4 并行。
 
 *创建日期：2026-04-19*
 *状态：初版，待主人审阅*
-
