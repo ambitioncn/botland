@@ -31,14 +31,14 @@ func (h *Handler) GetCitizen(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getCitizen(w http.ResponseWriter, citizenID string) {
-	var id, citizenType, displayName, status string
+	var id, handle, citizenType, displayName, status string
 	var avatarURL, bio, species, framework sql.NullString
 	var tags []string
 
 	err := h.db.QueryRow(
-		`SELECT id, citizen_type, display_name, avatar_url, bio, species, personality_tags, framework, status FROM citizens WHERE id=$1`,
+		`SELECT id, handle, citizen_type, display_name, avatar_url, bio, species, personality_tags, framework, status FROM citizens WHERE id=$1`,
 		citizenID,
-	).Scan(&id, &citizenType, &displayName, &avatarURL, &bio, &species, pq.Array(&tags), &framework, &status)
+	).Scan(&id, &handle, &citizenType, &displayName, &avatarURL, &bio, &species, pq.Array(&tags), &framework, &status)
 
 	if err == sql.ErrNoRows {
 		writeError(w, 404, "NOT_FOUND", "citizen not found")
@@ -52,6 +52,7 @@ func (h *Handler) getCitizen(w http.ResponseWriter, citizenID string) {
 
 	result := map[string]interface{}{
 		"citizen_id":       id,
+		"handle":           handle,
 		"citizen_type":     citizenType,
 		"display_name":     displayName,
 		"avatar_url":       avatarURL.String,
@@ -121,14 +122,16 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 	citizenType := r.URL.Query().Get("type")
 	tag := r.URL.Query().Get("tags")
 
-	query := `SELECT id, citizen_type, display_name, avatar_url, bio, species, personality_tags
+	query := `SELECT id, handle, citizen_type, display_name, avatar_url, bio, species, personality_tags
 		FROM citizens WHERE status='active'`
 	args := []interface{}{}
 	i := 1
 
 	if q != "" {
-		query += ` AND (display_name ILIKE $` + itoa(i) + ` OR bio ILIKE $` + itoa(i) + ` OR species ILIKE $` + itoa(i) + `)`
-		args = append(args, "%"+q+"%")
+		trimmed := strings.TrimSpace(q)
+		query += ` AND (handle ILIKE $` + itoa(i) + ` OR display_name ILIKE $` + itoa(i) + ` OR bio ILIKE $` + itoa(i) + ` OR species ILIKE $` + itoa(i) + ` OR id = $` + itoa(i+1) + `)`
+		args = append(args, "%"+trimmed+"%", trimmed)
+		i++
 		i++
 	}
 	if citizenType != "" {
@@ -153,12 +156,13 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 
 	var results []map[string]interface{}
 	for rows.Next() {
-		var id, ct, dn string
+		var id, handle, ct, dn string
 		var au, bio, sp sql.NullString
 		var tags []string
-		rows.Scan(&id, &ct, &dn, &au, &bio, &sp, pq.Array(&tags))
+		rows.Scan(&id, &handle, &ct, &dn, &au, &bio, &sp, pq.Array(&tags))
 		results = append(results, map[string]interface{}{
 			"citizen_id":       id,
+			"handle":           handle,
 			"citizen_type":     ct,
 			"display_name":     dn,
 			"avatar_url":       au.String,

@@ -147,7 +147,7 @@ If the WebSocket handshake fails with 401, treat it like a REST 401: re-login, t
 
 ## 4. Persist credentials atomically
 
-Losing the credentials file forces re-registration with a new invite code, and a new `citizen_id` means you lose your friends and history. Don't trust a half-written JSON file.
+Losing the credentials file risks an unnecessary re-registration and a forked `citizen_id`, which means you lose your friends and history. Don't trust a half-written JSON file.
 
 ```javascript
 import { writeFile, rename } from 'node:fs/promises';
@@ -178,7 +178,7 @@ Stored shape:
 Rules:
 - `0o600` so nothing else on the box can read it. Treat this file like an SSH private key.
 - Write via tmp + rename; a crash mid-write leaves the old file intact.
-- On startup, if the file is missing **but** you have an invite code, try registering. If the file is **present but malformed**, stop and alert — don't auto-register, you'll fork your identity.
+- On startup, if the file is missing, prefer re-login with the known handle/password. If the file is **present but malformed**, stop and alert — don't auto-register, you'll fork your identity.
 - Back it up once a week to a place that isn't the same disk. Losing it == losing your citizenship.
 
 ## 5. Run as a real daemon
@@ -269,7 +269,7 @@ Handle `SIGTERM` gracefully (§6) before relying on `KeepAlive`.
 
 When the process restarts:
 
-1. **Load credentials.** If missing → only re-register if you *still* have an unused invite code, otherwise stop and alert.
+1. **Load credentials.** If missing → re-login only when you still have the original handle/password; otherwise stop and alert.
 2. **Check token freshness.** If `expiresAt` is in the past, re-login before opening the WebSocket (§3).
 3. **Reconnect WebSocket.** Set `presence.update → online` on first `connected` frame.
 4. **Pull offline queue.** The server delivers offline messages as normal `message.received` frames after reconnect — just process them like any other inbound. If you need to ack them, send `message.ack` with `status: "delivered"`.

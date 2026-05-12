@@ -27,6 +27,7 @@ const DEFAULT_WS_URL = "wss://api.botland.im/ws";
 const DEFAULT_RECONNECT_MS = 5000;
 const DEFAULT_PING_INTERVAL_MS = 20000;
 const DEFAULT_TIMEOUT_MS = 120000;
+const DEFAULT_FRIEND_REQUEST_POLL_MS = 15000;
 
 let cachedToken = null;
 let cachedRefreshToken = null;
@@ -37,6 +38,8 @@ let _wsLifecyclePhase = "idle";
 const recentInboundDirectKeys = new Map();
 const pendingOutboundStatuses = new Map();
 const pendingOutboundQueue = [];
+const seenPendingFriendRequestIdsByAccount = new Map();
+const directTargetHandleCache = new Map();
 let _flushPendingOutboundPromise = null;
 
 function describeWsReadyState(readyState) {
@@ -157,6 +160,501 @@ async function ensureToken(account, log, options = {}) {
   return data.access_token;
 }
 
+async function botlandApi(account, path, init = {}, log = null) {
+  const token = await ensureToken(account, log);
+  const headers = new Headers(init.headers || {});
+  headers.set('Authorization', `Bearer ${token}`);
+  if (init.body !== undefined && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  const res = await fetch(`${account.apiUrl}${path}`, {
+    ...init,
+    headers,
+  });
+  const text = await res.text();
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { raw: text };
+    }
+  }
+  if (!res.ok) {
+    throw new Error(data?.error?.message || `BotLand API ${res.status} ${res.statusText}`);
+  }
+  return data;
+}
+
+function splitCommandArgs(rawArgs) {
+  const input = typeof rawArgs === "string" ? rawArgs.trim() : "";
+  return input ? input.split(/\s+/).filter(Boolean) : [];
+}
+
+function parseFirstArgAndRest(rawArgs) {
+  const input = typeof rawArgs === "string" ? rawArgs.trim() : "";
+  if (!input) return { first: "", rest: "" };
+  const firstSpace = input.search(/\s/);
+  if (firstSpace < 0) return { first: input, rest: "" };
+  return {
+    first: input.slice(0, firstSpace).trim(),
+    rest: input.slice(firstSpace + 1).trim(),
+  };
+}
+
+function requireArg(value, usageText) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (normalized) return normalized;
+  throw new Error(usageText);
+}
+
+function truncateList(items, limit = 20) {
+  if (!Array.isArray(items)) return [];
+  return items.slice(0, Math.max(0, limit));
+}
+
+async function sendFriendRequest(account, targetId, greeting, log) {
+  return await botlandApi(
+    account,
+    "/api/v1/friends/requests",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        target_id: targetId,
+        ...(greeting ? { greeting } : {}),
+      }),
+    },
+    log,
+  );
+}
+
+async function listFriendRequests(account, options = {}, log) {
+  const params = new URLSearchParams();
+  const direction = typeof options.direction === "string" ? options.direction.trim() : "";
+  const status = typeof options.status === "string" ? options.status.trim() : "";
+  if (direction) params.set("direction", direction);
+  if (status) params.set("status", status);
+  const query = params.toString();
+  const data = await botlandApi(
+    account,
+    `/api/v1/friends/requests${query ? `?${query}` : ""}`,
+    { method: "GET" },
+    log,
+  );
+  return Array.isArray(data?.requests) ? data.requests : [];
+}
+
+async function acceptFriendRequest(account, requestId, log) {
+  return await botlandApi(
+    account,
+    `/api/v1/friends/requests/${encodeURIComponent(requestId)}/accept`,
+    { method: "POST" },
+    log,
+  );
+}
+
+async function rejectFriendRequest(account, requestId, log) {
+  return await botlandApi(
+    account,
+    `/api/v1/friends/requests/${encodeURIComponent(requestId)}/reject`,
+    { method: "POST" },
+    log,
+  );
+}
+
+async function listFriends(account, log) {
+  const data = await botlandApi(account, "/api/v1/friends", { method: "GET" }, log);
+  return Array.isArray(data?.friends) ? data.friends : [];
+}
+
+async function createMoment(account, body, log) {
+  return await botlandApi(
+    account,
+    "/api/v1/moments",
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+    log,
+  );
+}
+
+async function uploadMediaToBotland(account, source, category, log) {
+  const token = await ensureToken(account, log);
+  const normalized = typeof source === "string" ? source.trim() : "";
+  if (!normalized) throw new Error("Missing media source");
+
+  const formData = new FormData();
+
+  if (/^(https?:|data:)/i.test(normalized)) {
+    const res = await fetch(normalized);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch media source: HTTP ${res.status}`);
+    }
+    const urlObj = /^https?:/i.test(normalized) ? new URL(normalized) : null;
+    const filename = urlObj
+      ? (urlObj.pathname.split("/").filter(Boolean).pop() || `${category}.bin`)
+      : `${category}.bin`;
+    const blob = await res.blob();
+    formData.append("file", blob, filename);
+  } else {
+    const { createReadStream } = await import("fs");
+    const { basename } = await import("path");
+    formData.append("file", createReadStream(normalized), basename(normalized) || `${category}.bin`);
+  }
+
+  const uploadRes = await fetch(`${account.apiUrl}/api/v1/media/upload?category=${encodeURIComponent(category)}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  const text = await uploadRes.text();
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { raw: text };
+    }
+  }
+  if (!uploadRes.ok) {
+    throw new Error(data?.error?.message || `BotLand media upload ${uploadRes.status} ${uploadRes.statusText}`);
+  }
+  return data;
+}
+
+async function uploadMultipleMediaToBotland(account, sources, category, log) {
+  const uploaded = [];
+  for (const source of sources) {
+    uploaded.push(await uploadMediaToBotland(account, source, category, log));
+  }
+  return uploaded;
+}
+
+async function listGroups(account, log) {
+  const data = await botlandApi(account, "/api/v1/groups", { method: "GET" }, log);
+  return Array.isArray(data) ? data : [];
+}
+
+async function getGroup(account, groupId, log) {
+  return await botlandApi(
+    account,
+    `/api/v1/groups/${encodeURIComponent(groupId)}`,
+    { method: "GET" },
+    log,
+  );
+}
+
+async function leaveGroup(account, groupId, log) {
+  return await botlandApi(
+    account,
+    `/api/v1/groups/${encodeURIComponent(groupId)}/leave`,
+    { method: "POST" },
+    log,
+  );
+}
+
+async function inviteGroupMembers(account, groupId, citizenIds, log) {
+  return await botlandApi(
+    account,
+    `/api/v1/groups/${encodeURIComponent(groupId)}/members`,
+    {
+      method: "POST",
+      body: JSON.stringify({ citizen_ids: citizenIds }),
+    },
+    log,
+  );
+}
+
+async function removeFriend(account, citizenId, log) {
+  return await botlandApi(
+    account,
+    `/api/v1/friends/${encodeURIComponent(citizenId)}`,
+    { method: "DELETE" },
+    log,
+  );
+}
+
+async function blockCitizen(account, citizenId, log) {
+  return await botlandApi(
+    account,
+    `/api/v1/friends/${encodeURIComponent(citizenId)}/block`,
+    { method: "POST" },
+    log,
+  );
+}
+
+async function listTimeline(account, options = {}, log) {
+  const params = new URLSearchParams();
+  const rawLimit = Number(options.limit);
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(100, Math.floor(rawLimit)) : 20;
+  params.set("limit", String(limit));
+  const before = typeof options.before === "string" ? options.before.trim() : "";
+  if (before) params.set("before", before);
+  const data = await botlandApi(
+    account,
+    `/api/v1/moments?${params.toString()}`,
+    { method: "GET" },
+    log,
+  );
+  return Array.isArray(data?.moments) ? data.moments : (Array.isArray(data) ? data : []);
+}
+
+function normalizeMessageTarget(target) {
+  const raw = typeof target === "string" ? target.trim() : "";
+  if (!raw) throw new Error("Missing BotLand target");
+  const isGroup = raw.startsWith("group:") || raw.startsWith("group_");
+  return {
+    raw,
+    isGroup,
+    to: isGroup ? raw.replace(/^group:/, "") : raw,
+    msgType: isGroup ? "group.message.send" : "message.send",
+  };
+}
+
+function isLikelyCitizenId(value) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return /^(agent|human)_[A-Za-z0-9]+$/.test(normalized);
+}
+
+function normalizeComparableIdentity(value) {
+  return typeof value === "string"
+    ? value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "")
+    : "";
+}
+
+async function resolveDirectTargetId(account, target, log) {
+  const normalized = requireArg(target, "Missing BotLand target");
+  if (isLikelyCitizenId(normalized)) return normalized;
+
+  const cacheKey = normalized.toLowerCase();
+  const cached = directTargetHandleCache.get(cacheKey);
+  if (cached) return cached;
+
+  const comparableTarget = normalizeComparableIdentity(normalized);
+  const pickMatch = (items) => {
+    if (!Array.isArray(items)) return null;
+    const matches = items.filter((item) => {
+      const citizenId = typeof item?.citizen_id === "string" ? item.citizen_id.trim() : "";
+      if (!citizenId) return false;
+      const handle = normalizeComparableIdentity(item?.handle);
+      const displayName = normalizeComparableIdentity(item?.display_name);
+      return handle === comparableTarget || displayName === comparableTarget;
+    });
+    if (matches.length === 1) return matches[0].citizen_id.trim();
+    if (matches.length > 1) {
+      throw new Error(`Multiple BotLand citizens matched target: ${normalized}`);
+    }
+    return null;
+  };
+
+  const data = await botlandApi(
+    account,
+    `/api/v1/discover/search?q=${encodeURIComponent(normalized)}`,
+    { method: "GET" },
+    log,
+  );
+  const directMatch = pickMatch(data?.results);
+  if (directMatch) {
+    directTargetHandleCache.set(cacheKey, directMatch);
+    return directMatch;
+  }
+
+  const friends = await listFriends(account, log);
+  const friendMatch = pickMatch(friends);
+  if (friendMatch) {
+    directTargetHandleCache.set(cacheKey, friendMatch);
+    return friendMatch;
+  }
+
+  const broadQuery = comparableTarget.slice(0, Math.min(6, comparableTarget.length));
+  if (broadQuery && broadQuery !== comparableTarget) {
+    const broadData = await botlandApi(
+      account,
+      `/api/v1/discover/search?q=${encodeURIComponent(broadQuery)}`,
+      { method: "GET" },
+      log,
+    );
+    const broadMatch = pickMatch(broadData?.results);
+    if (broadMatch) {
+      directTargetHandleCache.set(cacheKey, broadMatch);
+      return broadMatch;
+    }
+  }
+
+  throw new Error(`BotLand citizen not found for target: ${normalized}`);
+}
+
+async function resolveOutboundMessageTarget(account, target, log) {
+  const normalized = normalizeMessageTarget(target);
+  if (normalized.isGroup) {
+    return {
+      ...normalized,
+      resolvedTo: normalized.to,
+      resolvedTarget: `group:${normalized.to}`,
+    };
+  }
+  const citizenId = await resolveDirectTargetId(account, normalized.to, log);
+  return {
+    ...normalized,
+    resolvedTo: citizenId,
+    resolvedTarget: citizenId,
+  };
+}
+
+function normalizeTargetFromCommand(kind, id) {
+  const normalizedKind = typeof kind === "string" ? kind.trim().toLowerCase() : "";
+  const normalizedId = requireArg(id, "Missing BotLand target id");
+  if (normalizedKind === "group") return `group:${normalizedId}`;
+  if (normalizedKind === "direct") return normalizedId;
+  throw new Error("Target kind must be direct or group");
+}
+
+function extractStructuredMessagePayload(message) {
+  if (!message || typeof message !== "object" || Array.isArray(message)) return null;
+  const payload = message.payload;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  return payload;
+}
+
+function extractReactionPayload(message) {
+  if (!message || typeof message !== "object" || Array.isArray(message)) return null;
+  const reaction = message.reaction;
+  if (!reaction || typeof reaction !== "object" || Array.isArray(reaction)) return null;
+  return reaction;
+}
+
+async function sendPresenceUpdate(account, presence, log) {
+  const payload = {
+    state: presence?.state,
+    ...(typeof presence?.text === "string" && presence.text.trim() ? { text: presence.text.trim() } : {}),
+  };
+  if (!payload.state) throw new Error("Missing BotLand presence state");
+
+  if (_activeWs && _activeWs.readyState === WS.OPEN) {
+    _activeWs.send(JSON.stringify({ type: "presence.update", payload }));
+    return { via: "active" };
+  }
+
+  const token = await ensureToken(account, log);
+  const wsUrl = `${account.wsUrl}?token=${encodeURIComponent(token)}`;
+  await new Promise((resolve, reject) => {
+    let settled = false;
+    const ws = new WS(wsUrl);
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      try { ws.close(1000, "presence-updated"); } catch {}
+      fn(value);
+    };
+    ws.addEventListener("open", () => {
+      ws.send(JSON.stringify({ type: "presence.update", payload }));
+      setTimeout(() => finish(resolve, null), 250);
+    });
+    ws.addEventListener("error", (event) => {
+      finish(
+        reject,
+        new Error(
+          `[${CHANNEL_ID}] ephemeral presence websocket error ` +
+            `(readyState=${describeWsReadyState(ws.readyState)} type=${event?.type || "unknown"})`,
+        ),
+      );
+    });
+    ws.addEventListener("close", (event) => {
+      if (settled) return;
+      finish(
+        reject,
+        new Error(
+          `[${CHANNEL_ID}] ephemeral presence websocket closed ` +
+            `(code=${event.code} reason=${event.reason || "<empty>"})`,
+        ),
+      );
+    });
+  });
+  return { via: "ephemeral" };
+}
+
+async function updateFriendLabel(account, citizenId, label, log) {
+  return await botlandApi(
+    account,
+    `/api/v1/friends/${encodeURIComponent(citizenId)}/label`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ label }),
+    },
+    log,
+  );
+}
+
+async function listIncomingPendingFriendRequests(account, log) {
+  return await listFriendRequests(
+    account,
+    { direction: "incoming", status: "pending" },
+    log,
+  );
+}
+
+function claimNewPendingFriendRequests(account, requests) {
+  const fresh = [];
+  const accountKey = typeof account?.handle === "string" ? account.handle.trim() : "";
+  const seenIds = seenPendingFriendRequestIdsByAccount.get(accountKey) || new Set();
+  for (const request of requests) {
+    const requestId = typeof request?.request_id === 'string' ? request.request_id.trim() : '';
+    if (!requestId) continue;
+    if (seenIds.has(requestId)) continue;
+    fresh.push(request);
+    seenIds.add(requestId);
+  }
+  if (accountKey) {
+    seenPendingFriendRequestIdsByAccount.set(accountKey, seenIds);
+  }
+  return fresh;
+}
+
+function forgetPendingFriendRequest(account, requestId) {
+  const normalizedRequestId = typeof requestId === "string" ? requestId.trim() : "";
+  if (!normalizedRequestId) return;
+  const accountKey = typeof account?.handle === "string" ? account.handle.trim() : "";
+  if (!accountKey) return;
+  const seenIds = seenPendingFriendRequestIdsByAccount.get(accountKey);
+  if (!seenIds) return;
+  seenIds.delete(normalizedRequestId);
+  if (!seenIds.size) {
+    seenPendingFriendRequestIdsByAccount.delete(accountKey);
+  }
+}
+
+function buildFriendRequestNotificationText(request) {
+  const senderName = request?.display_name || request?.from_name || request?.from_id || '有个 BotLand 用户';
+  const greeting = typeof request?.greeting === 'string' ? request.greeting.trim() : '';
+  const lines = [
+    `[BotLand 系统通知] ${senderName} 向你发送了好友请求。`,
+    '这是一条关系事件通知，不是对方发来的聊天消息。',
+  ];
+  if (greeting) lines.push(`附言：${greeting}`);
+  if (request?.request_id) lines.push(`请求ID：${request.request_id}`);
+  lines.push('如果你想建立关系，请先接受好友请求，再决定是否回复消息。');
+  return lines.join('\n');
+}
+
+function buildFriendAcceptedNotificationText(notification) {
+  const payload = notification?.payload && typeof notification.payload === 'object' ? notification.payload : {};
+  const senderName =
+    payload.display_name ||
+    payload.related_citizen_name ||
+    payload.sender_name ||
+    payload.related_citizen_id ||
+    '有个 BotLand 用户';
+  const message =
+    typeof payload.message === 'string' && payload.message.trim()
+      ? payload.message.trim()
+      : `${senderName} 接受了你的好友请求。`;
+  return [
+    `[BotLand 系统通知] ${message}`,
+    '这条关系已经确认建立，可以开始正常私聊了。',
+  ].join('\n');
+}
+
 async function sendViaEphemeralWs(args, account, log) {
   const token = await ensureToken(account, log);
   const { target, message, media, awaitAckMs = 0, maxAttempts = 1 } = args;
@@ -164,9 +662,9 @@ async function sendViaEphemeralWs(args, account, log) {
     return { success: false, error: 'Missing target' };
   }
 
-  const isGroup = target.startsWith('group:') || target.startsWith('group_');
-  const to = isGroup ? target.replace(/^group:/, '') : target;
-  const msgType = isGroup ? 'group.message.send' : 'message.send';
+  const { isGroup, resolvedTo: to, msgType, resolvedTarget } = await resolveOutboundMessageTarget(account, target, log);
+  const reactionPayload = extractReactionPayload(message);
+  const structuredPayload = extractStructuredMessagePayload(message);
   const wsUrl = `${account.wsUrl}?token=${token}`;
 
   return await new Promise((resolve, reject) => {
@@ -233,6 +731,12 @@ async function sendViaEphemeralWs(args, account, log) {
       queueAckWatch();
     };
 
+    const sendStructuredPayload = () => {
+      currentMessageId = `out_${Date.now()}_payload`;
+      ws.send(JSON.stringify({ type: msgType, id: currentMessageId, to, payload: structuredPayload }));
+      queueAckWatch();
+    };
+
     const sendMediaPayload = async () => {
       const { createReadStream } = await import('fs');
       const { basename } = await import('path');
@@ -265,10 +769,15 @@ async function sendViaEphemeralWs(args, account, log) {
       ws.send(JSON.stringify({ type: 'presence.update', payload: { state: 'online' } }));
       void (async () => {
         try {
-          if (!isGroup && message && typeof message === 'object' && message.reaction && typeof message.reaction === 'object') {
+          if (!isGroup && reactionPayload) {
             currentMessageId = `out_${Date.now()}_reaction`;
-            ws.send(JSON.stringify({ type: 'message.reaction', id: currentMessageId, to, payload: message.reaction }));
+            ws.send(JSON.stringify({ type: 'message.reaction', id: currentMessageId, to, payload: reactionPayload }));
             safetyTimer = setTimeout(() => finish({ success: true, messageId: currentMessageId }), 250);
+            return;
+          }
+          if (structuredPayload) {
+            sendStructuredPayload();
+            messageSent = true;
             return;
           }
           if (media) {
@@ -355,14 +864,33 @@ async function sendViaActiveWsImmediate({ target, message, media, cfg, accountId
   if (!target) {
     return { success: false, error: 'Missing target' };
   }
-  const isGroup = target.startsWith('group:') || target.startsWith('group_');
-  const to = isGroup ? target.replace(/^group:/, '') : target;
-  const msgType = isGroup ? 'group.message.send' : 'message.send';
-  if (!isGroup && message && typeof message === 'object' && message.reaction && typeof message.reaction === 'object') {
+  const { isGroup, resolvedTo: to, msgType, resolvedTarget } = await resolveOutboundMessageTarget(account, target, log);
+  const reactionPayload = extractReactionPayload(message);
+  const structuredPayload = extractStructuredMessagePayload(message);
+  if (!isGroup && reactionPayload) {
     const msgId = `out_${Date.now()}`;
-    ws.send(JSON.stringify({ type: 'message.reaction', id: msgId, to, payload: message.reaction }));
-    await recordOutboundTargetSession({ cfg, accountId, target });
+    ws.send(JSON.stringify({ type: 'message.reaction', id: msgId, to, payload: reactionPayload }));
+    await recordOutboundTargetSession({ cfg, accountId, target: resolvedTarget });
     return { success: true, messageId: msgId };
+  }
+  if (structuredPayload) {
+    const msgId = `out_${Date.now()}_payload`;
+    ws.send(JSON.stringify({ type: msgType, id: msgId, to, payload: structuredPayload }));
+    if (!awaitAckMs || isGroup) {
+      await recordOutboundTargetSession({ cfg, accountId, target: resolvedTarget });
+      return { success: true, messageId: msgId };
+    }
+    const ack = await waitForOutboundStatus(msgId, awaitAckMs);
+    if (ack?.payload?.status === 'delivered' || ack?.payload?.status === 'read') {
+      await recordOutboundTargetSession({ cfg, accountId, target: resolvedTarget });
+      return { success: true, messageId: msgId, status: ack.payload.status };
+    }
+    return {
+      success: false,
+      error: ack?.payload?.status
+        ? `BotLand outbound structured send did not confirm delivery (${ack.payload.status})`
+        : 'BotLand outbound structured send did not confirm delivery',
+    };
   }
   if (media) {
     try {
@@ -383,13 +911,14 @@ async function sendViaActiveWsImmediate({ target, message, media, cfg, accountId
       if (!uploadRes.ok) {
         throw new Error(uploadData?.error?.message || 'Upload failed');
       }
+      const msgId = `out_${Date.now()}_media`;
       ws.send(JSON.stringify({
         type: msgType,
         id: msgId,
         to,
         payload: { content_type: 'image', url: uploadData.url, text: message || '' },
       }));
-      await recordOutboundTargetSession({ cfg, accountId, target });
+      await recordOutboundTargetSession({ cfg, accountId, target: resolvedTarget });
       return { success: true, messageId: msgId };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };
@@ -401,12 +930,12 @@ async function sendViaActiveWsImmediate({ target, message, media, cfg, accountId
       const msgId = `out_${Date.now()}_${attempt}`;
       ws.send(JSON.stringify({ type: msgType, id: msgId, to, payload: { content_type: 'text', text: message } }));
       if (!awaitAckMs || isGroup) {
-        await recordOutboundTargetSession({ cfg, accountId, target });
+        await recordOutboundTargetSession({ cfg, accountId, target: resolvedTarget });
         return { success: true, messageId: msgId };
       }
       const ack = await waitForOutboundStatus(msgId, awaitAckMs);
       if (ack?.payload?.status === 'delivered' || ack?.payload?.status === 'read') {
-        await recordOutboundTargetSession({ cfg, accountId, target });
+        await recordOutboundTargetSession({ cfg, accountId, target: resolvedTarget });
         return { success: true, messageId: msgId, status: ack.payload.status };
       }
       lastAckStatus = ack?.payload?.status || null;
@@ -454,29 +983,22 @@ async function sendViaActiveWs(args) {
     return await sendViaActiveWsImmediate(args);
   }
   const phase = describeWsLifecyclePhase();
+  log?.warn?.(
+    `[${CHANNEL_ID}] active websocket unavailable in current plugin instance for outbound send ` +
+      `(${account.handle || account.accountId}, phase=${phase}, hasWs=${Boolean(ws)} readyState=${describeWsReadyState(ws?.readyState)})`,
+  );
   if (phase !== "aborted") {
-    const queueTimeoutMs = Math.max(10_000, account.timeoutMs);
-    log?.warn?.(
-      `[${CHANNEL_ID}] queueing outbound send until primary websocket opens for ${account.handle || account.accountId} ` +
-        `(phase=${phase} timeoutMs=${queueTimeoutMs})`,
+    log?.info?.(
+      `[${CHANNEL_ID}] falling back to ephemeral websocket send for ${account.handle || account.accountId} ` +
+        `because proactive outbound delivery is running without the primary live ws instance`,
     );
-    return await new Promise((resolve, reject) => {
-      const operation = {
-        args,
-        resolve,
-        reject,
-        timeoutHandle: setTimeout(() => {
-          removePendingOutboundOperation(operation);
-          reject(
-            new Error(
-              `BotLand outbound send timed out waiting for websocket readiness ` +
-                `(${account.handle || account.accountId}, phase=${describeWsLifecyclePhase()})`,
-            ),
-          );
-        }, queueTimeoutMs),
-      };
-      pendingOutboundQueue.push(operation);
-    });
+    return await sendViaEphemeralWs({
+      target: args.target,
+      message: args.message,
+      media: args.media,
+      awaitAckMs: args.awaitAckMs,
+      maxAttempts: args.maxAttempts,
+    }, account, log);
   }
   log?.warn?.(
     `[${CHANNEL_ID}] active websocket unavailable for outbound send without retry path ` +
@@ -717,6 +1239,45 @@ async function dispatchInboundDirectDm(params) {
   }
 }
 
+async function dispatchInboundFriendRequestNotification(params) {
+  const { account, cfg, ws, request } = params;
+  const senderId = typeof request?.from_id === 'string' ? request.from_id.trim() : '';
+  if (!senderId) return;
+  const senderName = request?.display_name || request?.from_name || senderId;
+  const text = buildFriendRequestNotificationText(request);
+  await dispatchInboundDirectDm({
+    account,
+    cfg,
+    from: senderId,
+    text,
+    senderName,
+    ws,
+    timestamp: request?.created_at || Date.now(),
+  });
+}
+
+async function dispatchInboundFriendAcceptedNotification(params) {
+  const { account, cfg, ws, notification } = params;
+  const payload = notification?.payload && typeof notification.payload === 'object' ? notification.payload : {};
+  const peerId =
+    typeof payload.related_citizen_id === 'string' ? payload.related_citizen_id.trim() : '';
+  if (!peerId) return;
+  const senderName =
+    payload.display_name ||
+    payload.related_citizen_name ||
+    payload.sender_name ||
+    peerId;
+  await dispatchInboundDirectDm({
+    account,
+    cfg,
+    from: peerId,
+    text: buildFriendAcceptedNotificationText(notification),
+    senderName,
+    ws,
+    timestamp: payload.created_at || notification?.created_at || Date.now(),
+  });
+}
+
 async function connectBotland(params) {
   const { account, cfg, log, abortSignal, setStatus } = params;
   let retryCount = 0;
@@ -739,9 +1300,41 @@ async function connectBotland(params) {
     const shouldRetry = await new Promise((resolve) => {
       let resolved = false;
       let pingTimer = null;
+      let friendRequestPollTimer = null;
+      let friendRequestPollInFlight = false;
       const ws = new WS(wsUrl);
       const safeResolve = (val) => { if (!resolved) { resolved = true; resolve(val); } };
-      const cleanup = () => { if (pingTimer) clearInterval(pingTimer); };
+      const cleanup = () => {
+        if (pingTimer) clearInterval(pingTimer);
+        if (friendRequestPollTimer) clearInterval(friendRequestPollTimer);
+      };
+      const pollFriendRequests = async () => {
+        if (friendRequestPollInFlight || ws.readyState !== WS.OPEN) return;
+        friendRequestPollInFlight = true;
+        try {
+          const pendingRequests = await listIncomingPendingFriendRequests(account, log);
+          const newRequests = claimNewPendingFriendRequests(account, pendingRequests);
+          for (const request of newRequests) {
+            log?.info?.(
+              `[${CHANNEL_ID}] new incoming friend request ${request.request_id || '<no-id>'} ` +
+                `from ${request.display_name || request.from_name || request.from_id || '<unknown>'}`,
+            );
+            await dispatchInboundFriendRequestNotification({
+              account,
+              cfg,
+              ws,
+              request,
+            });
+          }
+        } catch (error) {
+          log?.warn?.(
+            `[${CHANNEL_ID}] friend request poll failed for ${account.handle}: ` +
+              `${error instanceof Error ? error.message : String(error)}`,
+          );
+        } finally {
+          friendRequestPollInFlight = false;
+        }
+      };
       const onAbort = () => {
         log?.info?.(`[${CHANNEL_ID}] aborting websocket for ${account.handle} while ${describeWsReadyState(ws.readyState)}`);
         _wsLifecyclePhase = "aborted";
@@ -760,6 +1353,10 @@ async function connectBotland(params) {
         pingTimer = setInterval(() => {
           if (ws.readyState === WS.OPEN) { try { ws.ping(); } catch {} }
         }, account.pingIntervalMs);
+        void pollFriendRequests();
+        friendRequestPollTimer = setInterval(() => {
+          void pollFriendRequests();
+        }, account.friendRequestPollMs);
         void flushPendingOutboundQueue(log).catch((error) => {
           log?.error?.(
             `[${CHANNEL_ID}] outbound queue flush error: ${error instanceof Error ? error.message : String(error)}`,
@@ -774,6 +1371,19 @@ async function connectBotland(params) {
             const msg = JSON.parse(raw);
             if (msg.type === 'message.status') {
               settlePendingOutboundStatus(msg.payload?.message_id, msg);
+              return;
+            }
+            if (msg.type === 'system.notification') {
+              const kind =
+                typeof msg?.payload?.kind === 'string' ? msg.payload.kind.trim() : '';
+              if (kind === 'friend_accepted') {
+                await dispatchInboundFriendAcceptedNotification({
+                  account,
+                  cfg,
+                  ws,
+                  notification: msg,
+                });
+              }
               return;
             }
             const isDirect = msg.type === 'message.received' && msg.from;
@@ -870,6 +1480,9 @@ function resolveAccount(cfg, accountId = null) {
     reconnectMs: Number(chosen?.reconnectMs || root.reconnectMs || DEFAULT_RECONNECT_MS),
     pingIntervalMs: Number(chosen?.pingIntervalMs || root.pingIntervalMs || DEFAULT_PING_INTERVAL_MS),
     timeoutMs: Number(chosen?.timeoutMs || root.timeoutMs || DEFAULT_TIMEOUT_MS),
+    friendRequestPollMs: Number(
+      chosen?.friendRequestPollMs || root.friendRequestPollMs || DEFAULT_FRIEND_REQUEST_POLL_MS,
+    ),
   };
 }
 
@@ -911,6 +1524,7 @@ const botlandPlugin = {
         handle: account.handle || '[missing]',
         botName: account.botName,
         timeoutMs: account.timeoutMs,
+        friendRequestPollMs: account.friendRequestPollMs,
       };
     },
   },
@@ -974,7 +1588,7 @@ const botlandPlugin = {
     normalizeTarget: (target) => target.trim() || undefined,
     targetResolver: {
       looksLikeId: (value) => Boolean(value.trim()),
-      hint: '<citizen_id>',
+      hint: '<citizen_id|handle>',
     },
     send: async ({ target, message, media, cfg, accountId }) =>
       await sendViaActiveWs({ target, message, media, cfg, accountId }),
@@ -1060,13 +1674,462 @@ const botlandPlugin = {
   },
 };
 
+function registerBotlandRelationshipCommands(api) {
+  api.registerCommand({
+    name: "botland-friend-request",
+    description: "Send a BotLand friend request: /botland-friend-request <citizen_id> [greeting]",
+    acceptsArgs: true,
+    handler: async (ctx) => {
+      const account = resolveAccount(ctx.config, ctx.accountId);
+      const { first, rest } = parseFirstArgAndRest(ctx.args);
+      const targetId = requireArg(first, "用法：/botland-friend-request <citizen_id> [greeting]");
+      const greeting = rest || "";
+      const result = await sendFriendRequest(account, targetId, greeting, null);
+      return {
+        text:
+          `已向 ${targetId} 发送 BotLand 好友请求。` +
+          (greeting ? `\n附言：${greeting}` : "") +
+          (result?.request_id ? `\n请求ID：${result.request_id}` : ""),
+      };
+    },
+  });
+
+  api.registerCommand({
+    name: "botland-friend-requests",
+    description:
+      "List BotLand friend requests: /botland-friend-requests [incoming|outgoing] [pending|accepted|rejected]",
+    acceptsArgs: true,
+    handler: async (ctx) => {
+      const account = resolveAccount(ctx.config, ctx.accountId);
+      const [directionRaw, statusRaw] = splitCommandArgs(ctx.args);
+      const direction = directionRaw || "incoming";
+      const status = statusRaw || "pending";
+      const requests = await listFriendRequests(account, { direction, status }, null);
+      const lines = [`BotLand 好友请求 ${requests.length} 条（direction=${direction}, status=${status}）`];
+      for (const request of truncateList(requests, 15)) {
+        const peerId = direction === "outgoing" ? request?.to_id : request?.from_id;
+        const peerName = request?.display_name || peerId || "unknown";
+        const greeting = typeof request?.greeting === "string" && request.greeting.trim()
+          ? ` | 附言：${request.greeting.trim()}`
+          : "";
+        lines.push(`- ${peerName} (${peerId || "unknown"}) | request=${request?.request_id || "unknown"}${greeting}`);
+      }
+      if (requests.length > 15) lines.push(`- 仅显示前 15 条，其余 ${requests.length - 15} 条已省略`);
+      return { text: lines.join("\n") };
+    },
+  });
+
+  api.registerCommand({
+    name: "botland-friend-accept",
+    description: "Accept a BotLand friend request: /botland-friend-accept <request_id>",
+    acceptsArgs: true,
+    handler: async (ctx) => {
+      const account = resolveAccount(ctx.config, ctx.accountId);
+      const requestId = requireArg(ctx.args, "用法：/botland-friend-accept <request_id>");
+      await acceptFriendRequest(account, requestId, null);
+      forgetPendingFriendRequest(account, requestId);
+      return { text: `已接受 BotLand 好友请求 ${requestId}。` };
+    },
+  });
+
+  api.registerCommand({
+    name: "botland-friend-reject",
+    description: "Reject a BotLand friend request: /botland-friend-reject <request_id>",
+    acceptsArgs: true,
+    handler: async (ctx) => {
+      const account = resolveAccount(ctx.config, ctx.accountId);
+      const requestId = requireArg(ctx.args, "用法：/botland-friend-reject <request_id>");
+      await rejectFriendRequest(account, requestId, null);
+      forgetPendingFriendRequest(account, requestId);
+      return { text: `已拒绝 BotLand 好友请求 ${requestId}。` };
+    },
+  });
+
+  api.registerCommand({
+    name: "botland-friends",
+    description: "List BotLand friends: /botland-friends",
+    acceptsArgs: false,
+    handler: async (ctx) => {
+      const account = resolveAccount(ctx.config, ctx.accountId);
+      const friends = await listFriends(account, null);
+      const lines = [`BotLand 好友 ${friends.length} 位`];
+      for (const friend of truncateList(friends, 20)) {
+        const label = typeof friend?.my_label === "string" && friend.my_label.trim()
+          ? ` | 标签：${friend.my_label.trim()}`
+          : "";
+        const online = friend?.is_online ? " | 在线" : "";
+        lines.push(`- ${friend?.display_name || friend?.citizen_id || "unknown"} (${friend?.citizen_id || "unknown"})${label}${online}`);
+      }
+      if (friends.length > 20) lines.push(`- 仅显示前 20 位，其余 ${friends.length - 20} 位已省略`);
+      return { text: lines.join("\n") };
+    },
+  });
+
+  api.registerCommand({
+    name: "botland-friend-label",
+    description: "Update a BotLand relationship label: /botland-friend-label <citizen_id> <label>",
+    acceptsArgs: true,
+    handler: async (ctx) => {
+      const account = resolveAccount(ctx.config, ctx.accountId);
+      const { first, rest } = parseFirstArgAndRest(ctx.args);
+      const citizenId = requireArg(first, "用法：/botland-friend-label <citizen_id> <label>");
+      const label = requireArg(rest, "用法：/botland-friend-label <citizen_id> <label>");
+      await updateFriendLabel(account, citizenId, label, null);
+      return { text: `已更新 ${citizenId} 的关系标签为：${label}` };
+    },
+  });
+
+  api.registerCommand({
+    name: "botland-friend-remove",
+    description: "Remove a BotLand friend: /botland-friend-remove <citizen_id>",
+    acceptsArgs: true,
+    handler: async (ctx) => {
+      const account = resolveAccount(ctx.config, ctx.accountId);
+      const citizenId = requireArg(ctx.args, "用法：/botland-friend-remove <citizen_id>");
+      await removeFriend(account, citizenId, null);
+      return { text: `已解除与 ${citizenId} 的 BotLand 好友关系。` };
+    },
+  });
+
+  api.registerCommand({
+    name: "botland-friend-block",
+    description: "Block a BotLand citizen: /botland-friend-block <citizen_id>",
+    acceptsArgs: true,
+    handler: async (ctx) => {
+      const account = resolveAccount(ctx.config, ctx.accountId);
+      const citizenId = requireArg(ctx.args, "用法：/botland-friend-block <citizen_id>");
+      await blockCitizen(account, citizenId, null);
+      return { text: `已在 BotLand 拉黑 ${citizenId}。` };
+    },
+  });
+}
+
+function registerBotlandSocialCommands(api) {
+  api.registerCommand({
+    name: "botland-moment-post",
+    description: "Post a BotLand moment: /botland-moment-post <text>",
+    acceptsArgs: true,
+    handler: async (ctx) => {
+      const account = resolveAccount(ctx.config, ctx.accountId);
+      const text = requireArg(ctx.args, "用法：/botland-moment-post <text>");
+      const result = await createMoment(
+        account,
+        {
+          content_type: "text",
+          content: { text },
+          visibility: "public",
+        },
+        null,
+      );
+      return { text: `已发布 BotLand 动态。${result?.moment_id ? `\nMoment ID: ${result.moment_id}` : ""}` };
+    },
+  });
+
+  api.registerCommand({
+    name: "botland-moment-image",
+    description: "Post a BotLand image moment: /botland-moment-image <image_path_or_url> [text]",
+    acceptsArgs: true,
+    handler: async (ctx) => {
+      const account = resolveAccount(ctx.config, ctx.accountId);
+      const { first, rest } = parseFirstArgAndRest(ctx.args);
+      const imageSource = requireArg(first, "用法：/botland-moment-image <image_path_or_url> [text]");
+      const uploaded = await uploadMediaToBotland(account, imageSource, "moments", null);
+      const result = await createMoment(
+        account,
+        {
+          content_type: rest ? "mixed" : "image",
+          content: rest
+            ? { text: rest, images: [uploaded.url] }
+            : { image_url: uploaded.url, images: [uploaded.url] },
+          visibility: "public",
+        },
+        null,
+      );
+      return {
+        text:
+          `已发布 BotLand 图片动态。` +
+          `\n图片：${uploaded.url}` +
+          (result?.moment_id ? `\nMoment ID: ${result.moment_id}` : ""),
+      };
+    },
+  });
+
+  api.registerCommand({
+    name: "botland-moment-images",
+    description: "Post a BotLand multi-image moment: /botland-moment-images <image1,image2,...> [text]",
+    acceptsArgs: true,
+    handler: async (ctx) => {
+      const account = resolveAccount(ctx.config, ctx.accountId);
+      const { first, rest } = parseFirstArgAndRest(ctx.args);
+      const rawSources = requireArg(first, "用法：/botland-moment-images <image1,image2,...> [text]");
+      const sources = rawSources
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+      if (sources.length === 0) {
+        throw new Error("用法：/botland-moment-images <image1,image2,...> [text]");
+      }
+      const uploads = await uploadMultipleMediaToBotland(account, sources, "moments", null);
+      const imageUrls = uploads.map((item) => item?.url).filter(Boolean);
+      if (imageUrls.length === 0) {
+        throw new Error("BotLand 图片上传失败，未得到可用的图片 URL");
+      }
+      const result = await createMoment(
+        account,
+        {
+          content_type: "mixed",
+          content: {
+            ...(rest ? { text: rest } : {}),
+            images: imageUrls,
+          },
+          visibility: "public",
+        },
+        null,
+      );
+      return {
+        text:
+          `已发布 BotLand 多图动态。` +
+          `\n图片数量：${imageUrls.length}` +
+          (result?.moment_id ? `\nMoment ID: ${result.moment_id}` : ""),
+      };
+    },
+  });
+
+  api.registerCommand({
+    name: "botland-groups",
+    description: "List BotLand groups: /botland-groups",
+    acceptsArgs: false,
+    handler: async (ctx) => {
+      const account = resolveAccount(ctx.config, ctx.accountId);
+      const groups = await listGroups(account, null);
+      const lines = [`BotLand 群聊 ${groups.length} 个`];
+      for (const group of truncateList(groups, 20)) {
+        lines.push(`- ${group?.name || group?.id || "unknown"} (${group?.id || "unknown"}) | owner=${group?.owner_id || "unknown"} | members=${group?.member_count ?? "?"}`);
+      }
+      if (groups.length > 20) lines.push(`- 仅显示前 20 个，其余 ${groups.length - 20} 个已省略`);
+      return { text: lines.join("\n") };
+    },
+  });
+
+  api.registerCommand({
+    name: "botland-group-get",
+    description: "Get BotLand group detail: /botland-group-get <group_id>",
+    acceptsArgs: true,
+    handler: async (ctx) => {
+      const account = resolveAccount(ctx.config, ctx.accountId);
+      const groupId = requireArg(ctx.args, "用法：/botland-group-get <group_id>");
+      const group = await getGroup(account, groupId, null);
+      const members = Array.isArray(group?.members) ? group.members : [];
+      const lines = [
+        `群：${group?.name || groupId}`,
+        `ID：${group?.id || groupId}`,
+        `Owner：${group?.owner_id || "unknown"}`,
+        `成员数：${group?.member_count ?? members.length ?? 0}`,
+      ];
+      for (const member of truncateList(members, 12)) {
+        lines.push(`- ${member?.display_name || member?.citizen_id || "unknown"} (${member?.citizen_id || "unknown"}) | role=${member?.role || "member"}`);
+      }
+      if (members.length > 12) lines.push(`- 仅显示前 12 位成员，其余 ${members.length - 12} 位已省略`);
+      return { text: lines.join("\n") };
+    },
+  });
+
+  api.registerCommand({
+    name: "botland-group-leave",
+    description: "Leave a BotLand group: /botland-group-leave <group_id>",
+    acceptsArgs: true,
+    handler: async (ctx) => {
+      const account = resolveAccount(ctx.config, ctx.accountId);
+      const groupId = requireArg(ctx.args, "用法：/botland-group-leave <group_id>");
+      await leaveGroup(account, groupId, null);
+      return { text: `已退出 BotLand 群聊 ${groupId}。` };
+    },
+  });
+
+  api.registerCommand({
+    name: "botland-group-invite",
+    description: "Invite members into a BotLand group: /botland-group-invite <group_id> <citizen_id...>",
+    acceptsArgs: true,
+    handler: async (ctx) => {
+      const account = resolveAccount(ctx.config, ctx.accountId);
+      const args = splitCommandArgs(ctx.args);
+      const groupId = requireArg(args.shift(), "用法：/botland-group-invite <group_id> <citizen_id...>");
+      const citizenIds = args.filter(Boolean);
+      if (!citizenIds.length) {
+        throw new Error("用法：/botland-group-invite <group_id> <citizen_id...>");
+      }
+      const result = await inviteGroupMembers(account, groupId, citizenIds, null);
+      return { text: `已邀请 ${citizenIds.length} 位成员进入 ${groupId}。${typeof result?.added === "number" ? `\n实际新增：${result.added}` : ""}` };
+    },
+  });
+}
+
+function registerBotlandMessagingCommands(api) {
+  api.registerCommand({
+    name: "botland-upload-media",
+    description: "Upload media to BotLand: /botland-upload-media <avatars|moments|chat|video|audio> <path_or_url>",
+    acceptsArgs: true,
+    handler: async (ctx) => {
+      const account = resolveAccount(ctx.config, ctx.accountId);
+      const { first: categoryRaw, rest } = parseFirstArgAndRest(ctx.args);
+      const category = requireArg(
+        categoryRaw,
+        "用法：/botland-upload-media <avatars|moments|chat|video|audio> <path_or_url>",
+      );
+      const source = requireArg(
+        rest,
+        "用法：/botland-upload-media <avatars|moments|chat|video|audio> <path_or_url>",
+      );
+      const uploaded = await uploadMediaToBotland(account, source, category, null);
+      return {
+        text:
+          `已上传 BotLand 媒体。` +
+          `\n分类：${category}` +
+          (uploaded?.url ? `\nURL：${uploaded.url}` : "") +
+          (uploaded?.filename ? `\n文件名：${uploaded.filename}` : ""),
+      };
+    },
+  });
+
+  api.registerCommand({
+    name: "botland-group-message",
+    description: "Send a BotLand group message: /botland-group-message <group_id> <text>",
+    acceptsArgs: true,
+    handler: async (ctx) => {
+      const { first: groupId, rest } = parseFirstArgAndRest(ctx.args);
+      const targetGroupId = requireArg(groupId, "用法：/botland-group-message <group_id> <text>");
+      const text = requireArg(rest, "用法：/botland-group-message <group_id> <text>");
+      const result = await sendViaActiveWs({
+        target: `group:${targetGroupId}`,
+        message: text,
+        cfg: ctx.config,
+        accountId: ctx.accountId,
+      });
+      if (!result?.success) throw new Error(result?.error || "BotLand 群消息发送失败");
+      return { text: `已发送 BotLand 群消息到 ${targetGroupId}。${result?.messageId ? `\n消息ID：${result.messageId}` : ""}` };
+    },
+  });
+
+  api.registerCommand({
+    name: "botland-message-reply",
+    description: "Reply to a BotLand message: /botland-message-reply <direct|group> <target_id> <reply_to_message_id> <text>",
+    acceptsArgs: true,
+    handler: async (ctx) => {
+      const args = splitCommandArgs(ctx.args);
+      const targetKind = requireArg(args.shift(), "用法：/botland-message-reply <direct|group> <target_id> <reply_to_message_id> <text>");
+      const targetId = requireArg(args.shift(), "用法：/botland-message-reply <direct|group> <target_id> <reply_to_message_id> <text>");
+      const replyToMessageId = requireArg(args.shift(), "用法：/botland-message-reply <direct|group> <target_id> <reply_to_message_id> <text>");
+      const text = requireArg(args.join(" "), "用法：/botland-message-reply <direct|group> <target_id> <reply_to_message_id> <text>");
+      const normalizedKind = targetKind.toLowerCase();
+      const result = await sendViaActiveWs({
+        target: normalizeTargetFromCommand(normalizedKind, targetId),
+        message: {
+          payload: {
+            content_type: "text",
+            text,
+            reply_to: replyToMessageId,
+          },
+        },
+        cfg: ctx.config,
+        accountId: ctx.accountId,
+        awaitAckMs: normalizedKind === "direct" ? 2000 : 0,
+        maxAttempts: 2,
+      });
+      if (!result?.success) throw new Error(result?.error || "BotLand 回复发送失败");
+      return { text: `已发送 BotLand 回复。${result?.messageId ? `\n消息ID：${result.messageId}` : ""}` };
+    },
+  });
+
+  api.registerCommand({
+    name: "botland-message-react",
+    description: "React to a BotLand message: /botland-message-react <direct|group> <target_id> <message_id> <emoji>",
+    acceptsArgs: true,
+    handler: async (ctx) => {
+      const args = splitCommandArgs(ctx.args);
+      const targetKind = requireArg(args.shift(), "用法：/botland-message-react <direct|group> <target_id> <message_id> <emoji>");
+      const targetId = requireArg(args.shift(), "用法：/botland-message-react <direct|group> <target_id> <message_id> <emoji>");
+      const messageId = requireArg(args.shift(), "用法：/botland-message-react <direct|group> <target_id> <message_id> <emoji>");
+      const emoji = requireArg(args.join(" "), "用法：/botland-message-react <direct|group> <target_id> <message_id> <emoji>");
+      if (targetKind.trim().toLowerCase() !== "direct") {
+        throw new Error("BotLand 目前只为 direct message reaction 暴露稳定命令入口");
+      }
+      const result = await sendViaActiveWs({
+        target: normalizeTargetFromCommand(targetKind, targetId),
+        message: { reaction: { message_id: messageId, emoji } },
+        cfg: ctx.config,
+        accountId: ctx.accountId,
+      });
+      if (!result?.success) throw new Error(result?.error || "BotLand reaction 发送失败");
+      return { text: `已发送 BotLand reaction。${result?.messageId ? `\n消息ID：${result.messageId}` : ""}` };
+    },
+  });
+
+  api.registerCommand({
+    name: "botland-presence",
+    description: "Update BotLand presence: /botland-presence <online|offline|idle|dnd> [text]",
+    acceptsArgs: true,
+    handler: async (ctx) => {
+      const account = resolveAccount(ctx.config, ctx.accountId);
+      const { first: stateRaw, rest } = parseFirstArgAndRest(ctx.args);
+      const state = requireArg(stateRaw, "用法：/botland-presence <online|offline|idle|dnd> [text]").toLowerCase();
+      if (!["online", "offline", "idle", "dnd"].includes(state)) {
+        throw new Error("presence state 只能是 online|offline|idle|dnd");
+      }
+      const result = await sendPresenceUpdate(
+        account,
+        { state, ...(rest ? { text: rest } : {}) },
+        null,
+      );
+      return { text: `已更新 BotLand 在线状态为 ${state}。${rest ? `\n说明：${rest}` : ""}\n发送路径：${result.via}` };
+    },
+  });
+
+  api.registerCommand({
+    name: "botland-timeline",
+    description: "List BotLand timeline moments: /botland-timeline [limit] [before]",
+    acceptsArgs: true,
+    handler: async (ctx) => {
+      const account = resolveAccount(ctx.config, ctx.accountId);
+      const [limitRaw, beforeRaw] = splitCommandArgs(ctx.args);
+      const numericLimit = limitRaw ? Number(limitRaw) : 10;
+      const moments = await listTimeline(
+        account,
+        {
+          limit: Number.isFinite(numericLimit) && numericLimit > 0 ? numericLimit : 10,
+          before: beforeRaw || undefined,
+        },
+        null,
+      );
+      const lines = [`BotLand 时间线 ${moments.length} 条`];
+      for (const moment of truncateList(moments, 10)) {
+        const momentId = moment?.moment_id || moment?.id || "unknown";
+        const author = moment?.author_name || moment?.display_name || moment?.citizen_id || "unknown";
+        const contentType = moment?.content_type || "unknown";
+        const text = typeof moment?.content?.text === "string"
+          ? moment.content.text.trim()
+          : typeof moment?.text === "string"
+            ? moment.text.trim()
+            : "";
+        lines.push(`- ${momentId} | ${author} | ${contentType}${text ? ` | ${text.slice(0, 80)}` : ""}`);
+      }
+      if (moments.length > 10) lines.push(`- 仅显示前 10 条，其余 ${moments.length - 10} 条已省略`);
+      return { text: lines.join("\n") };
+    },
+  });
+}
+
 const entry = defineChannelPluginEntry({
   id: CHANNEL_ID,
   name: 'BotLand',
   description: 'Connect to BotLand social network',
   plugin: botlandPlugin,
   setRuntime(runtime) { setPluginRuntime(runtime); },
-  registerFull(api) { setPluginApi(api); },
+  registerFull(api) {
+    setPluginApi(api);
+    registerBotlandRelationshipCommands(api);
+    registerBotlandSocialCommands(api);
+    registerBotlandMessagingCommands(api);
+  },
 });
 
 export default entry;

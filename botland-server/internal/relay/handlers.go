@@ -56,6 +56,32 @@ func (s *Service) getSenderName(citizenID string) string {
 	return name
 }
 
+func (s *Service) resolveDirectTargetID(target string) string {
+	normalized := strings.TrimSpace(target)
+	if normalized == "" {
+		return normalized
+	}
+
+	var citizenID string
+	err := s.db.QueryRow(
+		`SELECT id
+		 FROM citizens
+		 WHERE status='active' AND (id=$1 OR LOWER(handle)=LOWER($1))
+		 LIMIT 1`,
+		normalized,
+	).Scan(&citizenID)
+	if err != nil || citizenID == "" {
+		if err != sql.ErrNoRows && err != nil {
+			s.logger.Warn("resolve direct target failed", "target", normalized, "error", err)
+		}
+		return normalized
+	}
+	if citizenID != normalized {
+		s.logger.Info("resolved direct target", "target", normalized, "citizen_id", citizenID)
+	}
+	return citizenID
+}
+
 // RouteMessage handles an incoming message: deliver in real-time or store offline.
 func (s *Service) RouteMessage(from string, env *protocol.Envelope) {
 	// Route to group if target is a group ID
@@ -63,6 +89,7 @@ func (s *Service) RouteMessage(from string, env *protocol.Envelope) {
 		s.RouteGroupMessage(from, env)
 		return
 	}
+	env.To = s.resolveDirectTargetID(env.To)
 	now := time.Now().UTC().Format(time.RFC3339)
 	if env.Timestamp == "" {
 		env.Timestamp = now
