@@ -1,10 +1,25 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import api from '../services/api';
 import auth from '../services/auth';
 
 type Props = { route: any; navigation: any };
-type Citizen = { id: string; handle: string; display_name: string; avatar_url?: string; bio?: string; citizen_type: string; status?: string };
+type AgentService = { name: string; description?: string; price?: string };
+type Citizen = {
+  citizen_id: string;
+  handle: string;
+  display_name: string;
+  avatar_url?: string;
+  bio?: string;
+  species?: string;
+  framework?: string;
+  citizen_type: string;
+  status?: string;
+  personality_tags?: string[];
+  capabilities?: string[];
+  services?: AgentService[];
+  stats?: { friend_count?: number; group_count?: number; moment_count?: number };
+};
 
 export default function CitizenProfileScreen({ route, navigation }: Props) {
   const { citizenId, displayName } = route.params || {};
@@ -28,12 +43,16 @@ export default function CitizenProfileScreen({ route, navigation }: Props) {
   if (!citizen) return <View style={s.container}><Text style={s.empty}>无法加载用户资料</Text></View>;
 
   const isAgent = citizen.citizen_type === 'agent';
+  const capabilities = Array.isArray(citizen.capabilities) ? citizen.capabilities : [];
+  const tags = Array.isArray(citizen.personality_tags) ? citizen.personality_tags : [];
+  const services = Array.isArray(citizen.services) ? citizen.services : [];
+  const stats = citizen.stats || {};
 
   const handleAddFriend = async () => {
     const token = await auth.getAccessToken();
     if (!token) return;
     try {
-      await api.sendFriendRequest(token, citizen.id, '你好，想和你成为好友。');
+      await api.sendFriendRequest(token, citizen.citizen_id, '你好，想和你成为好友。');
       Alert.alert('已发送好友请求');
     } catch (e: any) {
       Alert.alert('发送失败', e?.message || '发送好友请求失败');
@@ -41,7 +60,7 @@ export default function CitizenProfileScreen({ route, navigation }: Props) {
   };
 
   return (
-    <View style={s.container}>
+    <ScrollView style={s.container} contentContainerStyle={s.content}>
       <View style={s.card}>
         {citizen.avatar_url ? (
           <Image source={{ uri: citizen.avatar_url }} style={s.avatar} />
@@ -54,22 +73,65 @@ export default function CitizenProfileScreen({ route, navigation }: Props) {
         <Text style={s.handle}>@{citizen.handle}</Text>
         {citizen.bio ? <Text style={s.bio}>{citizen.bio}</Text> : null}
         <Text style={s.type}>{isAgent ? 'Bot' : '用户'}</Text>
+        {isAgent ? (
+          <View style={s.metaGrid}>
+            <View style={s.metaItem}><Text style={s.metaValue}>{citizen.species || '未设置'}</Text><Text style={s.metaLabel}>物种</Text></View>
+            <View style={s.metaItem}><Text style={s.metaValue}>{citizen.framework || '未知'}</Text><Text style={s.metaLabel}>框架</Text></View>
+            <View style={s.metaItem}><Text style={s.metaValue}>{stats.friend_count ?? 0}</Text><Text style={s.metaLabel}>好友</Text></View>
+          </View>
+        ) : null}
       </View>
+
+      {tags.length > 0 ? (
+        <View style={s.section}>
+          <Text style={s.sectionTitle}>性格标签</Text>
+          <View style={s.chips}>
+            {tags.map((tag, index) => (
+              <View key={`${tag}-${index}`} style={s.chip}><Text style={s.chipText}>{tag}</Text></View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      {capabilities.length > 0 ? (
+        <View style={s.section}>
+          <Text style={s.sectionTitle}>能力</Text>
+          <View style={s.chips}>
+            {capabilities.map((capability, index) => (
+              <View key={`${capability}-${index}`} style={s.capabilityChip}><Text style={s.capabilityText}>{capability}</Text></View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      {services.length > 0 ? (
+        <View style={s.section}>
+          <Text style={s.sectionTitle}>服务</Text>
+          {services.map((service, index) => (
+            <View key={`${service.name}-${index}`} style={s.serviceItem}>
+              <Text style={s.serviceName}>{service.name}</Text>
+              {service.description ? <Text style={s.serviceDesc}>{service.description}</Text> : null}
+              {service.price ? <Text style={s.servicePrice}>{service.price}</Text> : null}
+            </View>
+          ))}
+        </View>
+      ) : null}
 
       <TouchableOpacity style={s.addBtn} onPress={handleAddFriend}>
         <Text style={s.addBtnText}>加好友</Text>
       </TouchableOpacity>
       <TouchableOpacity style={s.chatBtn} onPress={() => {
-        navigation.navigate('Chat', { friendId: citizen.id, friendName: citizen.display_name });
+        navigation.navigate('Chat', { friendId: citizen.citizen_id, friendName: citizen.display_name });
       }}>
         <Text style={s.chatBtnText}>直接发消息</Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 }
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0a0a0a' },
+  content: { paddingBottom: 28 },
   empty: { color: '#555', textAlign: 'center', marginTop: 60 },
   card: { alignItems: 'center', padding: 30, borderBottomWidth: 1, borderBottomColor: '#222' },
   avatar: { width: 80, height: 80, borderRadius: 40 },
@@ -79,6 +141,21 @@ const s = StyleSheet.create({
   handle: { color: '#888', fontSize: 14, marginTop: 4 },
   bio: { color: '#aaa', fontSize: 14, marginTop: 10, textAlign: 'center', paddingHorizontal: 20 },
   type: { color: '#ff6b35', fontSize: 12, marginTop: 8 },
+  metaGrid: { flexDirection: 'row', marginTop: 18, borderWidth: 1, borderColor: '#242424', borderRadius: 8, overflow: 'hidden' },
+  metaItem: { minWidth: 84, paddingHorizontal: 12, paddingVertical: 10, alignItems: 'center', borderRightWidth: 1, borderRightColor: '#242424' },
+  metaValue: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  metaLabel: { color: '#666', fontSize: 11, marginTop: 4 },
+  section: { paddingHorizontal: 20, paddingTop: 20 },
+  sectionTitle: { color: '#fff', fontSize: 16, fontWeight: '700', marginBottom: 10 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap' },
+  chip: { backgroundColor: '#151515', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, marginRight: 8, marginBottom: 8, borderWidth: 1, borderColor: '#2a2a2a' },
+  chipText: { color: '#ff6b35', fontSize: 12 },
+  capabilityChip: { backgroundColor: '#112033', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, marginRight: 8, marginBottom: 8, borderWidth: 1, borderColor: '#1d4b7a' },
+  capabilityText: { color: '#8ec5ff', fontSize: 12 },
+  serviceItem: { backgroundColor: '#151515', borderRadius: 8, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#2a2a2a' },
+  serviceName: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  serviceDesc: { color: '#aaa', fontSize: 13, lineHeight: 18, marginTop: 6 },
+  servicePrice: { color: '#ff6b35', fontSize: 12, fontWeight: '700', marginTop: 8 },
   addBtn: { backgroundColor: '#1a1a1a', marginHorizontal: 20, marginTop: 20, padding: 14, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: '#333' },
   addBtnText: { color: '#ff6b35', fontSize: 16, fontWeight: '600' },
   chatBtn: { backgroundColor: '#ff6b35', margin: 20, padding: 14, borderRadius: 10, alignItems: 'center' },
