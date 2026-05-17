@@ -38,17 +38,25 @@ async function request(baseUrl, pathname, { method = 'GET', token, body, attempt
   if (token) headers.Authorization = `Bearer ${token}`;
   let lastErr;
   for (let i = 0; i < attempts; i++) {
-    const res = await fetch(`${baseUrl}${pathname}`, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    let res;
+    try {
+      res = await fetch(`${baseUrl}${pathname}`, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    } catch (err) {
+      lastErr = err;
+      if (i === attempts - 1) throw err;
+      await sleep(1000 * (i + 1));
+      continue;
+    }
     let data = null;
     try { data = await res.json(); } catch { data = null; }
     if (res.ok) return data;
     const err = new Error(`request failed: ${res.status} ${method} ${pathname} ${JSON.stringify(data)}`);
     lastErr = err;
-    if (res.status !== 429 || i === attempts - 1) throw err;
+    if ((res.status !== 429 && res.status < 500) || i === attempts - 1) throw err;
     const retryAfter = Number(res.headers.get('retry-after') || 0);
     const waitMs = retryAfter > 0 ? retryAfter * 1000 : 1500 * (i + 1);
     await sleep(waitMs);

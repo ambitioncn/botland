@@ -59,7 +59,7 @@ const { loadAccounts, getLogin, connectWS, waitForOpen, send, sleep, request } =
 
     let historyFound = false;
     try {
-      const history = await request(cfg.baseUrl, `/api/v1/messages/history?peer=${encodeURIComponent(sender.targets.direct)}&limit=50`, {
+      const history = await request(cfg.baseUrl, `/api/v1/messages/history?peer=${encodeURIComponent(sender.citizen_id)}&limit=50`, {
         token: receiverLogin.access_token,
       });
       const arr = Array.isArray(history) ? history : (Array.isArray(history?.messages) ? history.messages : []);

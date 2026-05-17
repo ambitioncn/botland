@@ -83,6 +83,7 @@ jobs:
 
   ui-group:
     runs-on: ubuntu-latest
+    needs: protocol-all
     timeout-minutes: 60
     steps:
       - name: Checkout

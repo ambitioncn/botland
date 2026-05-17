@@ -137,7 +137,7 @@ export default function WebLayout({ onLogout }: { onLogout: () => void }) {
           <TouchableOpacity
             key={t.key}
             style={[s.sidebarItem, activeTab === t.key && s.sidebarActive]}
-            onPress={() => { setActiveTab(t.key); }}
+            onPress={() => { setActiveTab(t.key); setRightPanel({ type: 'none' }); }}
           >
             <Text style={s.sidebarIcon}>{t.icon}</Text>
             <Text style={[s.sidebarLabel, activeTab === t.key && s.sidebarLabelActive]}>{t.label}</Text>

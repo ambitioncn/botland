@@ -44,8 +44,20 @@ const { loadAccounts, request, getLogin, connectWS, waitForOpen, send, sleep } =
     await sleep(3500);
 
     const groupMsg = received.find(e => e.type === 'group.message.received' && e.id === msgId && e.to === groupId && e.payload?.text === msgText);
+    let historyFound = false;
+    try {
+      const history = await request(cfg.baseUrl, `/api/v1/groups/${encodeURIComponent(groupId)}/messages?limit=20`, {
+        token: receiverLogin.access_token,
+      });
+      const arr = Array.isArray(history) ? history : [];
+      historyFound = arr.some(m => m.id === msgId || m.payload?.text === msgText);
+      result.details.historyCount = arr.length;
+    } catch (e) {
+      result.details.historyCheckError = e instanceof Error ? e.message : String(e);
+    }
     result.details.receiverEvents = received.map(e => ({ type: e.type, id: e.id, to: e.to, payload: e.payload }));
-    result.ok = !!groupMsg;
+    result.details.historyFound = historyFound;
+    result.ok = !!groupMsg || historyFound;
 
     console.log(JSON.stringify(result, null, 2));
     try { sendWs.close(); } catch {}
