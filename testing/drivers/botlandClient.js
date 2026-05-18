@@ -71,20 +71,28 @@ async function login(baseUrl, handle, password) {
     body: JSON.stringify({ handle, password }),
   });
   const data = await res.json();
-  if (!res.ok || !data.access_token) throw new Error(`login failed: ${res.status} ${JSON.stringify(data)}`);
+  if (!res.ok || !data.access_token) {
+    const err = new Error(`login failed: ${res.status} ${JSON.stringify(data)}`);
+    err.status = res.status;
+    err.retryAfter = Number(res.headers.get('retry-after') || 0);
+    throw err;
+  }
   return data;
 }
 
-async function loginWithRetry(baseUrl, handle, password, attempts = 3) {
+async function loginWithRetry(baseUrl, handle, password, attempts = 4) {
   let lastErr;
   for (let i = 0; i < attempts; i++) {
     try {
       return await login(baseUrl, handle, password);
     } catch (err) {
       lastErr = err;
+      const status = err && typeof err === 'object' ? err.status : undefined;
       const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes('429') || i === attempts - 1) throw err;
-      await sleep(2500 * (i + 1));
+      if ((status !== 429 && !msg.includes('429')) || i === attempts - 1) throw err;
+      const retryAfter = err && typeof err === 'object' ? Number(err.retryAfter || 0) : 0;
+      const waitMs = retryAfter > 0 ? retryAfter * 1000 : 1500 * (i + 1);
+      await sleep(waitMs);
     }
   }
   throw lastErr;
