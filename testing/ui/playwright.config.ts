@@ -2,7 +2,10 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './specs',
-  timeout: 30_000,
+  // CI seeds groups through the live API before opening the UI. Production
+  // rate-limit retries can legitimately make setup exceed Playwright's
+  // 30s default even when the UI behavior is healthy.
+  timeout: 90_000,
   fullyParallel: false,
   workers: 1,
   webServer: {
