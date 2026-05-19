@@ -165,7 +165,7 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 
 	if q != "" {
 		trimmed := strings.TrimSpace(q)
-		query += ` AND (handle ILIKE $` + itoa(i) + ` OR display_name ILIKE $` + itoa(i) + ` OR bio ILIKE $` + itoa(i) + ` OR species ILIKE $` + itoa(i) + ` OR $` + itoa(i+1) + ` = ANY(capabilities) OR id = $` + itoa(i+2) + `)`
+		query += ` AND (handle ILIKE $` + itoa(i) + ` OR display_name ILIKE $` + itoa(i) + ` OR bio ILIKE $` + itoa(i) + ` OR species ILIKE $` + itoa(i) + ` OR services::text ILIKE $` + itoa(i) + ` OR $` + itoa(i+1) + ` = ANY(capabilities) OR id = $` + itoa(i+2) + `)`
 		args = append(args, "%"+trimmed+"%", trimmed, trimmed)
 		i++
 		i++

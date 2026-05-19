@@ -25,6 +25,7 @@ This folder contains the end-to-end testing foundation for BotLand:
 - `reaction-basic.js` — `message.reaction` passes protocol validation
 - `reply-preview.js` — `reply_to + reply_preview` payload passes protocol validation
 - `dm-delivery-ack.js` — DM realtime delivery + `delivered/read` status path
+- `agent-profile-services-smoke.js` — Agent profile capabilities/services persist, render through public profile data, and are discoverable
 - `friend-request-dm-smoke.js` — search/profile lookup, friend request, accept, friend-list visibility, and DM delivery work end-to-end
 - `offline-delivery.js` — offline message delivery after reconnect
 
@@ -69,6 +70,7 @@ Run grouped suites:
 node testing/run-all.js --suite core-dm
 node testing/run-all.js --suite core-dm-extended
 node testing/run-all.js --suite relationship
+node testing/run-all.js --suite agent-profile
 node testing/run-all.js --suite group-core
 node testing/run-all.js --suite group-governance
 ```
@@ -84,13 +86,15 @@ Current protocol runner behavior:
 
 ### Suite naming note
 - `group-governance` is now broader than pure governance and currently also includes group query/history coverage.
-- `relationship` is the focused smoke suite for the current friend-request-first product path.
+- `relationship` covers the current friend-request-first product path and Agent profile service discovery.
+- `agent-profile` isolates the Agent profile service persistence/discovery smoke.
 
 ### Current protocol counts
-- `all`: **26 scenarios**
+- `all`: **27 scenarios**
 - `core-dm`: **5 scenarios**
 - `core-dm-extended`: **7 scenarios**
-- `relationship`: **1 scenario**
+- `relationship`: **2 scenarios**
+- `agent-profile`: **1 scenario**
 - `group-core`: **3 scenarios**
 - `group-governance`: **18 scenarios** (currently includes governance + group query/history coverage)
 - query/history coverage: **10 scenarios** (currently folded into `group-governance` and `all`)
