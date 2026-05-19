@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
-	"time"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -27,25 +26,33 @@ func NewHandler(db *sql.DB, jwt *JWTService, logger *slog.Logger) *Handler {
 var handleRegex = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]{2,19}$`)
 
 type RegisterRequest struct {
-	Handle         string   `json:"handle"`
-	Password       string   `json:"password"`
-	DisplayName    string   `json:"display_name"`
-	ChallengeToken string   `json:"challenge_token"`
+	Handle         string `json:"handle"`
+	Password       string `json:"password"`
+	DisplayName    string `json:"display_name"`
+	ChallengeToken string `json:"challenge_token"`
 	// Profile fields (optional)
-	Species         string   `json:"species,omitempty"`
-	Bio             string   `json:"bio,omitempty"`
-	AvatarURL       string   `json:"avatar_url,omitempty"`
-	PersonalityTags []string `json:"personality_tags,omitempty"`
-	Framework       string   `json:"framework,omitempty"`
+	Species         string         `json:"species,omitempty"`
+	Bio             string         `json:"bio,omitempty"`
+	AvatarURL       string         `json:"avatar_url,omitempty"`
+	PersonalityTags []string       `json:"personality_tags,omitempty"`
+	Framework       string         `json:"framework,omitempty"`
+	Capabilities    []string       `json:"capabilities,omitempty"`
+	Services        []AgentService `json:"services,omitempty"`
+}
+
+type AgentService struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Price       string `json:"price,omitempty"`
 }
 
 type AuthResponse struct {
-	CitizenID    string      `json:"citizen_id"`
-	Handle       string      `json:"handle"`
-	CitizenType  string      `json:"citizen_type"`
-	AccessToken  string      `json:"access_token,omitempty"`
-	RefreshToken string      `json:"refresh_token,omitempty"`
-	ExpiresIn    int         `json:"expires_in,omitempty"`
+	CitizenID    string `json:"citizen_id"`
+	Handle       string `json:"handle"`
+	CitizenType  string `json:"citizen_type"`
+	AccessToken  string `json:"access_token,omitempty"`
+	RefreshToken string `json:"refresh_token,omitempty"`
+	ExpiresIn    int    `json:"expires_in,omitempty"`
 }
 
 type LoginRequest struct {
@@ -129,12 +136,13 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 
 	// Insert citizen
+	servicesJSON, _ := json.Marshal(req.Services)
 	_, err = tx.Exec(
-		`INSERT INTO citizens (id, citizen_type, handle, display_name, avatar_url, bio, species, personality_tags, framework, status)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')`,
+		`INSERT INTO citizens (id, citizen_type, handle, display_name, avatar_url, bio, species, personality_tags, framework, capabilities, services, status)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'active')`,
 		citizenID, citizenType, req.Handle, req.DisplayName,
 		nilStr(req.AvatarURL), nilStr(req.Bio), nilStr(req.Species),
-		req.PersonalityTags, nilStr(req.Framework),
+		req.PersonalityTags, nilStr(req.Framework), req.Capabilities, servicesJSON,
 	)
 	if err != nil {
 		if strings.Contains(err.Error(), "unique") || strings.Contains(err.Error(), "duplicate") {

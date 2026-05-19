@@ -34,11 +34,24 @@ func (h *Handler) getCitizen(w http.ResponseWriter, citizenID string) {
 	var id, handle, citizenType, displayName, status string
 	var avatarURL, bio, species, framework sql.NullString
 	var tags []string
+	var capabilities []string
+	var servicesRaw []byte
+	var friendCount, groupCount, momentCount int
 
 	err := h.db.QueryRow(
-		`SELECT id, handle, citizen_type, display_name, avatar_url, bio, species, personality_tags, framework, status FROM citizens WHERE id=$1`,
+		`SELECT
+			c.id, c.handle, c.citizen_type, c.display_name, c.avatar_url, c.bio, c.species,
+			c.personality_tags, c.framework, c.status, c.capabilities, c.services,
+			(SELECT COUNT(*) FROM relationships r WHERE r.status='active' AND (r.citizen_a_id=c.id OR r.citizen_b_id=c.id)),
+			(SELECT COUNT(*) FROM group_members gm JOIN groups g ON g.id=gm.group_id WHERE gm.citizen_id=c.id AND gm.status='active' AND g.status='active'),
+			(SELECT COUNT(*) FROM moments m WHERE m.author_id=c.id AND m.status='active')
+		FROM citizens c WHERE c.id=$1`,
 		citizenID,
-	).Scan(&id, &handle, &citizenType, &displayName, &avatarURL, &bio, &species, pq.Array(&tags), &framework, &status)
+	).Scan(
+		&id, &handle, &citizenType, &displayName, &avatarURL, &bio, &species,
+		pq.Array(&tags), &framework, &status, pq.Array(&capabilities), &servicesRaw,
+		&friendCount, &groupCount, &momentCount,
+	)
 
 	if err == sql.ErrNoRows {
 		writeError(w, 404, "NOT_FOUND", "citizen not found")
@@ -60,7 +73,14 @@ func (h *Handler) getCitizen(w http.ResponseWriter, citizenID string) {
 		"species":          species.String,
 		"personality_tags": tags,
 		"framework":        framework.String,
+		"capabilities":     capabilities,
+		"services":         decodeServices(servicesRaw),
 		"status":           status,
+		"stats": map[string]interface{}{
+			"friend_count": friendCount,
+			"group_count":  groupCount,
+			"moment_count": momentCount,
+		},
 	}
 	writeJSON(w, 200, result)
 }
@@ -96,6 +116,22 @@ func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 			i++
 		}
 	}
+	if capabilities, ok := body["capabilities"]; ok {
+		strs := normalizeStringSlice(capabilities)
+		sets = append(sets, "capabilities=$"+string(rune('0'+i)))
+		args = append(args, pq.Array(strs))
+		i++
+	}
+	if services, ok := body["services"]; ok {
+		servicesJSON, err := json.Marshal(normalizeServices(services))
+		if err != nil {
+			writeError(w, 400, "VALIDATION_ERROR", "invalid services")
+			return
+		}
+		sets = append(sets, "services=$"+string(rune('0'+i)))
+		args = append(args, servicesJSON)
+		i++
+	}
 
 	if len(sets) == 0 {
 		writeError(w, 400, "VALIDATION_ERROR", "nothing to update")
@@ -122,15 +158,16 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 	citizenType := r.URL.Query().Get("type")
 	tag := r.URL.Query().Get("tags")
 
-	query := `SELECT id, handle, citizen_type, display_name, avatar_url, bio, species, personality_tags
+	query := `SELECT id, handle, citizen_type, display_name, avatar_url, bio, species, personality_tags, capabilities
 		FROM citizens WHERE status='active'`
 	args := []interface{}{}
 	i := 1
 
 	if q != "" {
 		trimmed := strings.TrimSpace(q)
-		query += ` AND (handle ILIKE $` + itoa(i) + ` OR display_name ILIKE $` + itoa(i) + ` OR bio ILIKE $` + itoa(i) + ` OR species ILIKE $` + itoa(i) + ` OR id = $` + itoa(i+1) + `)`
-		args = append(args, "%"+trimmed+"%", trimmed)
+		query += ` AND (handle ILIKE $` + itoa(i) + ` OR display_name ILIKE $` + itoa(i) + ` OR bio ILIKE $` + itoa(i) + ` OR species ILIKE $` + itoa(i) + ` OR $` + itoa(i+1) + ` = ANY(capabilities) OR id = $` + itoa(i+2) + `)`
+		args = append(args, "%"+trimmed+"%", trimmed, trimmed)
+		i++
 		i++
 		i++
 	}
@@ -159,7 +196,8 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 		var id, handle, ct, dn string
 		var au, bio, sp sql.NullString
 		var tags []string
-		rows.Scan(&id, &handle, &ct, &dn, &au, &bio, &sp, pq.Array(&tags))
+		var capabilities []string
+		rows.Scan(&id, &handle, &ct, &dn, &au, &bio, &sp, pq.Array(&tags), pq.Array(&capabilities))
 		results = append(results, map[string]interface{}{
 			"citizen_id":       id,
 			"handle":           handle,
@@ -169,6 +207,7 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 			"bio":              bio.String,
 			"species":          sp.String,
 			"personality_tags": tags,
+			"capabilities":     capabilities,
 		})
 	}
 	if results == nil {
@@ -184,6 +223,64 @@ func (h *Handler) Trending(w http.ResponseWriter, r *http.Request) {
 func itoa(i int) string {
 	return string(rune('0' + i))
 }
+
+func decodeServices(raw []byte) []map[string]interface{} {
+	if len(raw) == 0 {
+		return []map[string]interface{}{}
+	}
+	var services []map[string]interface{}
+	if err := json.Unmarshal(raw, &services); err != nil || services == nil {
+		return []map[string]interface{}{}
+	}
+	return services
+}
+
+func normalizeStringSlice(value interface{}) []string {
+	items, ok := value.([]interface{})
+	if !ok {
+		return []string{}
+	}
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		text, ok := item.(string)
+		if !ok {
+			continue
+		}
+		text = strings.TrimSpace(text)
+		if text != "" {
+			result = append(result, text)
+		}
+	}
+	return result
+}
+
+func normalizeServices(value interface{}) []map[string]string {
+	items, ok := value.([]interface{})
+	if !ok {
+		return []map[string]string{}
+	}
+	result := make([]map[string]string, 0, len(items))
+	for _, item := range items {
+		serviceMap, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		name, _ := serviceMap["name"].(string)
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		description, _ := serviceMap["description"].(string)
+		price, _ := serviceMap["price"].(string)
+		result = append(result, map[string]string{
+			"name":        name,
+			"description": strings.TrimSpace(description),
+			"price":       strings.TrimSpace(price),
+		})
+	}
+	return result
+}
+
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
