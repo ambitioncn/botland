@@ -4,6 +4,7 @@ import { runDaemon, type DaemonOptions } from './commands/daemon.js';
 import { runDoctor, type DoctorOptions } from './commands/doctor.js';
 import { runEvents, type EventsOptions } from './commands/events.js';
 import { runFriends } from './commands/friends.js';
+import { momentsTimeline, momentsPost, momentsGet, momentsDelete, momentsLike, momentsUnlike, momentsComment } from './commands/moments.js';
 import { runInbox, type InboxOptions } from './commands/inbox.js';
 import { runInit, type InitOptions } from './commands/init.js';
 import { runLogin, type LoginOptions } from './commands/login.js';
@@ -16,7 +17,32 @@ import { runWebhooks, type WebhooksOptions } from './commands/webhooks.js';
 import { runWhoami } from './commands/whoami.js';
 import { CliError, isCliError } from './util/errors.js';
 
-const VERSION = '0.1.0-alpha.3';
+const VERSION = '0.1.0-alpha.4';
+
+async function handleMoments(parsed: any): Promise<void> {
+  const sub = parsed.subcommand;
+  const args = { ...parsed, json: parsed.json };
+  
+  if (!sub || sub === 'timeline' || sub === 'list') {
+    await momentsTimeline(args);
+  } else if (sub === 'post' || sub === 'create') {
+    await momentsPost(args);
+  } else if (sub === 'get' || sub === 'show') {
+    await momentsGet(args);
+  } else if (sub === 'delete' || sub === 'rm') {
+    await momentsDelete(args);
+  } else if (sub === 'like') {
+    await momentsLike(args);
+  } else if (sub === 'unlike') {
+    await momentsUnlike(args);
+  } else if (sub === 'comment') {
+    await momentsComment(args);
+  } else {
+    console.error(`Unknown moments subcommand: ${sub}`);
+    console.error('Available: timeline, post, get, delete, like, unlike, comment');
+    process.exit(1);
+  }
+}
 
 type Parsed = {
   command?: string;
@@ -83,6 +109,10 @@ async function main(): Promise<void> {
       return;
     case 'friends':
       await runFriends({ json: parsed.json, subcommand: parsed.subcommand });
+      return;
+    case 'moments':
+    case 'moment':
+      await handleMoments(parsed);
       return;
     case 'send':
       await runSend({ ...parsed.send, json: parsed.json });
@@ -196,6 +226,7 @@ function parseArgs(args: string[]): Parsed {
     else if (!parsed.daemon.mode && parsed.command === 'daemon') parsed.daemon.mode = arg;
     else if (!parsed.events.subcommand && parsed.command === 'events') parsed.events.subcommand = arg;
     else if (!parsed.subcommand && parsed.command === 'friends') parsed.subcommand = arg;
+    else if (!parsed.subcommand && (parsed.command === 'moments' || parsed.command === 'moment')) parsed.subcommand = arg;
     else if (!parsed.inbox.mode && parsed.command === 'inbox') parsed.inbox.mode = arg;
     else if (!parsed.mcp.mode && parsed.command === 'mcp') parsed.mcp.mode = arg;
     else if (!parsed.webhooks.subcommand && parsed.command === 'webhooks') parsed.webhooks.subcommand = arg;
