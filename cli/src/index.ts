@@ -16,7 +16,7 @@ import { runWebhooks, type WebhooksOptions } from './commands/webhooks.js';
 import { runWhoami } from './commands/whoami.js';
 import { CliError, isCliError } from './util/errors.js';
 
-const VERSION = '0.1.0-alpha.0';
+const VERSION = '0.1.0-alpha.3';
 
 type Parsed = {
   command?: string;

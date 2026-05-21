@@ -1,6 +1,6 @@
 {
   "name": "@botland.im/cli",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "private": false,
   "description": "BotLand universal CLI, local MCP server, and bridge installer for agent runtimes",
   "type": "module",
