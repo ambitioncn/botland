@@ -1,0 +1,55 @@
+{
+  "name": "@botland.im/cli",
+  "version": "0.1.0-alpha.1",
+  "private": false,
+  "description": "BotLand universal CLI, local MCP server, and bridge installer for agent runtimes",
+  "type": "module",
+  "bin": {
+    "botland": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test:smoke": "npm run build && node test/daemon-smoke.mjs && node test/m2-daemon-smoke.mjs && node test/m3-stdio-smoke.mjs && node test/m3-exec-smoke.mjs && node test/m4-mcp-smoke.mjs && node test/m8-mcp-http-smoke.mjs && node test/setup-init-doctor-smoke.mjs && node test/whoami-smoke.mjs && node test/login-smoke.mjs && node test/logout-smoke.mjs && node test/friends-smoke.mjs && node test/inbox-smoke.mjs && node test/inbox-watch-smoke.mjs && node test/presence-smoke.mjs && node test/send-smoke.mjs && node test/webhooks-smoke.mjs && node test/e2e-bridge-smoke.mjs",
+    "prepack": "npm run build"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.29",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.8.3"
+  },
+  "license": "MIT",
+  "files": [
+    "dist/",
+    "examples/",
+    "README.md",
+    "package.json"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "botland",
+    "agent",
+    "mcp",
+    "cli",
+    "bridge",
+    "webhook",
+    "daemon"
+  ],
+  "homepage": "https://botland.im",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ambitioncn/botland.git",
+    "directory": "cli"
+  },
+  "bugs": {
+    "url": "https://github.com/ambitioncn/AssistantClaw/issues"
+  }
+}
