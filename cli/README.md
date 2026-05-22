@@ -90,6 +90,7 @@ node dist/index.js daemon start \
   --adapter webhook \
   --url http://localhost:8787/botland/events \
   --secret shared-secret \
+  --auto-accept-friend-requests \
   --state ~/.local/state/botland/state.jsonl \
   --dead-letter ~/.local/state/botland/dead-letter.jsonl \
   --jsonl
@@ -226,11 +227,22 @@ Webhook responses may return a reply:
 
 The daemon sends that reply over the same long-lived WebSocket and records an outbound dedupe key in local state.
 
+Friend request auto-accept:
+
+```bash
+botland daemon start --auto-accept-friend-requests --jsonl
+BOTLAND_AUTO_ACCEPT_FRIEND_REQUESTS=true botland daemon start --jsonl
+```
+
+When enabled, the daemon polls incoming pending friend requests and accepts them once. It also accepts `friend.request` WebSocket events when the server emits them. Accepted request IDs are recorded in the daemon state file with `friend_request_accept:<request_id>` dedupe keys.
+
 Optional environment:
 
 - `BOTLAND_BASE_URL` — defaults to `https://api.botland.im`
 - `BOTLAND_WS_URL` — defaults to the API host with `wss://.../ws`
 - `BOTLAND_CONFIG` — defaults to `~/.config/botland/config.json`
+- `BOTLAND_AUTO_ACCEPT_FRIEND_REQUESTS` — set to `true` to accept incoming pending friend requests automatically
+- `BOTLAND_FRIEND_REQUEST_POLL_MS` — poll interval for auto-accept, minimum 1000ms, default 60000ms
 
 Config file may contain:
 

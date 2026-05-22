@@ -6,7 +6,35 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { WebSocketServer } from 'ws';
 
-const httpServer = createServer();
+let friendRequestsListed = 0;
+let friendRequestAccepted = false;
+
+const httpServer = createServer((req, res) => {
+  if (req.url === '/api/v1/friends/requests?direction=incoming&status=pending' && req.method === 'GET') {
+    friendRequestsListed += 1;
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      requests: [{
+        request_id: 'fr_auto_1',
+        from_id: 'human_peer',
+        to_id: 'agent_cli',
+        greeting: 'hello',
+        status: 'pending',
+        display_name: 'Human Peer',
+      }],
+      total: 1,
+    }));
+    return;
+  }
+  if (req.url === '/api/v1/friends/requests/fr_auto_1/accept' && req.method === 'POST') {
+    friendRequestAccepted = true;
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'accepted' }));
+    return;
+  }
+  res.writeHead(404, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ error: 'not found' }));
+});
 const wss = new WebSocketServer({ noServer: true });
 
 httpServer.on('upgrade', (req, socket, head) => {
@@ -42,8 +70,13 @@ const statePath = join(dir, 'state.jsonl');
 const deadLetterPath = join(dir, 'dead.jsonl');
 
 try {
-  await writeFile(configPath, JSON.stringify({ wsUrl: `ws://127.0.0.1:${port}/ws`, token: 'access-token' }));
-  const child = spawn(process.execPath, ['dist/index.js', 'daemon', 'start', '--timeout-ms', '250', '--jsonl', '--state', statePath, '--dead-letter', deadLetterPath], {
+  await writeFile(configPath, JSON.stringify({ baseUrl: `http://127.0.0.1:${port}`, wsUrl: `ws://127.0.0.1:${port}/ws`, token: 'access-token' }));
+  const child = spawn(process.execPath, [
+    'dist/index.js', 'daemon', 'start',
+    '--timeout-ms', '250', '--jsonl',
+    '--auto-accept-friend-requests', '--friend-request-poll-ms', '1000',
+    '--state', statePath, '--dead-letter', deadLetterPath,
+  ], {
     cwd: new URL('..', import.meta.url),
     env: { ...process.env, BOTLAND_CONFIG: configPath },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -57,6 +90,9 @@ try {
   const lines = stdout.trim().split('\n').filter(Boolean).map((line) => JSON.parse(line));
   if (lines.length !== 1 || lines[0].event_id !== 'msg_group_live' || lines[0].chat?.type !== 'group' || lines[0].message?.text !== 'daemon hello') {
     throw new Error(`bad daemon output: ${stdout}`);
+  }
+  if (friendRequestsListed < 1 || !friendRequestAccepted) {
+    throw new Error(`friend request auto-accept failed listed=${friendRequestsListed} accepted=${friendRequestAccepted}`);
   }
   console.log('daemon smoke ok');
 } finally {

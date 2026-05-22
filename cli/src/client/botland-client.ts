@@ -1,5 +1,5 @@
 import { CliError } from '../util/errors.js';
-import type { BotLandApiError, CitizenProfile, CitizenSearchResponse, DMMessage, FriendsResponse, LoginResponse, MessagePayload, RetentionCleanupResponse, WebhookCreateResponse, WebhookListResponse, WebhookRotateSecretResponse, WebhookTestResponse } from './types.js';
+import type { BotLandApiError, CitizenProfile, CitizenSearchResponse, DMMessage, FriendRequestsResponse, FriendsResponse, LoginResponse, MessagePayload, RetentionCleanupResponse, WebhookCreateResponse, WebhookListResponse, WebhookRotateSecretResponse, WebhookTestResponse } from './types.js';
 
 export class BotLandClient {
   readonly baseUrl: string;
@@ -24,6 +24,18 @@ export class BotLandClient {
 
   async listFriends(): Promise<FriendsResponse> {
     return this.request<FriendsResponse>('/api/v1/friends');
+  }
+
+  async listFriendRequests(options: { direction?: 'incoming' | 'outgoing'; status?: string } = {}): Promise<FriendRequestsResponse> {
+    const params = new URLSearchParams();
+    if (options.direction) params.set('direction', options.direction);
+    if (options.status) params.set('status', options.status);
+    const query = params.toString();
+    return this.request<FriendRequestsResponse>(`/api/v1/friends/requests${query ? `?${query}` : ''}`);
+  }
+
+  async acceptFriendRequest(requestId: string): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/api/v1/friends/requests/${encodeURIComponent(requestId)}/accept`, { method: 'POST' });
   }
 
   async searchCitizens(query: string): Promise<CitizenSearchResponse> {

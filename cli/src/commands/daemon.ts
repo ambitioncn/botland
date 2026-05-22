@@ -6,6 +6,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 
 import WebSocket from 'ws';
 
+import { BotLandClient } from '../client/botland-client.js';
 import { requireToken, resolveRuntimeConfig } from '../config/config.js';
 import { CliError } from '../util/errors.js';
 
@@ -21,6 +22,8 @@ export type DaemonOptions = {
   retries?: number;
   reconnectMaxMs?: number;
   presence?: string;
+  autoAcceptFriendRequests?: boolean;
+  friendRequestPollMs?: number;
   json: boolean;
   jsonl: boolean;
   healthPort?: number; // HTTP port for /health endpoint
@@ -62,6 +65,7 @@ type HealthState = {
   lastHeartbeat: string;
   eventsReceived: number;
   webhooksDelivered: number;
+  friendRequestsAccepted: number;
 };
 
 export async function runDaemon(options: DaemonOptions): Promise<void> {
@@ -78,6 +82,7 @@ export async function runDaemon(options: DaemonOptions): Promise<void> {
 
   const runtime = await resolveRuntimeConfig();
   const token = requireToken(runtime.token, runtime.configPath);
+  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token });
   const statePath = options.statePath || defaultDaemonPath('state.jsonl');
   const deadLetterPath = options.deadLetterPath || defaultDaemonPath('dead-letter.jsonl');
   const state = await loadState(statePath);
@@ -85,7 +90,7 @@ export async function runDaemon(options: DaemonOptions): Promise<void> {
   let attempt = 0;
 
   // Start health endpoint if requested
-  const healthState = { connected: false, lastHeartbeat: '', eventsReceived: 0, webhooksDelivered: 0 };
+  const healthState = { connected: false, lastHeartbeat: '', eventsReceived: 0, webhooksDelivered: 0, friendRequestsAccepted: 0 };
   if (options.healthPort) {
     startHealthEndpoint(options.healthPort, startedAt, healthState);
   }
@@ -97,6 +102,7 @@ export async function runDaemon(options: DaemonOptions): Promise<void> {
       await runDaemonConnection({
         wsUrl: runtime.wsUrl,
         token,
+        client,
         state,
         statePath,
         deadLetterPath,
@@ -125,6 +131,7 @@ function startHealthEndpoint(port: number, startedAt: number, state: HealthState
         last_heartbeat: state.lastHeartbeat || 'never',
         events_received: state.eventsReceived,
         webhooks_delivered: state.webhooksDelivered,
+        friend_requests_accepted: state.friendRequestsAccepted,
       };
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(health, null, 2));
@@ -141,6 +148,7 @@ function startHealthEndpoint(port: number, startedAt: number, state: HealthState
 async function runDaemonConnection(args: {
   wsUrl: string;
   token: string;
+  client: BotLandClient;
   state: DaemonState;
   statePath: string;
   deadLetterPath: string;
@@ -152,12 +160,15 @@ async function runDaemonConnection(args: {
   await new Promise<void>((resolve, reject) => {
     let settled = false;
     let timer: NodeJS.Timeout | null = null;
+    let friendRequestPollTimer: NodeJS.Timeout | null = null;
+    let friendRequestPollInFlight = false;
     const ws = new WebSocket(url, { headers: { Authorization: `Bearer ${args.token}` } });
 
     const finish = (error?: Error): void => {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
+      if (friendRequestPollTimer) clearInterval(friendRequestPollTimer);
       try { ws.close(1000, 'botland-daemon-complete'); } catch {}
       if (error) reject(error);
       else resolve();
@@ -172,6 +183,20 @@ async function runDaemonConnection(args: {
       }
       const presence = normalizePresence(args.options.presence);
       if (presence) ws.send(JSON.stringify({ type: 'presence.update', payload: presence }));
+      if (shouldAutoAcceptFriendRequests(args.options)) {
+        const poll = (): void => {
+          if (friendRequestPollInFlight) return;
+          friendRequestPollInFlight = true;
+          void acceptPendingFriendRequests(args)
+            .catch((error) => {
+              const message = error instanceof Error ? error.message : String(error);
+              void writeDeadLetter(args.deadLetterPath, { reason: `friend request auto-accept poll failed: ${message}` });
+            })
+            .finally(() => { friendRequestPollInFlight = false; });
+        };
+        poll();
+        friendRequestPollTimer = setInterval(poll, normalizeFriendRequestPollMs(args.options.friendRequestPollMs));
+      }
     });
 
     ws.on('ping', (data) => ws.pong(data));
@@ -197,6 +222,9 @@ async function runDaemonConnection(args: {
         args.state.seen.add(event.event_id);
         if (args.healthState) args.healthState.eventsReceived += 1;
         await appendState(args.statePath, { type: 'seen', event_id: event.event_id, event_type: event.event_type, ts: new Date().toISOString() });
+        if (shouldAutoAcceptFriendRequests(args.options) && msg.type === 'friend.request') {
+          await acceptFriendRequestFromEvent(args, msg as WatchMessage);
+        }
         if (args.options.json || args.options.jsonl || !args.options.adapter) process.stdout.write(`${JSON.stringify(event)}\n`);
         if (args.options.adapter === 'webhook' && args.options.url) {
           const response = await deliverWebhook({
@@ -240,6 +268,64 @@ async function runDaemonConnection(args: {
       else finish(new CliError(`BotLand WebSocket closed (code=${code} reason=${reason.toString() || '<empty>'})`, { code: 'WS_CLOSED' }));
     });
   });
+}
+
+async function acceptPendingFriendRequests(args: {
+  client: BotLandClient;
+  state: DaemonState;
+  statePath: string;
+  deadLetterPath: string;
+  healthState?: HealthState;
+}): Promise<void> {
+  const response = await args.client.listFriendRequests({ direction: 'incoming', status: 'pending' });
+  for (const request of response.requests || []) {
+    const requestId = typeof request.request_id === 'string' ? request.request_id.trim() : '';
+    if (!requestId) continue;
+    await acceptFriendRequestOnce(args, requestId);
+  }
+}
+
+async function acceptFriendRequestFromEvent(args: {
+  client: BotLandClient;
+  state: DaemonState;
+  statePath: string;
+  deadLetterPath: string;
+  healthState?: HealthState;
+}, raw: WatchMessage): Promise<void> {
+  const payload = isRecord(raw.payload) ? raw.payload : {};
+  const requestId = typeof payload.request_id === 'string'
+    ? payload.request_id.trim()
+    : typeof raw.id === 'string' ? raw.id.trim() : '';
+  if (!requestId) {
+    await writeDeadLetter(args.deadLetterPath, { event_id: raw.id, reason: 'friend.request missing request_id', event: raw });
+    return;
+  }
+  await acceptFriendRequestOnce(args, requestId);
+}
+
+async function acceptFriendRequestOnce(args: {
+  client: BotLandClient;
+  state: DaemonState;
+  statePath: string;
+  deadLetterPath: string;
+  healthState?: HealthState;
+}, requestId: string): Promise<void> {
+  const dedupeKey = `friend_request_accept:${requestId}`;
+  if (args.state.outbound.has(dedupeKey)) return;
+  try {
+    await args.client.acceptFriendRequest(requestId);
+    args.state.outbound.add(dedupeKey);
+    if (args.healthState) args.healthState.friendRequestsAccepted += 1;
+    await appendState(args.statePath, { type: 'outbound', dedupe_key: dedupeKey, message_id: requestId, ts: new Date().toISOString() });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/not pending|request not found/i.test(message)) {
+      args.state.outbound.add(dedupeKey);
+      await appendState(args.statePath, { type: 'outbound', dedupe_key: dedupeKey, message_id: requestId, ts: new Date().toISOString() });
+      return;
+    }
+    await writeDeadLetter(args.deadLetterPath, { event_id: requestId, reason: `friend request auto-accept failed: ${message}` });
+  }
 }
 
 function normalizeEvent(raw: WatchMessage): NormalizedEvent {
@@ -328,6 +414,17 @@ function normalizePresence(raw: string | undefined): { state: string; text?: str
   if (!['online', 'idle', 'dnd'].includes(state)) throw new CliError('--presence must start with online, idle, or dnd', { code: 'VALIDATION_ERROR', exitCode: 2 });
   const text = rest.join(':').trim();
   return { state, ...(text ? { text } : {}) };
+}
+
+function shouldAutoAcceptFriendRequests(options: DaemonOptions): boolean {
+  if (options.autoAcceptFriendRequests !== undefined) return options.autoAcceptFriendRequests;
+  return ['1', 'true', 'yes', 'on'].includes(String(process.env.BOTLAND_AUTO_ACCEPT_FRIEND_REQUESTS || '').toLowerCase());
+}
+
+function normalizeFriendRequestPollMs(value: number | undefined): number {
+  const raw = value ?? (Number(process.env.BOTLAND_FRIEND_REQUEST_POLL_MS || 0) || 60_000);
+  if (!Number.isFinite(raw) || raw <= 0) throw new CliError('--friend-request-poll-ms must be a positive number', { code: 'VALIDATION_ERROR', exitCode: 2 });
+  return Math.max(1_000, Math.floor(raw));
 }
 
 function defaultDaemonPath(file: string): string {

@@ -39,6 +39,25 @@ export type FriendsResponse = {
   total: number;
 };
 
+export type FriendRequest = {
+  request_id: string;
+  from_id: string;
+  to_id: string;
+  greeting?: string;
+  status: string;
+  created_at?: string;
+  display_name?: string;
+  avatar_url?: string;
+  citizen_type?: string;
+  species?: string;
+  [key: string]: unknown;
+};
+
+export type FriendRequestsResponse = {
+  requests: FriendRequest[];
+  total: number;
+};
+
 export type CitizenSearchResponse = {
   results: CitizenProfile[];
   total: number;

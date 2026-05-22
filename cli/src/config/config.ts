@@ -59,8 +59,76 @@ export async function resolveRuntimeConfig(): Promise<{ baseUrl: string; wsUrl: 
   const config = await loadConfig(configPath);
   const baseUrl = (process.env.BOTLAND_BASE_URL || config.baseUrl || 'https://api.botland.im').replace(/\/+$/, '');
   const wsUrl = (process.env.BOTLAND_WS_URL || config.wsUrl || deriveWsUrl(baseUrl)).replace(/\/+$/, '');
-  const token = process.env.BOTLAND_TOKEN || config.token;
+  let token = process.env.BOTLAND_TOKEN || config.token;
+  if (!process.env.BOTLAND_TOKEN && shouldRefreshToken(config)) {
+    const refreshed = await refreshToken(baseUrl, config.refreshToken as string);
+    token = refreshed.access_token;
+    const expiresAt = refreshed.expires_in ? new Date(Date.now() + refreshed.expires_in * 1000).toISOString() : undefined;
+    await updateConfig({
+      baseUrl,
+      wsUrl,
+      token: refreshed.access_token,
+      refreshToken: refreshed.refresh_token || config.refreshToken,
+      citizenId: refreshed.citizen_id,
+      handle: refreshed.handle,
+      citizenType: refreshed.citizen_type,
+      expiresAt,
+    }, configPath);
+  }
   return { baseUrl, wsUrl, token, configPath };
+}
+
+type RefreshResponse = {
+  citizen_id: string;
+  handle: string;
+  citizen_type: string;
+  access_token: string;
+  refresh_token?: string;
+  expires_in?: number;
+};
+
+function shouldRefreshToken(config: BotLandConfig): boolean {
+  if (!config.refreshToken) return false;
+  if (!config.token) return true;
+  if (!config.expiresAt) return false;
+  const expiresAt = Date.parse(config.expiresAt);
+  if (!Number.isFinite(expiresAt)) return false;
+  return expiresAt - Date.now() < 5 * 60 * 1000;
+}
+
+async function refreshToken(baseUrl: string, refreshTokenValue: string): Promise<RefreshResponse> {
+  const url = new URL('/api/v1/auth/refresh', baseUrl);
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshTokenValue }),
+    });
+  } catch (error) {
+    throw new CliError(`Failed to refresh BotLand token at ${url.origin}: ${(error as Error).message}`, { code: 'NETWORK_ERROR' });
+  }
+  const text = await response.text();
+  let data: unknown;
+  try {
+    data = text.trim() ? JSON.parse(text) : undefined;
+  } catch {
+    throw new CliError('BotLand refresh API returned invalid JSON', { code: 'INVALID_API_JSON' });
+  }
+  if (!response.ok) {
+    const body = data as { error?: { code?: string; message?: string }; code?: string; message?: string } | undefined;
+    const message = body?.error?.message || body?.message || response.statusText || 'BotLand token refresh failed';
+    const code = body?.error?.code || body?.code || `HTTP_${response.status}`;
+    throw new CliError(message, { code, exitCode: response.status === 401 ? 3 : 1 });
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new CliError('BotLand refresh API returned an invalid token response', { code: 'INVALID_API_JSON' });
+  }
+  const body = data as Partial<RefreshResponse>;
+  if (!body.access_token || !body.citizen_id || !body.handle || !body.citizen_type) {
+    throw new CliError('BotLand refresh API returned an incomplete token response', { code: 'INVALID_API_JSON' });
+  }
+  return data as RefreshResponse;
 }
 
 export function deriveWsUrl(baseUrl: string): string {

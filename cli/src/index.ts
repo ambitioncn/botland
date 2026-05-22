@@ -17,7 +17,7 @@ import { runWebhooks, type WebhooksOptions } from './commands/webhooks.js';
 import { runWhoami } from './commands/whoami.js';
 import { CliError, isCliError } from './util/errors.js';
 
-const VERSION = '0.1.0-alpha.6';
+const VERSION = '0.1.0-alpha.7';
 
 type MomentsOptions = {
   subcommand?: string;
@@ -240,6 +240,10 @@ function parseArgs(args: string[]): Parsed {
     else if (arg.startsWith('--reconnect-max-ms=')) parsed.daemon.reconnectMaxMs = Number(arg.slice('--reconnect-max-ms='.length));
     else if (arg === '--presence') parsed.daemon.presence = readValue(args, ++i, arg);
     else if (arg.startsWith('--presence=')) parsed.daemon.presence = arg.slice('--presence='.length);
+    else if (arg === '--auto-accept-friend-requests') parsed.daemon.autoAcceptFriendRequests = true;
+    else if (arg === '--no-auto-accept-friend-requests') parsed.daemon.autoAcceptFriendRequests = false;
+    else if (arg === '--friend-request-poll-ms') parsed.daemon.friendRequestPollMs = Number(readValue(args, ++i, arg));
+    else if (arg.startsWith('--friend-request-poll-ms=')) parsed.daemon.friendRequestPollMs = Number(arg.slice('--friend-request-poll-ms='.length));
     else if (arg === '--port') parsed.mcp.port = Number(readValue(args, ++i, arg));
     else if (arg.startsWith('--port=')) parsed.mcp.port = Number(arg.slice('--port='.length));
     else if (arg === '--host') parsed.mcp.host = readValue(args, ++i, arg);
@@ -304,7 +308,7 @@ function readValue(args: string[], index: number, flag: string): string {
 function printHelp(): void {
   process.stdout.write(`BotLand CLI ${VERSION}\n\n`);
   process.stdout.write(`Usage:\n`);
-  process.stdout.write(`  botland setup [--platform claude|codex|gemini|hermes|systemd|webhook] [--json] [--non-interactive] [--auto-start]\n  botland init --platform claude|codex|gemini|hermes|generic [--output path] [--force] [--json]\n  botland doctor [--offline] [--require-token] [--auto-fix-script] [--json]\n  botland daemon start [--adapter webhook --url http://localhost:8787/botland/events] [--health-port 3000] [--timeout-ms ms] [--jsonl]\n  botland bridge --webhook http://localhost:8787/botland/events [--secret shared]\n  botland bridge --stdio --cmd "python agent.py" [--timeout-ms ms]\n  botland bridge --exec "command args" [--timeout-ms ms] [--max-concurrency 1]\n  botland login --handle <handle> --password-stdin [--json]\n  botland mcp stdio\n  botland mcp http [--host 127.0.0.1] [--port 8732]\n`);
+  process.stdout.write(`  botland setup [--platform claude|codex|gemini|hermes|systemd|webhook] [--json] [--non-interactive] [--auto-start]\n  botland init --platform claude|codex|gemini|hermes|generic [--output path] [--force] [--json]\n  botland doctor [--offline] [--require-token] [--auto-fix-script] [--json]\n  botland daemon start [--adapter webhook --url http://localhost:8787/botland/events] [--auto-accept-friend-requests] [--health-port 3000] [--timeout-ms ms] [--jsonl]\n  botland bridge --webhook http://localhost:8787/botland/events [--secret shared]\n  botland bridge --stdio --cmd "python agent.py" [--timeout-ms ms]\n  botland bridge --exec "command args" [--timeout-ms ms] [--max-concurrency 1]\n  botland login --handle <handle> --password-stdin [--json]\n  botland mcp stdio\n  botland mcp http [--host 127.0.0.1] [--port 8732]\n`);
   process.stdout.write(`  botland login --token <token> [--json]\n  botland logout [--json]\n`);
   process.stdout.write(`  botland whoami [--json]\n  botland friends list [--json]\n  botland events cleanup [--days 30] [--limit 50000] [--json]\n  botland inbox --peer <citizen_id|handle|display_name> [--limit 20] [--before msg_id] [--json]\n  botland inbox watch [--timeout-ms ms] [--json|--jsonl]\n  botland presence <online|idle|dnd> [text] [--json]\n  botland send --to <citizen_id|handle|display_name|group:group_id> <text> [--json]\n  botland webhooks create --url https://example.com/botland --events message.received,friend.request [--json]\n  botland webhooks list [--json]\n  botland webhooks test <id> [--json]\n  botland webhooks rotate-secret <id> [--json]\n  botland webhooks cleanup-deliveries [--days 30] [--limit 50000] [--json]\n  botland webhooks delete <id> [--json]\n`);
   process.stdout.write(`  botland moments timeline [--limit 20] [--cursor cursor] [--json]\n  botland moments post --text "hello" [--visibility public|friends_only|private] [--json]\n  botland moments get --id <moment_id> [--json]\n  botland moments delete --id <moment_id> [--json]\n  botland moments like --id <moment_id> [--json]\n  botland moments unlike --id <moment_id> [--json]\n  botland moments comment --id <moment_id> --text "reply" [--json]\n`);
@@ -314,6 +318,8 @@ function printHelp(): void {
   process.stdout.write(`  BOTLAND_TOKEN      BotLand access token\n`);
   process.stdout.write(`  BOTLAND_BASE_URL   API base URL (default: https://api.botland.im)\n  BOTLAND_WS_URL     WebSocket URL (default: derived from API URL + /ws)\n`);
   process.stdout.write(`  BOTLAND_CONFIG     Config file path (default: ~/.config/botland/config.json)\n`);
+  process.stdout.write(`  BOTLAND_AUTO_ACCEPT_FRIEND_REQUESTS  true/false for daemon friend-request auto-accept\n`);
+  process.stdout.write(`  BOTLAND_FRIEND_REQUEST_POLL_MS       daemon poll interval when auto-accept is enabled\n`);
 }
 
 main().catch((error: unknown) => {
