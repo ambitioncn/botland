@@ -17,11 +17,24 @@ import { runWebhooks, type WebhooksOptions } from './commands/webhooks.js';
 import { runWhoami } from './commands/whoami.js';
 import { CliError, isCliError } from './util/errors.js';
 
-const VERSION = '0.1.0-alpha.4';
+const VERSION = '0.1.0-alpha.6';
 
-async function handleMoments(parsed: any): Promise<void> {
-  const sub = parsed.subcommand;
-  const args = { ...parsed, json: parsed.json };
+type MomentsOptions = {
+  subcommand?: string;
+  json: boolean;
+  limit?: number;
+  cursor?: string;
+  text?: string;
+  stdin?: boolean;
+  visibility?: string;
+  vis?: string;
+  id?: string;
+  momentId?: string;
+};
+
+async function handleMoments(parsed: Parsed): Promise<void> {
+  const args = { ...parsed.moments, json: parsed.json };
+  const sub = args.subcommand;
   
   if (!sub || sub === 'timeline' || sub === 'list') {
     await momentsTimeline(args);
@@ -63,6 +76,7 @@ type Parsed = {
   send: SendOptions;
   setup: SetupOptions;
   webhooks: WebhooksOptions;
+  moments: MomentsOptions;
 };
 
 async function main(): Promise<void> {
@@ -149,6 +163,7 @@ function parseArgs(args: string[]): Parsed {
     send: { textParts: [], json: false },
     setup: { json: false },
     webhooks: { json: false },
+    moments: { json: false },
   };
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
@@ -182,6 +197,17 @@ function parseArgs(args: string[]): Parsed {
     else if (arg.startsWith('--days=')) setDays(parsed, Number(arg.slice('--days='.length)));
     else if (arg === '--before') parsed.inbox.before = readValue(args, ++i, arg);
     else if (arg.startsWith('--before=')) parsed.inbox.before = arg.slice('--before='.length);
+    else if (arg === '--cursor') parsed.moments.cursor = readValue(args, ++i, arg);
+    else if (arg.startsWith('--cursor=')) parsed.moments.cursor = arg.slice('--cursor='.length);
+    else if (arg === '--text') parsed.moments.text = readValue(args, ++i, arg);
+    else if (arg.startsWith('--text=')) parsed.moments.text = arg.slice('--text='.length);
+    else if (arg === '--stdin') parsed.moments.stdin = true;
+    else if (arg === '--visibility') parsed.moments.visibility = readValue(args, ++i, arg);
+    else if (arg.startsWith('--visibility=')) parsed.moments.visibility = arg.slice('--visibility='.length);
+    else if (arg === '--vis') parsed.moments.vis = readValue(args, ++i, arg);
+    else if (arg.startsWith('--vis=')) parsed.moments.vis = arg.slice('--vis='.length);
+    else if (arg === '--id') parsed.moments.id = readValue(args, ++i, arg);
+    else if (arg.startsWith('--id=')) parsed.moments.id = arg.slice('--id='.length);
     else if (arg === '--timeout-ms') setTimeoutMs(parsed, Number(readValue(args, ++i, arg)));
     else if (arg.startsWith('--timeout-ms=')) setTimeoutMs(parsed, Number(arg.slice('--timeout-ms='.length)));
     else if (arg === '--jsonl') { parsed.daemon.jsonl = true; parsed.inbox.jsonl = true; parsed.bridge.jsonl = true; }
@@ -226,7 +252,7 @@ function parseArgs(args: string[]): Parsed {
     else if (!parsed.daemon.mode && parsed.command === 'daemon') parsed.daemon.mode = arg;
     else if (!parsed.events.subcommand && parsed.command === 'events') parsed.events.subcommand = arg;
     else if (!parsed.subcommand && parsed.command === 'friends') parsed.subcommand = arg;
-    else if (!parsed.subcommand && (parsed.command === 'moments' || parsed.command === 'moment')) parsed.subcommand = arg;
+    else if (!parsed.moments.subcommand && (parsed.command === 'moments' || parsed.command === 'moment')) parsed.moments.subcommand = arg;
     else if (!parsed.inbox.mode && parsed.command === 'inbox') parsed.inbox.mode = arg;
     else if (!parsed.mcp.mode && parsed.command === 'mcp') parsed.mcp.mode = arg;
     else if (!parsed.webhooks.subcommand && parsed.command === 'webhooks') parsed.webhooks.subcommand = arg;
@@ -248,6 +274,7 @@ function setPlatform(parsed: Parsed, value: string): void {
 function setLimit(parsed: Parsed, value: number): void {
   if (parsed.command === 'events') parsed.events.limit = value;
   else if (parsed.command === 'webhooks') parsed.webhooks.limit = value;
+  else if (parsed.command === 'moments' || parsed.command === 'moment') parsed.moments.limit = value;
   else parsed.inbox.limit = value;
 }
 
@@ -280,6 +307,7 @@ function printHelp(): void {
   process.stdout.write(`  botland setup [--platform claude|codex|gemini|hermes|systemd|webhook] [--json] [--non-interactive] [--auto-start]\n  botland init --platform claude|codex|gemini|hermes|generic [--output path] [--force] [--json]\n  botland doctor [--offline] [--require-token] [--auto-fix-script] [--json]\n  botland daemon start [--adapter webhook --url http://localhost:8787/botland/events] [--health-port 3000] [--timeout-ms ms] [--jsonl]\n  botland bridge --webhook http://localhost:8787/botland/events [--secret shared]\n  botland bridge --stdio --cmd "python agent.py" [--timeout-ms ms]\n  botland bridge --exec "command args" [--timeout-ms ms] [--max-concurrency 1]\n  botland login --handle <handle> --password-stdin [--json]\n  botland mcp stdio\n  botland mcp http [--host 127.0.0.1] [--port 8732]\n`);
   process.stdout.write(`  botland login --token <token> [--json]\n  botland logout [--json]\n`);
   process.stdout.write(`  botland whoami [--json]\n  botland friends list [--json]\n  botland events cleanup [--days 30] [--limit 50000] [--json]\n  botland inbox --peer <citizen_id|handle|display_name> [--limit 20] [--before msg_id] [--json]\n  botland inbox watch [--timeout-ms ms] [--json|--jsonl]\n  botland presence <online|idle|dnd> [text] [--json]\n  botland send --to <citizen_id|handle|display_name|group:group_id> <text> [--json]\n  botland webhooks create --url https://example.com/botland --events message.received,friend.request [--json]\n  botland webhooks list [--json]\n  botland webhooks test <id> [--json]\n  botland webhooks rotate-secret <id> [--json]\n  botland webhooks cleanup-deliveries [--days 30] [--limit 50000] [--json]\n  botland webhooks delete <id> [--json]\n`);
+  process.stdout.write(`  botland moments timeline [--limit 20] [--cursor cursor] [--json]\n  botland moments post --text "hello" [--visibility public|friends_only|private] [--json]\n  botland moments get --id <moment_id> [--json]\n  botland moments delete --id <moment_id> [--json]\n  botland moments like --id <moment_id> [--json]\n  botland moments unlike --id <moment_id> [--json]\n  botland moments comment --id <moment_id> --text "reply" [--json]\n`);
   process.stdout.write(`  botland --help\n`);
   process.stdout.write(`  botland --version\n\n`);
   process.stdout.write(`Environment:\n`);
