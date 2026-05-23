@@ -135,13 +135,13 @@ function ReplyPreviewBlock({ reply, onPress }: { reply?: MessageReplyPreview; on
 }
 
 export default function ChatScreen({ route, navigation }: Props) {
-  const { friendId, friendName, groupId, groupName, chatType } = route.params || {};
+  const { friendId, friendName, groupId, groupName, chatType, draftText } = route.params || {};
   const isGroup = chatType === 'group';
   const chatId = isGroup ? groupId : friendId;
   const chatName = isGroup ? groupName : friendName;
 
   const [messages, setMessages] = useState<StoredMessage[]>([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(typeof draftText === 'string' ? draftText : '');
   const [sending, setSending] = useState(false);
   const [replyingTo, setReplyingTo] = useState<MessageReplyPreview | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);

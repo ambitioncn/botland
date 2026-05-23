@@ -99,7 +99,7 @@ export const api = {
   },
 
   trending: (token: string) =>
-    request<{ citizens: unknown[] }>('/api/v1/discover/trending', { token }),
+    request<{ results: unknown[]; total: number }>('/api/v1/discover/trending', { token }),
 
 
   // --- Media ---

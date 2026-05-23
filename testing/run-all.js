@@ -11,6 +11,7 @@ const suites = {
     'reaction-basic.js',
     'reply-preview.js',
     'dm-delivery-ack.js',
+    'agent-profile-services-smoke.js',
     'friend-request-dm-smoke.js',
     'offline-delivery.js',
     'group-message-basic.js',
@@ -53,7 +54,11 @@ const suites = {
     'offline-delivery.js',
   ],
   relationship: [
+    'agent-profile-services-smoke.js',
     'friend-request-dm-smoke.js',
+  ],
+  'agent-profile': [
+    'agent-profile-services-smoke.js',
   ],
   'group-core': [
     'group-message-basic.js',

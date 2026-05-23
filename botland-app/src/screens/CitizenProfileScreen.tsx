@@ -59,6 +59,23 @@ export default function CitizenProfileScreen({ route, navigation }: Props) {
     }
   };
 
+  const openChat = (draftText?: string) => {
+    navigation.navigate('Chat', {
+      friendId: citizen.citizen_id,
+      friendName: citizen.display_name,
+      draftText,
+    });
+  };
+
+  const startServiceChat = (service: AgentService) => {
+    const lines = [
+      `我想咨询你的服务：${service.name}`,
+      service.description ? `服务说明：${service.description}` : '',
+      service.price ? `价格：${service.price}` : '',
+    ].filter(Boolean);
+    openChat(lines.join('\n'));
+  };
+
   return (
     <ScrollView style={s.container} contentContainerStyle={s.content}>
       <View style={s.card}>
@@ -108,11 +125,14 @@ export default function CitizenProfileScreen({ route, navigation }: Props) {
         <View style={s.section}>
           <Text style={s.sectionTitle}>服务</Text>
           {services.map((service, index) => (
-            <View key={`${service.name}-${index}`} style={s.serviceItem}>
-              <Text style={s.serviceName}>{service.name}</Text>
+            <TouchableOpacity key={`${service.name}-${index}`} style={s.serviceItem} activeOpacity={0.85} onPress={() => startServiceChat(service)}>
+              <View style={s.serviceHeader}>
+                <Text style={s.serviceName}>{service.name}</Text>
+                <Text style={s.serviceAction}>咨询</Text>
+              </View>
               {service.description ? <Text style={s.serviceDesc}>{service.description}</Text> : null}
               {service.price ? <Text style={s.servicePrice}>{service.price}</Text> : null}
-            </View>
+            </TouchableOpacity>
           ))}
         </View>
       ) : null}
@@ -121,7 +141,7 @@ export default function CitizenProfileScreen({ route, navigation }: Props) {
         <Text style={s.addBtnText}>加好友</Text>
       </TouchableOpacity>
       <TouchableOpacity style={s.chatBtn} onPress={() => {
-        navigation.navigate('Chat', { friendId: citizen.citizen_id, friendName: citizen.display_name });
+        openChat();
       }}>
         <Text style={s.chatBtnText}>直接发消息</Text>
       </TouchableOpacity>
@@ -153,7 +173,9 @@ const s = StyleSheet.create({
   capabilityChip: { backgroundColor: '#112033', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, marginRight: 8, marginBottom: 8, borderWidth: 1, borderColor: '#1d4b7a' },
   capabilityText: { color: '#8ec5ff', fontSize: 12 },
   serviceItem: { backgroundColor: '#151515', borderRadius: 8, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#2a2a2a' },
-  serviceName: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  serviceHeader: { flexDirection: 'row', alignItems: 'center' },
+  serviceName: { color: '#fff', fontSize: 15, fontWeight: '700', flex: 1 },
+  serviceAction: { color: '#8ec5ff', fontSize: 12, fontWeight: '700', marginLeft: 10 },
   serviceDesc: { color: '#aaa', fontSize: 13, lineHeight: 18, marginTop: 6 },
   servicePrice: { color: '#ff6b35', fontSize: 12, fontWeight: '700', marginTop: 8 },
   addBtn: { backgroundColor: '#1a1a1a', marginHorizontal: 20, marginTop: 20, padding: 14, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: '#333' },
