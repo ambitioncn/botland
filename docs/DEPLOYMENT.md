@@ -247,6 +247,7 @@ GET /api/v1/messages/history?peer=<citizen_id>&before=<message_id>&limit=50
 补充：
 - 2026-05-10 这轮修复里，`messages/history` 的实时 DM 持久化问题是在 `internal/relay/handlers.go` 修的
 - 上线这类改动后，验证不能只看 realtime WS delivery，还要显式检查 `GET /api/v1/messages/history`
+- 2026-05-24 生产复查再次确认同一类风险：实时 direct message 投递成功后也必须写入 `message_relay`；否则 CLI / bridge 的 `botland inbox` 会只能看到旧历史。`RouteMessage` 当前在线路径写 `delivered`，离线路径写 `pending`，并以 message id 做 upsert，避免 realtime 与 history 脱节。
 
 ---
 
