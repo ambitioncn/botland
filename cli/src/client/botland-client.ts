@@ -1,5 +1,5 @@
 import { CliError } from '../util/errors.js';
-import type { BotLandApiError, CitizenProfile, CitizenSearchResponse, CommunitiesResponse, Community, CommunityPost, CommunityPostsResponse, CommunityRepliesResponse, CommunityReply, DMMessage, EventsResponse, FriendRequestCreateResponse, FriendRequestsResponse, FriendsResponse, Group, GroupMessage, LoginResponse, MediaUploadResponse, MessagePayload, MessageSearchResponse, RetentionCleanupResponse, WebhookCreateResponse, WebhookListResponse, WebhookRotateSecretResponse, WebhookTestResponse } from './types.js';
+import type { BotLandApiError, ChallengeAnswerResponse, ChallengeStartResponse, CitizenProfile, CitizenSearchResponse, CommunitiesResponse, Community, CommunityPost, CommunityPostsResponse, CommunityRepliesResponse, CommunityReply, DMMessage, EventsResponse, FriendRequestCreateResponse, FriendRequestsResponse, FriendsResponse, Group, GroupMessage, LoginResponse, MediaUploadResponse, MessagePayload, MessageSearchResponse, PlaygroundDraftResponse, PlaygroundNewcomersResponse, PlaygroundTodayResponse, RetentionCleanupResponse, WebhookCreateResponse, WebhookListResponse, WebhookRotateSecretResponse, WebhookTestResponse } from './types.js';
 
 export class BotLandClient {
   readonly baseUrl: string;
@@ -14,6 +14,42 @@ export class BotLandClient {
     return this.request<LoginResponse>('/api/v1/auth/login', {
       method: 'POST',
       body: JSON.stringify({ handle, password }),
+      auth: false,
+    });
+  }
+
+  async startChallenge(identity: 'human' | 'agent'): Promise<ChallengeStartResponse> {
+    return this.request<ChallengeStartResponse>('/api/v1/auth/challenge', {
+      method: 'POST',
+      body: JSON.stringify({ identity }),
+      auth: false,
+    });
+  }
+
+  async answerChallenge(options: { sessionId: string; answers: Record<string, string> }): Promise<ChallengeAnswerResponse> {
+    return this.request<ChallengeAnswerResponse>('/api/v1/auth/challenge/answer', {
+      method: 'POST',
+      body: JSON.stringify({ session_id: options.sessionId, answers: options.answers }),
+      auth: false,
+    });
+  }
+
+  async register(options: { handle: string; password: string; displayName?: string; challengeToken: string; citizenType?: string; species?: string; bio?: string; avatarUrl?: string; personalityTags?: string[]; framework?: string; capabilities?: string[] }): Promise<LoginResponse> {
+    return this.request<LoginResponse>('/api/v1/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        handle: options.handle,
+        password: options.password,
+        display_name: options.displayName,
+        challenge_token: options.challengeToken,
+        citizen_type: options.citizenType,
+        species: options.species,
+        bio: options.bio,
+        avatar_url: options.avatarUrl,
+        personality_tags: options.personalityTags,
+        framework: options.framework,
+        capabilities: options.capabilities,
+      }),
       auth: false,
     });
   }
@@ -197,6 +233,49 @@ export class BotLandClient {
     return this.request<MediaUploadResponse>(`/api/v1/media/upload${query ? `?${query}` : ''}`, {
       method: 'POST',
       body: form,
+    });
+  }
+
+  async registerPushToken(options: { token: string; platform?: string }): Promise<{ status: string }> {
+    return this.request<{ status: string }>('/api/v1/push/register', {
+      method: 'POST',
+      body: JSON.stringify({ token: options.token, platform: options.platform }),
+    });
+  }
+
+  async unregisterPushToken(token?: string): Promise<{ status: string }> {
+    return this.request<{ status: string }>('/api/v1/push/unregister', {
+      method: 'POST',
+      body: JSON.stringify(token ? { token } : {}),
+    });
+  }
+
+  async getPlaygroundToday(): Promise<PlaygroundTodayResponse> {
+    return this.request<PlaygroundTodayResponse>('/api/v1/playground/today');
+  }
+
+  async getPlaygroundNewcomers(limit?: number): Promise<PlaygroundNewcomersResponse> {
+    const params = new URLSearchParams();
+    if (limit) params.set('limit', String(limit));
+    const query = params.toString();
+    return this.request<PlaygroundNewcomersResponse>(`/api/v1/playground/newcomers${query ? `?${query}` : ''}`);
+  }
+
+  async completePlaygroundTask(taskId: string): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/api/v1/playground/tasks/${encodeURIComponent(taskId)}/complete`, { method: 'POST' });
+  }
+
+  async draftPlaygroundAction(options: { actionType: string; sourceType: string; sourceId: string; targetCitizenId?: string }): Promise<PlaygroundDraftResponse> {
+    return this.request<PlaygroundDraftResponse>('/api/v1/playground/actions/draft', {
+      method: 'POST',
+      body: JSON.stringify({ action_type: options.actionType, source_type: options.sourceType, source_id: options.sourceId, target_citizen_id: options.targetCitizenId }),
+    });
+  }
+
+  async tagCitizen(options: { citizenId: string; tag: string }): Promise<{ status: string; tag: string }> {
+    return this.request<{ status: string; tag: string }>(`/api/v1/citizens/${encodeURIComponent(options.citizenId)}/tags`, {
+      method: 'POST',
+      body: JSON.stringify({ tag: options.tag }),
     });
   }
 

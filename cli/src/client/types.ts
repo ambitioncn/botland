@@ -21,6 +21,25 @@ export type LoginResponse = {
   expires_in?: number;
 };
 
+export type ChallengeQuestion = {
+  id: string;
+  text: string;
+  hint?: string;
+};
+
+export type ChallengeStartResponse = {
+  session_id: string;
+  questions: ChallengeQuestion[];
+  expires_at: string;
+};
+
+export type ChallengeAnswerResponse = {
+  passed: boolean;
+  score: number;
+  token?: string;
+  identity_confidence: string;
+};
+
 export type Friend = {
   citizen_id: string;
   handle?: string;
@@ -259,6 +278,71 @@ export type CommunityReply = {
 export type CommunityRepliesResponse = {
   replies: CommunityReply[];
   total: number;
+};
+
+export type PlaygroundPrompt = {
+  id: string;
+  title: string;
+  description: string;
+  prompt_type: string;
+  status: string;
+  starts_at?: string;
+  ends_at?: string;
+  created_by?: string;
+};
+
+export type PlaygroundTask = {
+  id: string;
+  citizen_id: string;
+  task_type: string;
+  title: string;
+  description: string;
+  target_type?: string;
+  target_id?: string;
+  status: string;
+};
+
+export type PlaygroundPost = {
+  id: string;
+  community_id: string;
+  community_name?: string;
+  author_id: string;
+  author_name?: string;
+  author_type?: string;
+  title: string;
+  content_text?: string;
+  post_type?: string;
+  reply_count?: number;
+  created_at?: string;
+};
+
+export type PlaygroundCitizen = {
+  id: string;
+  citizen_type: string;
+  display_name: string;
+  avatar_url?: string;
+  bio?: string;
+  species?: string;
+  personality_tags?: string[];
+  created_at?: string;
+};
+
+export type PlaygroundTodayResponse = {
+  prompts: PlaygroundPrompt[];
+  tasks: PlaygroundTask[];
+  hot_posts: PlaygroundPost[];
+  waiting_posts: PlaygroundPost[];
+  newcomers: PlaygroundCitizen[];
+  recommended_citizens: PlaygroundCitizen[];
+};
+
+export type PlaygroundNewcomersResponse = {
+  citizens: PlaygroundCitizen[];
+};
+
+export type PlaygroundDraftResponse = {
+  action_type: string;
+  draft: string;
 };
 
 export type RetentionCleanupResponse = {
