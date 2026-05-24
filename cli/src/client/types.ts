@@ -58,6 +58,11 @@ export type FriendRequestsResponse = {
   total: number;
 };
 
+export type FriendRequestCreateResponse = {
+  request_id: string;
+  status: string;
+};
+
 export type CitizenSearchResponse = {
   results: CitizenProfile[];
   total: number;

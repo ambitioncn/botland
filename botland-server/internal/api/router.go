@@ -32,7 +32,7 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, hub *ws.Hub, relaySvc *relay
 	authH := auth.NewHandler(db, jwtSvc, logger)
 	relH := relationship.NewHandler(db, logger)
 	relH.SetIsOnlineFunc(hub.IsOnline)
-	citizenH := citizen.NewHandler(db, logger)
+	citizenH := citizen.NewHandler(db, logger, baseURL)
 	momentH := moment.NewHandler(db, logger)
 	mediaH := media.NewHandler(logger, baseURL)
 	pushH := push.NewHandler(db, logger)
@@ -40,6 +40,8 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, hub *ws.Hub, relaySvc *relay
 
 	// Serve uploaded files
 	r.Handle("/uploads/*", http.StripPrefix("/uploads", http.FileServer(http.Dir(media.UploadDir))))
+
+	r.Get("/.well-known/botland-agent-card.json", citizenH.GetServiceAgentCard)
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -53,6 +55,10 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, hub *ws.Hub, relaySvc *relay
 			r.Post("/auth/challenge", authH.StartChallenge)
 			r.Post("/auth/challenge/answer", authH.AnswerChallenge)
 		})
+		r.Group(func(r chi.Router) {
+			r.Get("/agents/{agentID}/card", citizenH.GetAgentCard)
+		})
+
 		r.Group(func(r chi.Router) {
 			r.Use(mw.RateLimit(mw.AuthLimiter))
 			r.Get("/auth/check-handle", authH.CheckHandle)

@@ -1,5 +1,5 @@
 import { CliError } from '../util/errors.js';
-import type { BotLandApiError, CitizenProfile, CitizenSearchResponse, DMMessage, FriendRequestsResponse, FriendsResponse, LoginResponse, MessagePayload, RetentionCleanupResponse, WebhookCreateResponse, WebhookListResponse, WebhookRotateSecretResponse, WebhookTestResponse } from './types.js';
+import type { BotLandApiError, CitizenProfile, CitizenSearchResponse, DMMessage, FriendRequestCreateResponse, FriendRequestsResponse, FriendsResponse, LoginResponse, MessagePayload, RetentionCleanupResponse, WebhookCreateResponse, WebhookListResponse, WebhookRotateSecretResponse, WebhookTestResponse } from './types.js';
 
 export class BotLandClient {
   readonly baseUrl: string;
@@ -22,6 +22,17 @@ export class BotLandClient {
     return this.request<CitizenProfile>('/api/v1/me');
   }
 
+  async updateMe(profile: Record<string, unknown>): Promise<CitizenProfile> {
+    return this.request<CitizenProfile>('/api/v1/me', {
+      method: 'PATCH',
+      body: JSON.stringify(profile),
+    });
+  }
+
+  async getAgentCard(agentId: string): Promise<unknown> {
+    return this.request<unknown>(`/api/v1/agents/${encodeURIComponent(agentId)}/card`, { auth: false });
+  }
+
   async listFriends(): Promise<FriendsResponse> {
     return this.request<FriendsResponse>('/api/v1/friends');
   }
@@ -34,13 +45,46 @@ export class BotLandClient {
     return this.request<FriendRequestsResponse>(`/api/v1/friends/requests${query ? `?${query}` : ''}`);
   }
 
+  async sendFriendRequest(options: { targetId: string; greeting?: string }): Promise<FriendRequestCreateResponse> {
+    return this.request<FriendRequestCreateResponse>('/api/v1/friends/requests', {
+      method: 'POST',
+      body: JSON.stringify({ target_id: options.targetId, greeting: options.greeting }),
+    });
+  }
+
   async acceptFriendRequest(requestId: string): Promise<{ status: string }> {
     return this.request<{ status: string }>(`/api/v1/friends/requests/${encodeURIComponent(requestId)}/accept`, { method: 'POST' });
   }
 
-  async searchCitizens(query: string): Promise<CitizenSearchResponse> {
-    const params = new URLSearchParams({ q: query });
+  async rejectFriendRequest(requestId: string): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/api/v1/friends/requests/${encodeURIComponent(requestId)}/reject`, { method: 'POST' });
+  }
+
+  async updateFriendLabel(citizenId: string, label: string): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/api/v1/friends/${encodeURIComponent(citizenId)}/label`, {
+      method: 'PATCH',
+      body: JSON.stringify({ label }),
+    });
+  }
+
+  async removeFriend(citizenId: string): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/api/v1/friends/${encodeURIComponent(citizenId)}`, { method: 'DELETE' });
+  }
+
+  async blockCitizen(citizenId: string): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/api/v1/friends/${encodeURIComponent(citizenId)}/block`, { method: 'POST' });
+  }
+
+  async searchCitizens(options: { query?: string; type?: string; tag?: string } = {}): Promise<CitizenSearchResponse> {
+    const params = new URLSearchParams();
+    if (options.query) params.set('q', options.query);
+    if (options.type) params.set('type', options.type);
+    if (options.tag) params.set('tags', options.tag);
     return this.request<CitizenSearchResponse>(`/api/v1/discover/search?${params.toString()}`);
+  }
+
+  async trendingCitizens(): Promise<CitizenSearchResponse> {
+    return this.request<CitizenSearchResponse>('/api/v1/discover/trending');
   }
 
   async getDMHistory(options: { peer: string; limit?: number; before?: string }): Promise<DMMessage[]> {

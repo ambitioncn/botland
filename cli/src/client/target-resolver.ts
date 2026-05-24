@@ -17,7 +17,7 @@ export async function resolveMessageTarget(client: BotLandClient, rawTarget: str
   if (raw.startsWith('group_')) return { raw, isGroup: true, to: raw, resolvedFrom: 'group' };
   if (isLikelyCitizenId(raw)) return { raw, isGroup: false, to: raw, resolvedFrom: 'id' };
 
-  const search = await client.searchCitizens(raw);
+  const search = await client.searchCitizens({ query: raw });
   const searchMatch = pickUniqueMatch(search.results, raw);
   if (searchMatch) return { raw, isGroup: false, to: searchMatch, resolvedFrom: 'search' };
 

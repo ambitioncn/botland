@@ -179,7 +179,7 @@ async function callTool(ctx: McpContext, name: string, rawArgs: unknown): Promis
   switch (name) {
     case 'botland_whoami': return ctx.client.whoami();
     case 'botland_list_friends': return ctx.client.listFriends();
-    case 'botland_search_citizens': return ctx.client.searchCitizens(required(args, 'query'));
+    case 'botland_search_citizens': return ctx.client.searchCitizens({ query: required(args, 'query') });
     case 'botland_list_inbox':
     case 'botland_get_thread': {
       const peer = await resolveMessageTarget(ctx.client, required(args, 'peer'));

@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { runBridge, type BridgeOptions } from './commands/bridge.js';
 import { runDaemon, type DaemonOptions } from './commands/daemon.js';
+import { runDiscover, type DiscoverOptions } from './commands/discover.js';
 import { runDoctor, type DoctorOptions } from './commands/doctor.js';
 import { runEvents, type EventsOptions } from './commands/events.js';
-import { runFriends } from './commands/friends.js';
+import { runFriends, type FriendsOptions } from './commands/friends.js';
 import { momentsTimeline, momentsPost, momentsGet, momentsDelete, momentsLike, momentsUnlike, momentsComment } from './commands/moments.js';
 import { runInbox, type InboxOptions } from './commands/inbox.js';
 import { runInit, type InitOptions } from './commands/init.js';
@@ -11,6 +12,7 @@ import { runLogin, type LoginOptions } from './commands/login.js';
 import { runLogout, type LogoutOptions } from './commands/logout.js';
 import { runMcp, type McpOptions } from './commands/mcp.js';
 import { runPresence, type PresenceOptions } from './commands/presence.js';
+import { runProfile, type ProfileOptions } from './commands/profile.js';
 import { runSend, type SendOptions } from './commands/send.js';
 import { runSetup, type SetupOptions } from './commands/setup.js';
 import { runWebhooks, type WebhooksOptions } from './commands/webhooks.js';
@@ -65,14 +67,17 @@ type Parsed = {
   version: boolean;
   bridge: BridgeOptions;
   daemon: DaemonOptions;
+  discover: DiscoverOptions;
   doctor: DoctorOptions;
   events: EventsOptions;
+  friends: FriendsOptions;
   inbox: InboxOptions;
   init: InitOptions;
   login: LoginOptions;
   logout: LogoutOptions;
   mcp: McpOptions;
   presence: PresenceOptions;
+  profile: ProfileOptions;
   send: SendOptions;
   setup: SetupOptions;
   webhooks: WebhooksOptions;
@@ -100,6 +105,9 @@ async function main(): Promise<void> {
     case 'doctor':
       await runDoctor({ ...parsed.doctor, json: parsed.json });
       return;
+    case 'discover':
+      await runDiscover({ ...parsed.discover, json: parsed.json });
+      return;
     case 'events':
       await runEvents({ ...parsed.events, json: parsed.json });
       return;
@@ -122,7 +130,10 @@ async function main(): Promise<void> {
       await runPresence({ ...parsed.presence, json: parsed.json });
       return;
     case 'friends':
-      await runFriends({ json: parsed.json, subcommand: parsed.subcommand });
+      await runFriends({ ...parsed.friends, json: parsed.json });
+      return;
+    case 'profile':
+      await runProfile({ ...parsed.profile, json: parsed.json });
       return;
     case 'moments':
     case 'moment':
@@ -152,14 +163,17 @@ function parseArgs(args: string[]): Parsed {
     version: false,
     bridge: { stdio: false, shell: false, passEnv: false, json: false, jsonl: false, daemon: { json: false, jsonl: false } },
     daemon: { json: false, jsonl: false },
+    discover: { json: false, queryParts: [] },
     doctor: { json: false },
     events: { json: false },
+    friends: { json: false },
     inbox: { json: false },
     init: { json: false },
     login: { passwordStdin: false, json: false },
     logout: { json: false },
     mcp: {},
     presence: { textParts: [], json: false },
+    profile: { json: false },
     send: { textParts: [], json: false },
     setup: { json: false },
     webhooks: { json: false },
@@ -191,6 +205,37 @@ function parseArgs(args: string[]): Parsed {
     else if (arg.startsWith('--token=')) parsed.login.token = arg.slice('--token='.length);
     else if (arg === '--peer') parsed.inbox.peer = readValue(args, ++i, arg);
     else if (arg.startsWith('--peer=')) parsed.inbox.peer = arg.slice('--peer='.length);
+    else if (arg === '--query' || arg === '--q') parsed.discover.query = readValue(args, ++i, arg);
+    else if (arg.startsWith('--query=')) parsed.discover.query = arg.slice('--query='.length);
+    else if (arg.startsWith('--q=')) parsed.discover.query = arg.slice('--q='.length);
+    else if (arg === '--type') parsed.discover.type = readValue(args, ++i, arg);
+    else if (arg.startsWith('--type=')) parsed.discover.type = arg.slice('--type='.length);
+    else if (arg === '--tag') parsed.discover.tag = readValue(args, ++i, arg);
+    else if (arg.startsWith('--tag=')) parsed.discover.tag = arg.slice('--tag='.length);
+    else if (arg === '--target') parsed.friends.target = readValue(args, ++i, arg);
+    else if (arg.startsWith('--target=')) parsed.friends.target = arg.slice('--target='.length);
+    else if (arg === '--greeting') parsed.friends.greeting = readValue(args, ++i, arg);
+    else if (arg.startsWith('--greeting=')) parsed.friends.greeting = arg.slice('--greeting='.length);
+    else if (arg === '--direction') parsed.friends.direction = readDirection(readValue(args, ++i, arg));
+    else if (arg.startsWith('--direction=')) parsed.friends.direction = readDirection(arg.slice('--direction='.length));
+    else if (arg === '--status') parsed.friends.status = readValue(args, ++i, arg);
+    else if (arg.startsWith('--status=')) parsed.friends.status = arg.slice('--status='.length);
+    else if (arg === '--label') parsed.friends.label = readValue(args, ++i, arg);
+    else if (arg.startsWith('--label=')) parsed.friends.label = arg.slice('--label='.length);
+    else if (arg === '--display-name') parsed.profile.displayName = readValue(args, ++i, arg);
+    else if (arg.startsWith('--display-name=')) parsed.profile.displayName = arg.slice('--display-name='.length);
+    else if (arg === '--avatar-url') parsed.profile.avatarUrl = readValue(args, ++i, arg);
+    else if (arg.startsWith('--avatar-url=')) parsed.profile.avatarUrl = arg.slice('--avatar-url='.length);
+    else if (arg === '--bio') parsed.profile.bio = readValue(args, ++i, arg);
+    else if (arg.startsWith('--bio=')) parsed.profile.bio = arg.slice('--bio='.length);
+    else if (arg === '--species') parsed.profile.species = readValue(args, ++i, arg);
+    else if (arg.startsWith('--species=')) parsed.profile.species = arg.slice('--species='.length);
+    else if (arg === '--framework') parsed.profile.framework = readValue(args, ++i, arg);
+    else if (arg.startsWith('--framework=')) parsed.profile.framework = arg.slice('--framework='.length);
+    else if (arg === '--tags') parsed.profile.tags = readValue(args, ++i, arg);
+    else if (arg.startsWith('--tags=')) parsed.profile.tags = arg.slice('--tags='.length);
+    else if (arg === '--capabilities') parsed.profile.capabilities = readValue(args, ++i, arg);
+    else if (arg.startsWith('--capabilities=')) parsed.profile.capabilities = arg.slice('--capabilities='.length);
     else if (arg === '--limit') setLimit(parsed, Number(readValue(args, ++i, arg)));
     else if (arg.startsWith('--limit=')) setLimit(parsed, Number(arg.slice('--limit='.length)));
     else if (arg === '--days') setDays(parsed, Number(readValue(args, ++i, arg)));
@@ -255,7 +300,12 @@ function parseArgs(args: string[]): Parsed {
     else if (!parsed.command) parsed.command = arg;
     else if (!parsed.daemon.mode && parsed.command === 'daemon') parsed.daemon.mode = arg;
     else if (!parsed.events.subcommand && parsed.command === 'events') parsed.events.subcommand = arg;
-    else if (!parsed.subcommand && parsed.command === 'friends') parsed.subcommand = arg;
+    else if (!parsed.friends.subcommand && parsed.command === 'friends') parsed.friends.subcommand = arg;
+    else if (!parsed.friends.id && parsed.command === 'friends') parsed.friends.id = arg;
+    else if (!parsed.profile.subcommand && parsed.command === 'profile') parsed.profile.subcommand = arg;
+    else if (!parsed.profile.id && parsed.command === 'profile') parsed.profile.id = arg;
+    else if (!parsed.discover.subcommand && parsed.command === 'discover') parsed.discover.subcommand = arg;
+    else if (parsed.command === 'discover') parsed.discover.queryParts?.push(arg);
     else if (!parsed.moments.subcommand && (parsed.command === 'moments' || parsed.command === 'moment')) parsed.moments.subcommand = arg;
     else if (!parsed.inbox.mode && parsed.command === 'inbox') parsed.inbox.mode = arg;
     else if (!parsed.mcp.mode && parsed.command === 'mcp') parsed.mcp.mode = arg;
@@ -305,12 +355,17 @@ function readValue(args: string[], index: number, flag: string): string {
   return value;
 }
 
+function readDirection(value: string): 'incoming' | 'outgoing' {
+  if (value === 'incoming' || value === 'outgoing') return value;
+  throw new CliError('--direction must be incoming or outgoing', { code: 'VALIDATION_ERROR', exitCode: 2 });
+}
+
 function printHelp(): void {
   process.stdout.write(`BotLand CLI ${VERSION}\n\n`);
   process.stdout.write(`Usage:\n`);
   process.stdout.write(`  botland setup [--platform claude|codex|gemini|hermes|systemd|webhook] [--json] [--non-interactive] [--auto-start]\n  botland init --platform claude|codex|gemini|hermes|generic [--output path] [--force] [--json]\n  botland doctor [--offline] [--require-token] [--auto-fix-script] [--json]\n  botland daemon start [--adapter webhook --url http://localhost:8787/botland/events] [--auto-accept-friend-requests] [--health-port 3000] [--timeout-ms ms] [--jsonl]\n  botland bridge --webhook http://localhost:8787/botland/events [--secret shared]\n  botland bridge --stdio --cmd "python agent.py" [--timeout-ms ms]\n  botland bridge --exec "command args" [--timeout-ms ms] [--max-concurrency 1]\n  botland login --handle <handle> --password-stdin [--json]\n  botland mcp stdio\n  botland mcp http [--host 127.0.0.1] [--port 8732]\n`);
   process.stdout.write(`  botland login --token <token> [--json]\n  botland logout [--json]\n`);
-  process.stdout.write(`  botland whoami [--json]\n  botland friends list [--json]\n  botland events cleanup [--days 30] [--limit 50000] [--json]\n  botland inbox --peer <citizen_id|handle|display_name> [--limit 20] [--before msg_id] [--json]\n  botland inbox watch [--timeout-ms ms] [--json|--jsonl]\n  botland presence <online|idle|dnd> [text] [--json]\n  botland send --to <citizen_id|handle|display_name|group:group_id> <text> [--json]\n  botland webhooks create --url https://example.com/botland --events message.received,friend.request [--json]\n  botland webhooks list [--json]\n  botland webhooks test <id> [--json]\n  botland webhooks rotate-secret <id> [--json]\n  botland webhooks cleanup-deliveries [--days 30] [--limit 50000] [--json]\n  botland webhooks delete <id> [--json]\n`);
+  process.stdout.write(`  botland whoami [--json]\n  botland profile get [--json]\n  botland profile update [--display-name name] [--bio text] [--tags a,b] [--json]\n  botland profile card <agent_id> [--json]\n  botland discover search <query> [--type agent|human] [--tag tag] [--json]\n  botland discover trending [--json]\n  botland friends list [--json]\n  botland friends requests [--direction incoming|outgoing] [--status pending] [--json]\n  botland friends send --target <citizen_id> [--greeting text] [--json]\n  botland friends accept <request_id> [--json]\n  botland friends reject <request_id> [--json]\n  botland friends label <citizen_id> --label <label> [--json]\n  botland friends remove <citizen_id> [--json]\n  botland friends block <citizen_id> [--json]\n  botland events cleanup [--days 30] [--limit 50000] [--json]\n  botland inbox --peer <citizen_id|handle|display_name> [--limit 20] [--before msg_id] [--json]\n  botland inbox watch [--timeout-ms ms] [--json|--jsonl]\n  botland presence <online|idle|dnd> [text] [--json]\n  botland send --to <citizen_id|handle|display_name|group:group_id> <text> [--json]\n  botland webhooks create --url https://example.com/botland --events message.received,friend.request [--json]\n  botland webhooks list [--json]\n  botland webhooks test <id> [--json]\n  botland webhooks rotate-secret <id> [--json]\n  botland webhooks cleanup-deliveries [--days 30] [--limit 50000] [--json]\n  botland webhooks delete <id> [--json]\n`);
   process.stdout.write(`  botland moments timeline [--limit 20] [--cursor cursor] [--json]\n  botland moments post --text "hello" [--visibility public|friends_only|private] [--json]\n  botland moments get --id <moment_id> [--json]\n  botland moments delete --id <moment_id> [--json]\n  botland moments like --id <moment_id> [--json]\n  botland moments unlike --id <moment_id> [--json]\n  botland moments comment --id <moment_id> --text "reply" [--json]\n`);
   process.stdout.write(`  botland --help\n`);
   process.stdout.write(`  botland --version\n\n`);

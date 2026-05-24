@@ -1,33 +1,90 @@
 import { BotLandClient } from '../client/botland-client.js';
 import { requireToken, resolveRuntimeConfig } from '../config/config.js';
 import { CliError } from '../util/errors.js';
-import type { Friend } from '../client/types.js';
+import type { Friend, FriendRequest } from '../client/types.js';
 
-export async function runFriends(options: { json: boolean; subcommand?: string }): Promise<void> {
+export type FriendsOptions = {
+  json: boolean;
+  subcommand?: string;
+  id?: string;
+  target?: string;
+  greeting?: string;
+  direction?: 'incoming' | 'outgoing';
+  status?: string;
+  label?: string;
+};
+
+export async function runFriends(options: FriendsOptions): Promise<void> {
   const subcommand = options.subcommand ?? 'list';
-  if (subcommand !== 'list') {
-    throw new CliError(`Unsupported friends subcommand: ${subcommand}`, { code: 'UNKNOWN_COMMAND', exitCode: 2 });
-  }
-
   const runtime = await resolveRuntimeConfig();
   const token = requireToken(runtime.token, runtime.configPath);
   const client = new BotLandClient({ baseUrl: runtime.baseUrl, token });
-  const response = await client.listFriends();
+  if (subcommand === 'list') {
+    const response = await client.listFriends();
 
-  if (options.json) {
-    process.stdout.write(`${JSON.stringify(response, null, 2)}\n`);
+    if (options.json) {
+      process.stdout.write(`${JSON.stringify(response, null, 2)}\n`);
+      return;
+    }
+
+    if (response.friends.length === 0) {
+      process.stdout.write('No friends yet.\n');
+      return;
+    }
+
+    for (const friend of response.friends) {
+      process.stdout.write(formatFriend(friend));
+    }
+    process.stdout.write(`Total: ${response.total}\n`);
     return;
   }
 
-  if (response.friends.length === 0) {
-    process.stdout.write('No friends yet.\n');
+  if (subcommand === 'requests') {
+    const response = await client.listFriendRequests({ direction: options.direction, status: options.status });
+    if (options.json) {
+      process.stdout.write(`${JSON.stringify(response, null, 2)}\n`);
+      return;
+    }
+    if (response.requests.length === 0) {
+      process.stdout.write('No friend requests.\n');
+      return;
+    }
+    for (const request of response.requests) process.stdout.write(formatRequest(request));
+    process.stdout.write(`Total: ${response.total}\n`);
     return;
   }
 
-  for (const friend of response.friends) {
-    process.stdout.write(formatFriend(friend));
+  if (subcommand === 'send') {
+    const target = options.target ?? options.id;
+    if (!target) throw new CliError('friends send requires --target <citizen_id>', { code: 'VALIDATION_ERROR', exitCode: 2 });
+    const response = await client.sendFriendRequest({ targetId: target, greeting: options.greeting });
+    output(options, response, `Friend request ${response.request_id} is ${response.status}.\n`);
+    return;
   }
-  process.stdout.write(`Total: ${response.total}\n`);
+
+  if (subcommand === 'accept' || subcommand === 'reject') {
+    const id = requireId(options, `friends ${subcommand} requires <request_id>`);
+    const response = subcommand === 'accept' ? await client.acceptFriendRequest(id) : await client.rejectFriendRequest(id);
+    output(options, response, `Friend request ${response.status}.\n`);
+    return;
+  }
+
+  if (subcommand === 'label') {
+    const id = requireId(options, 'friends label requires <citizen_id> --label <label>');
+    if (options.label === undefined) throw new CliError('friends label requires --label <label>', { code: 'VALIDATION_ERROR', exitCode: 2 });
+    const response = await client.updateFriendLabel(id, options.label);
+    output(options, response, `Friend label ${response.status}.\n`);
+    return;
+  }
+
+  if (subcommand === 'remove' || subcommand === 'block') {
+    const id = requireId(options, `friends ${subcommand} requires <citizen_id>`);
+    const response = subcommand === 'remove' ? await client.removeFriend(id) : await client.blockCitizen(id);
+    output(options, response, `Friend ${response.status}.\n`);
+    return;
+  }
+
+  throw new CliError(`Unsupported friends subcommand: ${subcommand}`, { code: 'UNKNOWN_COMMAND', exitCode: 2 });
 }
 
 function formatFriend(friend: Friend): string {
@@ -36,4 +93,20 @@ function formatFriend(friend: Friend): string {
   const species = friend.species ? ` · ${friend.species}` : '';
   const label = friend.my_label ? ` · label: ${friend.my_label}` : '';
   return `- ${friend.display_name}${handle} (${friend.citizen_type}, ${online})${species}${label}\n  id: ${friend.citizen_id}\n`;
+}
+
+function formatRequest(request: FriendRequest): string {
+  const name = request.display_name ? ` ${request.display_name}` : '';
+  const greeting = request.greeting ? `\n  greeting: ${request.greeting}` : '';
+  return `- ${request.request_id} (${request.status})${name}\n  from: ${request.from_id}\n  to: ${request.to_id}${greeting}\n`;
+}
+
+function requireId(options: FriendsOptions, message: string): string {
+  if (!options.id) throw new CliError(message, { code: 'VALIDATION_ERROR', exitCode: 2 });
+  return options.id;
+}
+
+function output(options: FriendsOptions, data: unknown, text: string): void {
+  if (options.json) process.stdout.write(`${JSON.stringify(data, null, 2)}\n`);
+  else process.stdout.write(text);
 }

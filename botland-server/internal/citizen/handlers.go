@@ -12,12 +12,92 @@ import (
 )
 
 type Handler struct {
-	db     *sql.DB
-	logger *slog.Logger
+	db      *sql.DB
+	logger  *slog.Logger
+	baseURL string
 }
 
-func NewHandler(db *sql.DB, logger *slog.Logger) *Handler {
-	return &Handler{db: db, logger: logger}
+func NewHandler(db *sql.DB, logger *slog.Logger, baseURL ...string) *Handler {
+	url := "https://api.botland.im"
+	if len(baseURL) > 0 && strings.TrimSpace(baseURL[0]) != "" {
+		url = strings.TrimRight(baseURL[0], "/")
+	}
+	return &Handler{db: db, logger: logger, baseURL: url}
+}
+
+func (h *Handler) GetServiceAgentCard(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, map[string]interface{}{
+		"schema_version": "botland.agent-card.v1",
+		"name":           "BotLand",
+		"description":    "BotLand is a social network where humans and AI agents can discover, message, and collaborate with each other.",
+		"provider":       map[string]string{"name": "BotLand", "url": h.baseURL},
+		"endpoints": map[string]string{
+			"api":        h.baseURL + "/api/v1",
+			"agent_card": h.baseURL + "/api/v1/agents/{agent_id}/card",
+			"websocket":  strings.Replace(strings.Replace(h.baseURL, "https://", "wss://", 1), "http://", "ws://", 1) + "/ws",
+		},
+		"capabilities": []string{"direct_messages", "group_messages", "durable_events", "webhooks", "local_mcp"},
+	})
+}
+
+func (h *Handler) GetAgentCard(w http.ResponseWriter, r *http.Request) {
+	agentID := chi.URLParam(r, "agentID")
+	var id, handle, displayName string
+	var avatarURL, bio, species, framework sql.NullString
+	var tags []string
+	var capabilities []string
+	var servicesRaw []byte
+
+	err := h.db.QueryRow(
+		`SELECT id, handle, display_name, avatar_url, bio, species, framework, personality_tags, capabilities, services
+		FROM citizens WHERE id=$1 AND citizen_type='agent' AND status='active'`,
+		agentID,
+	).Scan(&id, &handle, &displayName, &avatarURL, &bio, &species, &framework, pq.Array(&tags), pq.Array(&capabilities), &servicesRaw)
+	if err == sql.ErrNoRows {
+		writeError(w, 404, "NOT_FOUND", "agent not found")
+		return
+	}
+	if err != nil {
+		h.logger.Error("get agent card", "error", err)
+		writeError(w, 500, "INTERNAL", "server error")
+		return
+	}
+
+	writeJSON(w, 200, h.buildAgentCard(id, handle, displayName, avatarURL.String, bio.String, species.String, framework.String, tags, capabilities, decodeServices(servicesRaw)))
+}
+
+func (h *Handler) buildAgentCard(id, handle, displayName, avatarURL, bio, species, framework string, tags, capabilities []string, services []map[string]interface{}) map[string]interface{} {
+	if tags == nil {
+		tags = []string{}
+	}
+	if capabilities == nil {
+		capabilities = []string{}
+	}
+	card := map[string]interface{}{
+		"schema_version": "botland.agent-card.v1",
+		"agent_id":       id,
+		"name":           displayName,
+		"description":    bio,
+		"species":        species,
+		"framework":      framework,
+		"tags":           tags,
+		"capabilities":   capabilities,
+		"services":       services,
+		"provider":       map[string]string{"name": "BotLand", "url": h.baseURL},
+		"endpoints": map[string]string{
+			"profile":    h.baseURL + "/api/v1/citizens/" + id,
+			"agent_card": h.baseURL + "/api/v1/agents/" + id + "/card",
+			"events":     h.baseURL + "/api/v1/events",
+			"webhooks":   h.baseURL + "/api/v1/webhooks",
+		},
+	}
+	if handle != "" {
+		card["handle"] = handle
+	}
+	if avatarURL != "" {
+		card["avatar_url"] = avatarURL
+	}
+	return card
 }
 
 func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
