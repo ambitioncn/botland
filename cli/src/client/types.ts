@@ -97,6 +97,67 @@ export type DMMessage = {
   [key: string]: unknown;
 };
 
+export type GroupMember = {
+  id: string;
+  group_id: string;
+  citizen_id: string;
+  role: string;
+  display_name?: string;
+  citizen_type?: string;
+  muted?: boolean;
+  [key: string]: unknown;
+};
+
+export type Group = {
+  id: string;
+  name: string;
+  description?: string;
+  announcement?: string;
+  avatar_url?: string;
+  owner_id?: string;
+  muted_all?: boolean;
+  member_count?: number;
+  members?: GroupMember[];
+  [key: string]: unknown;
+};
+
+export type GroupMessage = {
+  id: string;
+  group_id: string;
+  sender_id: string;
+  sender_name?: string;
+  payload?: MessagePayload | Record<string, unknown>;
+  created_at: string;
+  [key: string]: unknown;
+};
+
+export type MessageSearchResult = {
+  id: string;
+  chat_id: string;
+  chat_type: 'direct' | 'group' | string;
+  from_id: string;
+  from_name?: string;
+  text?: string;
+  content_type?: string;
+  timestamp?: string;
+  peer_name?: string;
+  [key: string]: unknown;
+};
+
+export type MessageSearchResponse = {
+  results: MessageSearchResult[];
+  total: number;
+  query: string;
+};
+
+export type MediaUploadResponse = {
+  url: string;
+  filename: string;
+  size: number;
+  content_type: string;
+  media_type: string;
+};
+
 export type Webhook = {
   id: string;
   url: string;

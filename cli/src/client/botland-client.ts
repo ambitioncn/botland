@@ -1,5 +1,5 @@
 import { CliError } from '../util/errors.js';
-import type { BotLandApiError, CitizenProfile, CitizenSearchResponse, DMMessage, FriendRequestCreateResponse, FriendRequestsResponse, FriendsResponse, LoginResponse, MessagePayload, RetentionCleanupResponse, WebhookCreateResponse, WebhookListResponse, WebhookRotateSecretResponse, WebhookTestResponse } from './types.js';
+import type { BotLandApiError, CitizenProfile, CitizenSearchResponse, DMMessage, FriendRequestCreateResponse, FriendRequestsResponse, FriendsResponse, Group, GroupMessage, LoginResponse, MediaUploadResponse, MessagePayload, MessageSearchResponse, RetentionCleanupResponse, WebhookCreateResponse, WebhookListResponse, WebhookRotateSecretResponse, WebhookTestResponse } from './types.js';
 
 export class BotLandClient {
   readonly baseUrl: string;
@@ -101,6 +101,94 @@ export class BotLandClient {
     });
   }
 
+  async searchMessages(options: { query: string; limit?: number }): Promise<MessageSearchResponse> {
+    const params = new URLSearchParams({ q: options.query });
+    if (options.limit) params.set('limit', String(options.limit));
+    return this.request<MessageSearchResponse>(`/api/v1/messages/search?${params.toString()}`);
+  }
+
+  async listGroups(): Promise<Group[]> {
+    return this.request<Group[]>('/api/v1/groups');
+  }
+
+  async createGroup(options: { name: string; description?: string; memberIds?: string[] }): Promise<Group | { id: string; name: string }> {
+    return this.request<Group | { id: string; name: string }>('/api/v1/groups', {
+      method: 'POST',
+      body: JSON.stringify({ name: options.name, description: options.description, member_ids: options.memberIds ?? [] }),
+    });
+  }
+
+  async getGroup(groupId: string): Promise<Group> {
+    return this.request<Group>(`/api/v1/groups/${encodeURIComponent(groupId)}`);
+  }
+
+  async updateGroup(groupId: string, patch: Record<string, unknown>): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/api/v1/groups/${encodeURIComponent(groupId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(patch),
+    });
+  }
+
+  async inviteGroupMembers(groupId: string, citizenIds: string[]): Promise<{ status: string; invited?: number }> {
+    return this.request<{ status: string; invited?: number }>(`/api/v1/groups/${encodeURIComponent(groupId)}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ citizen_ids: citizenIds }),
+    });
+  }
+
+  async removeGroupMember(groupId: string, citizenId: string): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/api/v1/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(citizenId)}`, { method: 'DELETE' });
+  }
+
+  async updateGroupMemberRole(groupId: string, citizenId: string, role: string): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/api/v1/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(citizenId)}/role`, {
+      method: 'PUT',
+      body: JSON.stringify({ role }),
+    });
+  }
+
+  async leaveGroup(groupId: string): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/api/v1/groups/${encodeURIComponent(groupId)}/leave`, { method: 'POST' });
+  }
+
+  async disbandGroup(groupId: string): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/api/v1/groups/${encodeURIComponent(groupId)}`, { method: 'DELETE' });
+  }
+
+  async transferGroup(groupId: string, citizenId: string): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/api/v1/groups/${encodeURIComponent(groupId)}/transfer`, {
+      method: 'POST',
+      body: JSON.stringify({ citizen_id: citizenId }),
+    });
+  }
+
+  async muteGroupAll(groupId: string, muted: boolean): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/api/v1/groups/${encodeURIComponent(groupId)}/mute-all`, {
+      method: 'POST',
+      body: JSON.stringify({ muted }),
+    });
+  }
+
+  async getGroupMessages(options: { groupId: string; limit?: number; before?: string }): Promise<GroupMessage[]> {
+    const params = new URLSearchParams();
+    if (options.limit) params.set('limit', String(options.limit));
+    if (options.before) params.set('before', options.before);
+    const query = params.toString();
+    return this.request<GroupMessage[]>(`/api/v1/groups/${encodeURIComponent(options.groupId)}/messages${query ? `?${query}` : ''}`);
+  }
+
+  async uploadMedia(options: { file: Blob; filename: string; category?: string }): Promise<MediaUploadResponse> {
+    const form = new FormData();
+    form.set('file', options.file, options.filename);
+    const params = new URLSearchParams();
+    if (options.category) params.set('category', options.category);
+    const query = params.toString();
+    return this.request<MediaUploadResponse>(`/api/v1/media/upload${query ? `?${query}` : ''}`, {
+      method: 'POST',
+      body: form,
+    });
+  }
+
   async cleanupEventsRetention(options: { days?: number; limit?: number } = {}): Promise<RetentionCleanupResponse> {
     return this.request<RetentionCleanupResponse>('/api/v1/events/retention/cleanup', {
       method: 'POST',
@@ -147,7 +235,7 @@ export class BotLandClient {
       headers.set('Authorization', `Bearer ${this.token}`);
     }
     headers.set('Accept', 'application/json');
-    if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+    if (init.body && !headers.has('Content-Type') && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json');
 
     let response: Response;
     try {
