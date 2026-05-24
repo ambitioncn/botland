@@ -147,7 +147,7 @@ async function handleLine(ctx: McpContext, line: string): Promise<void> {
 async function dispatch(ctx: McpContext, method: string, params: unknown): Promise<unknown> {
   switch (method) {
     case 'initialize':
-      return { protocolVersion: '2024-11-05', capabilities: { tools: {}, resources: {}, prompts: {} }, serverInfo: { name: 'botland', version: '0.1.0-alpha.8' } };
+      return { protocolVersion: '2024-11-05', capabilities: { tools: {}, resources: {}, prompts: {} }, serverInfo: { name: 'botland', version: '0.1.0-alpha.9' } };
     case 'tools/list':
       return { tools };
     case 'tools/call':
