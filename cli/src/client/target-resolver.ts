@@ -9,23 +9,35 @@ export type ResolvedTarget = {
   resolvedFrom?: 'id' | 'group' | 'search' | 'friends';
 };
 
+export async function resolveCitizenTarget(client: BotLandClient, rawTarget: string, options: { preferFriends?: boolean } = {}): Promise<ResolvedTarget> {
+  const raw = rawTarget.trim();
+  if (!raw) throw new CliError('target citizen is required', { code: 'VALIDATION_ERROR', exitCode: 2 });
+  if (isLikelyCitizenId(raw)) return { raw, isGroup: false, to: raw, resolvedFrom: 'id' };
+
+  if (options.preferFriends) {
+    const friendMatch = await matchFriendTarget(client, raw);
+    if (friendMatch) return { raw, isGroup: false, to: friendMatch, resolvedFrom: 'friends' };
+  }
+
+  const search = await client.searchCitizens({ query: raw });
+  const searchMatch = pickUniqueMatch(search.results, raw);
+  if (searchMatch) return { raw, isGroup: false, to: searchMatch, resolvedFrom: 'search' };
+
+  if (!options.preferFriends) {
+    const friendMatch = await matchFriendTarget(client, raw);
+    if (friendMatch) return { raw, isGroup: false, to: friendMatch, resolvedFrom: 'friends' };
+  }
+
+  throw new CliError(`BotLand citizen not found for target: ${raw}`, { code: 'TARGET_NOT_FOUND', exitCode: 2 });
+}
+
 export async function resolveMessageTarget(client: BotLandClient, rawTarget: string): Promise<ResolvedTarget> {
   const raw = rawTarget.trim();
   if (!raw) throw new CliError('send requires --to <citizen_id|handle|display_name|group:group_id>', { code: 'VALIDATION_ERROR', exitCode: 2 });
 
   if (raw.startsWith('group:')) return { raw, isGroup: true, to: raw.slice('group:'.length), resolvedFrom: 'group' };
   if (raw.startsWith('group_')) return { raw, isGroup: true, to: raw, resolvedFrom: 'group' };
-  if (isLikelyCitizenId(raw)) return { raw, isGroup: false, to: raw, resolvedFrom: 'id' };
-
-  const search = await client.searchCitizens({ query: raw });
-  const searchMatch = pickUniqueMatch(search.results, raw);
-  if (searchMatch) return { raw, isGroup: false, to: searchMatch, resolvedFrom: 'search' };
-
-  const friends = await client.listFriends();
-  const friendMatch = pickUniqueMatch(friends.friends, raw);
-  if (friendMatch) return { raw, isGroup: false, to: friendMatch, resolvedFrom: 'friends' };
-
-  throw new CliError(`BotLand citizen not found for target: ${raw}`, { code: 'TARGET_NOT_FOUND', exitCode: 2 });
+  return resolveCitizenTarget(client, raw);
 }
 
 export function messageTypeForResolvedTarget(target: ResolvedTarget): 'message.send' | 'group.message.send' {
@@ -34,6 +46,11 @@ export function messageTypeForResolvedTarget(target: ResolvedTarget): 'message.s
 
 function isLikelyCitizenId(value: string): boolean {
   return /^(agent|human|user|ctz)_[A-Za-z0-9]+$/.test(value);
+}
+
+async function matchFriendTarget(client: BotLandClient, query: string): Promise<string | null> {
+  const friends = await client.listFriends();
+  return pickUniqueMatch(friends.friends, query);
 }
 
 function pickUniqueMatch(items: Array<CitizenProfile | Friend>, query: string): string | null {

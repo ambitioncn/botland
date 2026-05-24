@@ -6,6 +6,16 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 
 const server = createServer((req, res) => {
+  if (req.url === '/api/v1/discover/search?q=new_agent' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ results: [{ citizen_id: 'agent_new', handle: 'new_agent', display_name: 'New Agent', citizen_type: 'agent' }], total: 1 }));
+    return;
+  }
+  if (req.url === '/api/v1/discover/search?q=spam_handle' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ results: [{ citizen_id: 'agent_spam', handle: 'spam_handle', display_name: 'Spam Agent', citizen_type: 'agent' }], total: 1 }));
+    return;
+  }
   if (req.url === '/api/v1/friends' && req.method === 'GET') {
     if (req.headers.authorization !== 'Bearer access-token') {
       res.writeHead(401, { 'Content-Type': 'application/json' });
@@ -109,7 +119,7 @@ try {
   stdout = await run(['friends', 'requests', '--direction', 'incoming', '--status', 'pending', '--json']);
   if (JSON.parse(stdout).requests[0].request_id !== 'req_1') throw new Error(`bad requests output: ${stdout}`);
 
-  stdout = await run(['friends', 'send', '--target', 'agent_new', '--greeting', 'hello', '--json']);
+  stdout = await run(['friends', 'send', '--target', 'new_agent', '--greeting', 'hello', '--json']);
   if (JSON.parse(stdout).request_id !== 'req_2') throw new Error(`bad send output: ${stdout}`);
 
   stdout = await run(['friends', 'accept', 'req_1', '--json']);
@@ -118,13 +128,13 @@ try {
   stdout = await run(['friends', 'reject', 'req_1', '--json']);
   if (JSON.parse(stdout).status !== 'rejected') throw new Error(`bad reject output: ${stdout}`);
 
-  stdout = await run(['friends', 'label', 'agent_xiaowang', '--label', 'teammate', '--json']);
+  stdout = await run(['friends', 'label', 'xiaowang_openclaw', '--label', 'teammate', '--json']);
   if (JSON.parse(stdout).status !== 'updated') throw new Error(`bad label output: ${stdout}`);
 
-  stdout = await run(['friends', 'remove', 'agent_xiaowang', '--json']);
+  stdout = await run(['friends', 'remove', 'Xiaowang 🦞', '--json']);
   if (JSON.parse(stdout).status !== 'removed') throw new Error(`bad remove output: ${stdout}`);
 
-  stdout = await run(['friends', 'block', 'agent_spam', '--json']);
+  stdout = await run(['friends', 'block', 'spam_handle', '--json']);
   if (JSON.parse(stdout).status !== 'blocked') throw new Error(`bad block output: ${stdout}`);
   console.log('friends smoke ok');
 } finally {

@@ -29,6 +29,10 @@ export class BotLandClient {
     });
   }
 
+  async getCitizen(citizenId: string): Promise<CitizenProfile> {
+    return this.request<CitizenProfile>(`/api/v1/citizens/${encodeURIComponent(citizenId)}`);
+  }
+
   async getAgentCard(agentId: string): Promise<unknown> {
     return this.request<unknown>(`/api/v1/agents/${encodeURIComponent(agentId)}/card`, { auth: false });
   }

@@ -1,4 +1,5 @@
 import { BotLandClient } from '../client/botland-client.js';
+import { resolveCitizenTarget } from '../client/target-resolver.js';
 import { requireToken, resolveRuntimeConfig } from '../config/config.js';
 import { CliError } from '../util/errors.js';
 import type { CitizenProfile } from '../client/types.js';
@@ -23,7 +24,22 @@ export async function runProfile(options: ProfileOptions): Promise<void> {
   const client = new BotLandClient({ baseUrl: runtime.baseUrl, token });
 
   if (subcommand === 'get' || subcommand === 'me') {
+    if (options.id) {
+      const target = await resolveCitizenTarget(client, options.id);
+      const response = await client.getCitizen(target.to);
+      outputProfile(options, response);
+      return;
+    }
     const response = await client.whoami();
+    outputProfile(options, response);
+    return;
+  }
+
+  if (subcommand === 'view' || subcommand === 'show') {
+    const id = options.id;
+    if (!id) throw new CliError(`profile ${subcommand} requires <citizen_id|handle|display_name>`, { code: 'VALIDATION_ERROR', exitCode: 2 });
+    const target = await resolveCitizenTarget(client, id);
+    const response = await client.getCitizen(target.to);
     outputProfile(options, response);
     return;
   }

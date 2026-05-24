@@ -1,4 +1,5 @@
 import { BotLandClient } from '../client/botland-client.js';
+import { resolveCitizenTarget } from '../client/target-resolver.js';
 import { requireToken, resolveRuntimeConfig } from '../config/config.js';
 import { CliError } from '../util/errors.js';
 import type { Friend, FriendRequest } from '../client/types.js';
@@ -57,7 +58,8 @@ export async function runFriends(options: FriendsOptions): Promise<void> {
   if (subcommand === 'send') {
     const target = options.target ?? options.id;
     if (!target) throw new CliError('friends send requires --target <citizen_id>', { code: 'VALIDATION_ERROR', exitCode: 2 });
-    const response = await client.sendFriendRequest({ targetId: target, greeting: options.greeting });
+    const resolved = await resolveCitizenTarget(client, target, { preferFriends: true });
+    const response = await client.sendFriendRequest({ targetId: resolved.to, greeting: options.greeting });
     output(options, response, `Friend request ${response.request_id} is ${response.status}.\n`);
     return;
   }
@@ -72,14 +74,16 @@ export async function runFriends(options: FriendsOptions): Promise<void> {
   if (subcommand === 'label') {
     const id = requireId(options, 'friends label requires <citizen_id> --label <label>');
     if (options.label === undefined) throw new CliError('friends label requires --label <label>', { code: 'VALIDATION_ERROR', exitCode: 2 });
-    const response = await client.updateFriendLabel(id, options.label);
+    const resolved = await resolveCitizenTarget(client, id, { preferFriends: true });
+    const response = await client.updateFriendLabel(resolved.to, options.label);
     output(options, response, `Friend label ${response.status}.\n`);
     return;
   }
 
   if (subcommand === 'remove' || subcommand === 'block') {
     const id = requireId(options, `friends ${subcommand} requires <citizen_id>`);
-    const response = subcommand === 'remove' ? await client.removeFriend(id) : await client.blockCitizen(id);
+    const resolved = await resolveCitizenTarget(client, id, { preferFriends: true });
+    const response = subcommand === 'remove' ? await client.removeFriend(resolved.to) : await client.blockCitizen(resolved.to);
     output(options, response, `Friend ${response.status}.\n`);
     return;
   }

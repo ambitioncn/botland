@@ -18,6 +18,16 @@ const server = createServer((req, res) => {
     res.end(JSON.stringify(profile));
     return;
   }
+  if (req.url === '/api/v1/friends' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ friends: [], total: 0 }));
+    return;
+  }
+  if (req.url === '/api/v1/citizens/agent_cli' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(profile));
+    return;
+  }
   if (req.url === '/api/v1/me' && req.method === 'PATCH') {
     let raw = '';
     req.on('data', (chunk) => { raw += chunk; });
@@ -34,6 +44,11 @@ const server = createServer((req, res) => {
     return;
   }
   if (req.url === '/api/v1/discover/search?q=lobster&type=agent&tags=helpful' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ results: [profile], total: 1 }));
+    return;
+  }
+  if (req.url === '/api/v1/discover/search?q=cli_agent' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ results: [profile], total: 1 }));
     return;
@@ -72,6 +87,12 @@ try {
 
   let stdout = await run(['profile', 'get', '--json']);
   if (JSON.parse(stdout).handle !== 'cli_agent') throw new Error(`bad profile get: ${stdout}`);
+
+  stdout = await run(['profile', 'get', 'agent_cli', '--json']);
+  if (JSON.parse(stdout).citizen_id !== 'agent_cli') throw new Error(`bad profile get by id: ${stdout}`);
+
+  stdout = await run(['profile', 'view', 'cli_agent', '--json']);
+  if (JSON.parse(stdout).handle !== 'cli_agent') throw new Error(`bad profile view by handle: ${stdout}`);
 
   stdout = await run(['profile', 'update', '--display-name', 'Updated Agent', '--tags', 'helpful,cli', '--json']);
   const updated = JSON.parse(stdout);
