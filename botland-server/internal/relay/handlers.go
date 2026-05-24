@@ -147,7 +147,6 @@ func (s *Service) RouteMessage(from string, env *protocol.Envelope) {
 	}
 }
 
-
 // RouteGroupMessage broadcasts a message to all group members.
 func (s *Service) RouteGroupMessage(from string, env *protocol.Envelope) {
 	if s.groupHandler == nil {
@@ -219,8 +218,12 @@ func (s *Service) RouteGroupMessage(from string, env *protocol.Envelope) {
 	}
 	if _, ok := payload["segments"]; !ok {
 		if p, ok := env.Payload.(map[string]interface{}); ok {
-			if v, ok := p["segments"]; ok { payload["segments"] = v }
-			if v, ok := p["mentions"]; ok { payload["mentions"] = v }
+			if v, ok := p["segments"]; ok {
+				payload["segments"] = v
+			}
+			if v, ok := p["mentions"]; ok {
+				payload["mentions"] = v
+			}
 		}
 	}
 	payload["sender_name"] = senderName
@@ -452,7 +455,6 @@ func (s *Service) HandleReaction(from string, env *protocol.Envelope) {
 	})
 }
 
-
 // HandleGroupTyping broadcasts typing indicators to group members.
 func (s *Service) HandleGroupTyping(from string, env *protocol.Envelope) {
 	if s.groupHandler == nil || !strings.HasPrefix(env.To, "group_") {
@@ -516,8 +518,6 @@ func (s *Service) BroadcastPresence(citizenID string, state string) {
 	}
 }
 
-
-
 // GetDMHistory returns paginated DM history between the authenticated citizen and a peer.
 // GET /api/v1/messages/history?peer={citizenID}&before={msgID}&limit=50
 func (s *Service) GetDMHistory(w http.ResponseWriter, r *http.Request) {
@@ -543,12 +543,12 @@ func (s *Service) GetDMHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type DMMessage struct {
-		ID          string      `json:"id"`
-		FromID      string      `json:"sender_id"`
-		FromName    string      `json:"sender_name"`
-		ToID        string      `json:"to_id"`
-		Payload     interface{} `json:"payload"`
-		CreatedAt   string      `json:"created_at"`
+		ID        string      `json:"id"`
+		FromID    string      `json:"sender_id"`
+		FromName  string      `json:"sender_name"`
+		ToID      string      `json:"to_id"`
+		Payload   interface{} `json:"payload"`
+		CreatedAt string      `json:"created_at"`
 	}
 
 	var rows *sql.Rows
@@ -737,4 +737,94 @@ func (s *Service) SearchMessages(w http.ResponseWriter, r *http.Request) {
 		"total":   len(results),
 		"query":   q,
 	})
+}
+
+type sendMessageRequest struct {
+	To      string                 `json:"to"`
+	Text    string                 `json:"text"`
+	Payload map[string]interface{} `json:"payload"`
+}
+
+// SendMessageHTTP lets CLI/bridge clients send through the same relay path as WebSocket clients.
+func (s *Service) SendMessageHTTP(w http.ResponseWriter, r *http.Request) {
+	citizenID, _ := r.Context().Value("citizen_id").(string)
+	if citizenID == "" {
+		writeRelayJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": map[string]string{"code": "UNAUTHORIZED", "message": "not authenticated"}})
+		return
+	}
+
+	var req sendMessageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeRelayJSON(w, http.StatusBadRequest, map[string]interface{}{"error": map[string]string{"code": "VALIDATION_ERROR", "message": "invalid body"}})
+		return
+	}
+
+	target := strings.TrimSpace(req.To)
+	if strings.HasPrefix(target, "group:") {
+		target = strings.TrimPrefix(target, "group:")
+	}
+	if target == "" {
+		writeRelayJSON(w, http.StatusBadRequest, map[string]interface{}{"error": map[string]string{"code": "VALIDATION_ERROR", "message": "to is required"}})
+		return
+	}
+
+	payload := req.Payload
+	if payload == nil {
+		payload = map[string]interface{}{}
+	}
+	if req.Text != "" {
+		payload["text"] = req.Text
+	}
+	if _, ok := payload["content_type"]; !ok {
+		payload["content_type"] = protocol.ContentText
+	}
+	if strings.TrimSpace(stringValue(payload["text"])) == "" && payload["media_url"] == nil && payload["url"] == nil {
+		writeRelayJSON(w, http.StatusBadRequest, map[string]interface{}{"error": map[string]string{"code": "VALIDATION_ERROR", "message": "text or payload content required"}})
+		return
+	}
+
+	if strings.HasPrefix(target, "group_") {
+		if s.groupHandler == nil || !hasString(s.groupHandler.GetGroupMembers(target), citizenID) {
+			writeRelayJSON(w, http.StatusForbidden, map[string]interface{}{"error": map[string]string{"code": "FORBIDDEN", "message": "not a member of this group"}})
+			return
+		}
+	} else {
+		target = s.resolveDirectTargetID(target)
+		var exists bool
+		if err := s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM citizens WHERE id=$1 AND status='active')`, target).Scan(&exists); err != nil || !exists {
+			writeRelayJSON(w, http.StatusNotFound, map[string]interface{}{"error": map[string]string{"code": "NOT_FOUND", "message": "target citizen not found"}})
+			return
+		}
+	}
+
+	msgID := "msg_" + auth.NewULID()
+	env := &protocol.Envelope{
+		Type:      protocol.TypeMessageSend,
+		ID:        msgID,
+		To:        target,
+		Payload:   payload,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+	s.RouteMessage(citizenID, env)
+	writeRelayJSON(w, http.StatusAccepted, map[string]interface{}{"status": "accepted", "message_id": msgID, "to": target})
+}
+
+func writeRelayJSON(w http.ResponseWriter, status int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(data)
+}
+
+func stringValue(v interface{}) string {
+	s, _ := v.(string)
+	return s
+}
+
+func hasString(values []string, needle string) bool {
+	for _, value := range values {
+		if value == needle {
+			return true
+		}
+	}
+	return false
 }

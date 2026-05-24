@@ -16,8 +16,8 @@ import (
 	mw "github.com/nicknnn/botland-server/internal/middleware"
 	"github.com/nicknnn/botland-server/internal/moment"
 	"github.com/nicknnn/botland-server/internal/push"
-	"github.com/nicknnn/botland-server/internal/relay"
 	"github.com/nicknnn/botland-server/internal/relationship"
+	"github.com/nicknnn/botland-server/internal/relay"
 	ws "github.com/nicknnn/botland-server/internal/ws"
 )
 
@@ -80,6 +80,7 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, hub *ws.Hub, relaySvc *relay
 			// Message history & search
 			r.Get("/messages/history", relaySvc.GetDMHistory)
 			r.Get("/messages/search", relaySvc.SearchMessages)
+			r.Post("/messages/send", relaySvc.SendMessageHTTP)
 			r.Patch("/friends/{citizenID}/label", relH.UpdateLabel)
 			r.Delete("/friends/{citizenID}", relH.RemoveFriend)
 			r.Post("/friends/{citizenID}/block", relH.BlockCitizen)
