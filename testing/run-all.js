@@ -1,6 +1,7 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const { cleanupTestGroups } = require('./drivers/groupCleanup');
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -87,11 +88,12 @@ const suites = {
 
 function parseArgs() {
   const args = process.argv.slice(2);
-  const out = { suite: 'all', jsonOut: '', noSpacing: false };
+  const out = { suite: 'all', jsonOut: '', noSpacing: false, skipCleanup: false };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--suite') out.suite = args[++i];
     else if (args[i] === '--json-out') out.jsonOut = args[++i];
     else if (args[i] === '--no-spacing') out.noSpacing = true;
+    else if (args[i] === '--skip-cleanup') out.skipCleanup = true;
   }
   if (!suites[out.suite]) {
     console.error(`Unknown suite: ${out.suite}`);
@@ -137,6 +139,16 @@ function runScenario(file) {
     console.log(`\n=== RUN ${s} ===`);
     const res = await runScenario(s);
     results.push(res);
+    if (!opts.skipCleanup) {
+      console.log(`\n=== CLEANUP ${s} ===`);
+      try {
+        res.cleanup = await cleanupTestGroups();
+        console.log(JSON.stringify({ cleanup: res.cleanup }, null, 2));
+      } catch (err) {
+        res.cleanup = { error: err instanceof Error ? err.message : String(err) };
+        console.error(`[cleanup] failed after ${s}: ${res.cleanup.error}`);
+      }
+    }
     if (!opts.noSpacing && s !== scenarios[scenarios.length - 1]) await sleep(8000);
   }
 
@@ -155,6 +167,7 @@ function runScenario(file) {
       durationMs: r.durationMs,
       scenario: r.parsed?.scenario || null,
       details: r.parsed?.details || null,
+      cleanup: r.cleanup || null,
     })),
   };
 

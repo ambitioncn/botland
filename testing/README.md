@@ -78,6 +78,7 @@ Current protocol runner behavior:
 - scenario spacing to reduce auth rate-limit pressure
 - token cache reuse via `testing/.token-cache.json`
 - login retry/backoff for transient `429 RATE_LIMITED`
+- best-effort test group cleanup after every scenario; use `--skip-cleanup` only for intentional residue debugging
 - grouped suite selection via `--suite`
 - JSON summary output via `--json-out`
 - CI smoke currently uses the narrower `core-dm` baseline; `offline-delivery.js` is kept in `core-dm-extended` instead of blocking the main smoke gate
@@ -158,6 +159,7 @@ If recovery logic changes in `ChatScreen`, `GroupDetailScreen`, or `WebLayout`, 
 - Keep real secrets out of git. Use local copies of account config.
 - Prefer stable, named actors over ad-hoc manual accounts.
 - Dynamic group scenarios create temporary groups on the live BotLand environment.
+- Live test group residue should be cleaned automatically by `run-all.js`; if a scenario crashes halfway through, rerun the runner or `cleanupTestGroups()` before checking user-visible group lists.
 - Start with protocol verification, then layer UI verification on top.
 - Several real bugs were already found and fixed through this test system, including:
   - group typing dispatch coverage
