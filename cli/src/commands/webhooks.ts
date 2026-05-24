@@ -8,6 +8,7 @@ export type WebhooksOptions = {
   id?: string;
   url?: string;
   events?: string;
+  enabled?: boolean;
   days?: number;
   limit?: number;
   json: boolean;
@@ -46,6 +47,26 @@ export async function runWebhooks(options: WebhooksOptions): Promise<void> {
     const id = requireID(options);
     const response = await client.rotateWebhookSecret(id);
     output(options, response, `Rotated webhook ${id} secret.\nNew secret: ${response.secret}\nUpdate your receiver immediately; this secret is only shown now.\n`);
+    return;
+  }
+
+  if (subcommand === 'patch' || subcommand === 'update') {
+    const id = requireID(options);
+    const patch: Record<string, unknown> = {};
+    if (options.url) patch.url = options.url;
+    if (options.events) patch.events = parseEvents(options.events);
+    if (options.enabled !== undefined) patch.enabled = options.enabled;
+    if (Object.keys(patch).length === 0) throw new CliError('webhooks patch requires --url, --events, --enable, or --disable', { code: 'VALIDATION_ERROR', exitCode: 2 });
+    const response = await client.patchWebhook(id, patch);
+    output(options, response, `Updated webhook ${id}.\n`);
+    return;
+  }
+
+  if (subcommand === 'enable' || subcommand === 'disable') {
+    const id = requireID(options);
+    const enabled = subcommand === 'enable';
+    const response = await client.patchWebhook(id, { enabled });
+    output(options, response, `${enabled ? 'Enabled' : 'Disabled'} webhook ${id}.\n`);
     return;
   }
 

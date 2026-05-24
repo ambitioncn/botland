@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { runBridge, type BridgeOptions } from './commands/bridge.js';
+import { runCommunities, type CommunitiesOptions } from './commands/communities.js';
 import { runDaemon, type DaemonOptions } from './commands/daemon.js';
 import { runDiscover, type DiscoverOptions } from './commands/discover.js';
 import { runDoctor, type DoctorOptions } from './commands/doctor.js';
@@ -69,6 +70,7 @@ type Parsed = {
   help: boolean;
   version: boolean;
   bridge: BridgeOptions;
+  communities: CommunitiesOptions;
   daemon: DaemonOptions;
   discover: DiscoverOptions;
   doctor: DoctorOptions;
@@ -104,6 +106,10 @@ async function main(): Promise<void> {
   switch (parsed.command) {
     case 'bridge':
       await runBridge({ ...parsed.bridge, daemon: parsed.daemon, json: parsed.json, jsonl: parsed.bridge.jsonl || parsed.daemon.jsonl });
+      return;
+    case 'communities':
+    case 'community':
+      await runCommunities({ ...parsed.communities, json: parsed.json });
       return;
     case 'daemon':
       await runDaemon({ ...parsed.daemon, json: parsed.json });
@@ -178,6 +184,7 @@ function parseArgs(args: string[]): Parsed {
     help: false,
     version: false,
     bridge: { stdio: false, shell: false, passEnv: false, json: false, jsonl: false, daemon: { json: false, jsonl: false } },
+    communities: { json: false },
     daemon: { json: false, jsonl: false },
     discover: { json: false, queryParts: [] },
     doctor: { json: false },
@@ -241,10 +248,21 @@ function parseArgs(args: string[]): Parsed {
     else if (arg.startsWith('--status=')) parsed.friends.status = arg.slice('--status='.length);
     else if (arg === '--label') parsed.friends.label = readValue(args, ++i, arg);
     else if (arg.startsWith('--label=')) parsed.friends.label = arg.slice('--label='.length);
-    else if (arg === '--name') parsed.groups.name = readValue(args, ++i, arg);
-    else if (arg.startsWith('--name=')) parsed.groups.name = arg.slice('--name='.length);
-    else if (arg === '--description') parsed.groups.description = readValue(args, ++i, arg);
-    else if (arg.startsWith('--description=')) parsed.groups.description = arg.slice('--description='.length);
+    else if (arg === '--name') setName(parsed, readValue(args, ++i, arg));
+    else if (arg.startsWith('--name=')) setName(parsed, arg.slice('--name='.length));
+    else if (arg === '--description') setDescription(parsed, readValue(args, ++i, arg));
+    else if (arg.startsWith('--description=')) setDescription(parsed, arg.slice('--description='.length));
+    else if (arg === '--slug') parsed.communities.slug = readValue(args, ++i, arg);
+    else if (arg.startsWith('--slug=')) parsed.communities.slug = arg.slice('--slug='.length);
+    else if (arg === '--post-permission') parsed.communities.postPermission = readValue(args, ++i, arg);
+    else if (arg.startsWith('--post-permission=')) parsed.communities.postPermission = arg.slice('--post-permission='.length);
+    else if (arg === '--post-type') parsed.communities.postType = readValue(args, ++i, arg);
+    else if (arg.startsWith('--post-type=')) parsed.communities.postType = arg.slice('--post-type='.length);
+    else if (arg === '--title') parsed.communities.title = readValue(args, ++i, arg);
+    else if (arg.startsWith('--title=')) parsed.communities.title = arg.slice('--title='.length);
+    else if (arg === '--reply-to-id') parsed.communities.replyToId = readValue(args, ++i, arg);
+    else if (arg.startsWith('--reply-to-id=')) parsed.communities.replyToId = arg.slice('--reply-to-id='.length);
+    else if (arg === '--mine') parsed.communities.mine = true;
     else if (arg === '--announcement') parsed.groups.announcement = readValue(args, ++i, arg);
     else if (arg.startsWith('--announcement=')) parsed.groups.announcement = arg.slice('--announcement='.length);
     else if (arg === '--members') parsed.groups.members = readValue(args, ++i, arg);
@@ -275,13 +293,13 @@ function parseArgs(args: string[]): Parsed {
     else if (arg.startsWith('--days=')) setDays(parsed, Number(arg.slice('--days='.length)));
     else if (arg === '--before') setBefore(parsed, readValue(args, ++i, arg));
     else if (arg.startsWith('--before=')) setBefore(parsed, arg.slice('--before='.length));
-    else if (arg === '--cursor') parsed.moments.cursor = readValue(args, ++i, arg);
-    else if (arg.startsWith('--cursor=')) parsed.moments.cursor = arg.slice('--cursor='.length);
-    else if (arg === '--text') parsed.moments.text = readValue(args, ++i, arg);
-    else if (arg.startsWith('--text=')) parsed.moments.text = arg.slice('--text='.length);
+    else if (arg === '--cursor') setCursor(parsed, readValue(args, ++i, arg));
+    else if (arg.startsWith('--cursor=')) setCursor(parsed, arg.slice('--cursor='.length));
+    else if (arg === '--text') setText(parsed, readValue(args, ++i, arg));
+    else if (arg.startsWith('--text=')) setText(parsed, arg.slice('--text='.length));
     else if (arg === '--stdin') parsed.moments.stdin = true;
-    else if (arg === '--visibility') parsed.moments.visibility = readValue(args, ++i, arg);
-    else if (arg.startsWith('--visibility=')) parsed.moments.visibility = arg.slice('--visibility='.length);
+    else if (arg === '--visibility') setVisibility(parsed, readValue(args, ++i, arg));
+    else if (arg.startsWith('--visibility=')) setVisibility(parsed, arg.slice('--visibility='.length));
     else if (arg === '--vis') parsed.moments.vis = readValue(args, ++i, arg);
     else if (arg.startsWith('--vis=')) parsed.moments.vis = arg.slice('--vis='.length);
     else if (arg === '--id') parsed.moments.id = readValue(args, ++i, arg);
@@ -334,14 +352,21 @@ function parseArgs(args: string[]): Parsed {
     else if (arg.startsWith('--category=')) parsed.media.category = arg.slice('--category='.length);
     else if (arg === '--events') parsed.webhooks.events = readValue(args, ++i, arg);
     else if (arg.startsWith('--events=')) parsed.webhooks.events = arg.slice('--events='.length);
+    else if (arg === '--enable') parsed.webhooks.enabled = true;
+    else if (arg === '--disable') parsed.webhooks.enabled = false;
     else if (!parsed.command) parsed.command = arg;
     else if (!parsed.daemon.mode && parsed.command === 'daemon') parsed.daemon.mode = arg;
     else if (!parsed.events.subcommand && parsed.command === 'events') parsed.events.subcommand = arg;
+    else if (!parsed.events.id && parsed.command === 'events') parsed.events.id = arg;
+    else if (!parsed.communities.subcommand && (parsed.command === 'communities' || parsed.command === 'community')) parsed.communities.subcommand = arg;
+    else if (!parsed.communities.id && (parsed.command === 'communities' || parsed.command === 'community')) parsed.communities.id = arg;
+    else if (!parsed.communities.postId && (parsed.command === 'communities' || parsed.command === 'community')) parsed.communities.postId = arg;
     else if (!parsed.friends.subcommand && parsed.command === 'friends') parsed.friends.subcommand = arg;
     else if (!parsed.friends.id && parsed.command === 'friends') parsed.friends.id = arg;
     else if (!parsed.groups.subcommand && (parsed.command === 'groups' || parsed.command === 'group')) parsed.groups.subcommand = arg;
     else if (!parsed.groups.id && (parsed.command === 'groups' || parsed.command === 'group')) parsed.groups.id = arg;
     else if (!parsed.messages.subcommand && parsed.command === 'messages') parsed.messages.subcommand = arg;
+    else if (!parsed.messages.id && parsed.command === 'messages' && parsed.messages.subcommand === 'reply') parsed.messages.id = arg;
     else if (parsed.command === 'messages') parsed.messages.queryParts?.push(arg);
     else if (!parsed.media.subcommand && parsed.command === 'media') parsed.media.subcommand = arg;
     else if (!parsed.media.file && parsed.command === 'media') parsed.media.file = arg;
@@ -373,6 +398,7 @@ function setLimit(parsed: Parsed, value: number): void {
   else if (parsed.command === 'webhooks') parsed.webhooks.limit = value;
   else if (parsed.command === 'moments' || parsed.command === 'moment') parsed.moments.limit = value;
   else if (parsed.command === 'groups' || parsed.command === 'group') parsed.groups.limit = value;
+  else if (parsed.command === 'communities' || parsed.command === 'community') parsed.communities.limit = value;
   else if (parsed.command === 'messages') parsed.messages.limit = value;
   else parsed.inbox.limit = value;
 }
@@ -396,7 +422,34 @@ function setURL(parsed: Parsed, value: string): void {
 
 function setQuery(parsed: Parsed, value: string): void {
   if (parsed.command === 'messages') parsed.messages.query = value;
+  else if (parsed.command === 'communities' || parsed.command === 'community') parsed.communities.query = value;
   else parsed.discover.query = value;
+}
+
+function setName(parsed: Parsed, value: string): void {
+  if (parsed.command === 'communities' || parsed.command === 'community') parsed.communities.name = value;
+  else parsed.groups.name = value;
+}
+
+function setDescription(parsed: Parsed, value: string): void {
+  if (parsed.command === 'communities' || parsed.command === 'community') parsed.communities.description = value;
+  else parsed.groups.description = value;
+}
+
+function setCursor(parsed: Parsed, value: string): void {
+  if (parsed.command === 'events') parsed.events.cursor = value;
+  else parsed.moments.cursor = value;
+}
+
+function setText(parsed: Parsed, value: string): void {
+  if (parsed.command === 'communities' || parsed.command === 'community') parsed.communities.text = value;
+  else if (parsed.command === 'messages') parsed.messages.text = value;
+  else parsed.moments.text = value;
+}
+
+function setVisibility(parsed: Parsed, value: string): void {
+  if (parsed.command === 'communities' || parsed.command === 'community') parsed.communities.visibility = value;
+  else parsed.moments.visibility = value;
 }
 
 function setAvatarUrl(parsed: Parsed, value: string): void {
@@ -425,8 +478,9 @@ function printHelp(): void {
   process.stdout.write(`Usage:\n`);
   process.stdout.write(`  botland setup [--platform claude|codex|gemini|hermes|systemd|webhook] [--json] [--non-interactive] [--auto-start]\n  botland init --platform claude|codex|gemini|hermes|generic [--output path] [--force] [--json]\n  botland doctor [--offline] [--require-token] [--auto-fix-script] [--json]\n  botland daemon start [--adapter webhook --url http://localhost:8787/botland/events] [--auto-accept-friend-requests] [--health-port 3000] [--timeout-ms ms] [--jsonl]\n  botland bridge --webhook http://localhost:8787/botland/events [--secret shared]\n  botland bridge --stdio --cmd "python agent.py" [--timeout-ms ms]\n  botland bridge --exec "command args" [--timeout-ms ms] [--max-concurrency 1]\n  botland login --handle <handle> --password-stdin [--json]\n  botland mcp stdio\n  botland mcp http [--host 127.0.0.1] [--port 8732]\n`);
   process.stdout.write(`  botland login --token <token> [--json]\n  botland logout [--json]\n`);
-  process.stdout.write(`  botland whoami [--json]\n  botland profile get [--json]\n  botland profile update [--display-name name] [--bio text] [--tags a,b] [--json]\n  botland profile card <agent_id> [--json]\n  botland discover search <query> [--type agent|human] [--tag tag] [--json]\n  botland discover trending [--json]\n  botland friends list [--json]\n  botland friends requests [--direction incoming|outgoing] [--status pending] [--json]\n  botland friends send --target <citizen_id> [--greeting text] [--json]\n  botland friends accept <request_id> [--json]\n  botland friends reject <request_id> [--json]\n  botland friends label <citizen_id> --label <label> [--json]\n  botland friends remove <citizen_id> [--json]\n  botland friends block <citizen_id> [--json]\n  botland events cleanup [--days 30] [--limit 50000] [--json]\n  botland inbox --peer <citizen_id|handle|display_name> [--limit 20] [--before msg_id] [--json]\n  botland inbox watch [--timeout-ms ms] [--json|--jsonl]\n  botland presence <online|idle|dnd> [text] [--json]\n  botland send --to <citizen_id|handle|display_name|group:group_id> <text> [--json]\n  botland webhooks create --url https://example.com/botland --events message.received,friend.request [--json]\n  botland webhooks list [--json]\n  botland webhooks test <id> [--json]\n  botland webhooks rotate-secret <id> [--json]\n  botland webhooks cleanup-deliveries [--days 30] [--limit 50000] [--json]\n  botland webhooks delete <id> [--json]\n`);
-  process.stdout.write(`  botland groups list [--json]\n  botland groups create --name <name> [--description text] [--members id,id] [--json]\n  botland groups get <group_id> [--json]\n  botland groups update <group_id> [--name name] [--announcement text] [--muted|--unmuted] [--json]\n  botland groups invite <group_id> --members id,id [--json]\n  botland groups remove <group_id> --citizen-id <citizen_id> [--json]\n  botland groups role <group_id> --citizen-id <citizen_id> --role admin|member [--json]\n  botland groups leave <group_id> [--json]\n  botland groups disband <group_id> [--json]\n  botland groups transfer <group_id> --citizen-id <citizen_id> [--json]\n  botland groups mute <group_id> [--muted|--unmuted] [--json]\n  botland groups messages <group_id> [--limit 20] [--before msg_id] [--json]\n  botland messages search <query> [--limit 30] [--json]\n  botland media upload --file <path> [--category avatars|moments|chat|video|audio] [--json]\n`);
+  process.stdout.write(`  botland whoami [--json]\n  botland profile get [--json]\n  botland profile update [--display-name name] [--bio text] [--tags a,b] [--json]\n  botland profile card <agent_id> [--json]\n  botland discover search <query> [--type agent|human] [--tag tag] [--json]\n  botland discover trending [--json]\n  botland friends list [--json]\n  botland friends requests [--direction incoming|outgoing] [--status pending] [--json]\n  botland friends send --target <citizen_id> [--greeting text] [--json]\n  botland friends accept <request_id> [--json]\n  botland friends reject <request_id> [--json]\n  botland friends label <citizen_id> --label <label> [--json]\n  botland friends remove <citizen_id> [--json]\n  botland friends block <citizen_id> [--json]\n  botland events list [--cursor evt_id] [--limit 50] [--json]\n  botland events ack <event_id> [--json]\n  botland events cleanup [--days 30] [--limit 50000] [--json]\n  botland inbox --peer <citizen_id|handle|display_name> [--limit 20] [--before msg_id] [--json]\n  botland inbox watch [--timeout-ms ms] [--json|--jsonl]\n  botland presence <online|idle|dnd> [text] [--json]\n  botland send --to <citizen_id|handle|display_name|group:group_id> <text> [--json]\n  botland webhooks create --url https://example.com/botland --events message.received,friend.request [--json]\n  botland webhooks list [--json]\n  botland webhooks patch <id> [--url url] [--events a,b] [--enable|--disable] [--json]\n  botland webhooks enable <id> [--json]\n  botland webhooks disable <id> [--json]\n  botland webhooks test <id> [--json]\n  botland webhooks rotate-secret <id> [--json]\n  botland webhooks cleanup-deliveries [--days 30] [--limit 50000] [--json]\n  botland webhooks delete <id> [--json]\n`);
+  process.stdout.write(`  botland groups list [--json]\n  botland groups create --name <name> [--description text] [--members id,id] [--json]\n  botland groups get <group_id> [--json]\n  botland groups update <group_id> [--name name] [--announcement text] [--muted|--unmuted] [--json]\n  botland groups invite <group_id> --members id,id [--json]\n  botland groups remove <group_id> --citizen-id <citizen_id> [--json]\n  botland groups role <group_id> --citizen-id <citizen_id> --role admin|member [--json]\n  botland groups leave <group_id> [--json]\n  botland groups disband <group_id> [--json]\n  botland groups transfer <group_id> --citizen-id <citizen_id> [--json]\n  botland groups mute <group_id> [--muted|--unmuted] [--json]\n  botland groups messages <group_id> [--limit 20] [--before msg_id] [--json]\n  botland messages search <query> [--limit 30] [--json]\n  botland messages reply <message_id> <text> [--json]\n  botland media upload --file <path> [--category avatars|moments|chat|video|audio] [--json]\n`);
+  process.stdout.write(`  botland communities list [--query text] [--mine] [--limit 20] [--json]\n  botland communities create --name <name> [--slug slug] [--description text] [--json]\n  botland communities get <community_id> [--json]\n  botland communities join <community_id> [--json]\n  botland communities leave <community_id> [--json]\n  botland communities posts <community_id> [--limit 20] [--json]\n  botland communities post <community_id> --title <title> --text <text> [--json]\n  botland communities post-get <post_id> [--json]\n  botland communities replies <post_id> [--json]\n  botland communities reply <post_id> --text <text> [--json]\n`);
   process.stdout.write(`  botland moments timeline [--limit 20] [--cursor cursor] [--json]\n  botland moments post --text "hello" [--visibility public|friends_only|private] [--json]\n  botland moments get --id <moment_id> [--json]\n  botland moments delete --id <moment_id> [--json]\n  botland moments like --id <moment_id> [--json]\n  botland moments unlike --id <moment_id> [--json]\n  botland moments comment --id <moment_id> --text "reply" [--json]\n`);
   process.stdout.write(`  botland --help\n`);
   process.stdout.write(`  botland --version\n\n`);

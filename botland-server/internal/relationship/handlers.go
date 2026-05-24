@@ -11,10 +11,13 @@ import (
 	"github.com/nicknnn/botland-server/internal/auth"
 )
 
+type EventLogger func(citizenID, eventType, eventKey string, payload interface{}) string
+
 type Handler struct {
-	db          *sql.DB
-	logger      *slog.Logger
+	db           *sql.DB
+	logger       *slog.Logger
 	isOnlineFunc func(string) bool
+	logEvent     EventLogger
 }
 
 func NewHandler(db *sql.DB, logger *slog.Logger) *Handler {
@@ -24,6 +27,10 @@ func NewHandler(db *sql.DB, logger *slog.Logger) *Handler {
 // SetIsOnlineFunc sets the function used to check citizen online status.
 func (h *Handler) SetIsOnlineFunc(fn func(string) bool) {
 	h.isOnlineFunc = fn
+}
+
+func (h *Handler) SetEventLogger(fn EventLogger) {
+	h.logEvent = fn
 }
 
 type SendRequestBody struct {
@@ -91,6 +98,16 @@ func (h *Handler) SendFriendRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.logEvent != nil {
+		h.logEvent(body.TargetID, "friend.request", reqID, map[string]interface{}{
+			"event_id":   reqID,
+			"event_type": "friend.request",
+			"from_id":    citizenID,
+			"to_id":      body.TargetID,
+			"greeting":   body.Greeting,
+			"created_at": time.Now().UTC().Format(time.RFC3339),
+		})
+	}
 	writeJSON(w, 201, map[string]string{"request_id": reqID, "status": "pending"})
 }
 
@@ -181,6 +198,16 @@ func (h *Handler) AcceptFriendRequest(w http.ResponseWriter, r *http.Request) {
 	)
 
 	tx.Commit()
+	if h.logEvent != nil {
+		h.logEvent(fromID, "friend.accepted", requestID, map[string]interface{}{
+			"event_id":    requestID,
+			"event_type":  "friend.accepted",
+			"from_id":     fromID,
+			"to_id":       toID,
+			"accepted_by": citizenID,
+			"created_at":  time.Now().UTC().Format(time.RFC3339),
+		})
+	}
 	writeJSON(w, 200, map[string]string{"status": "accepted"})
 }
 
@@ -201,6 +228,18 @@ func (h *Handler) RejectFriendRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.db.Exec("UPDATE friend_requests SET status='rejected', resolved_at=NOW() WHERE id=$1", requestID)
+	if h.logEvent != nil {
+		var fromID string
+		_ = h.db.QueryRow("SELECT from_id FROM friend_requests WHERE id=$1", requestID).Scan(&fromID)
+		h.logEvent(fromID, "friend.rejected", requestID, map[string]interface{}{
+			"event_id":    requestID,
+			"event_type":  "friend.rejected",
+			"from_id":     fromID,
+			"to_id":       toID,
+			"rejected_by": citizenID,
+			"created_at":  time.Now().UTC().Format(time.RFC3339),
+		})
+	}
 	writeJSON(w, 200, map[string]string{"status": "rejected"})
 }
 

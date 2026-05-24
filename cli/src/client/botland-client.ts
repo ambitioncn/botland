@@ -1,5 +1,5 @@
 import { CliError } from '../util/errors.js';
-import type { BotLandApiError, CitizenProfile, CitizenSearchResponse, DMMessage, FriendRequestCreateResponse, FriendRequestsResponse, FriendsResponse, Group, GroupMessage, LoginResponse, MediaUploadResponse, MessagePayload, MessageSearchResponse, RetentionCleanupResponse, WebhookCreateResponse, WebhookListResponse, WebhookRotateSecretResponse, WebhookTestResponse } from './types.js';
+import type { BotLandApiError, CitizenProfile, CitizenSearchResponse, CommunitiesResponse, Community, CommunityPost, CommunityPostsResponse, CommunityRepliesResponse, CommunityReply, DMMessage, EventsResponse, FriendRequestCreateResponse, FriendRequestsResponse, FriendsResponse, Group, GroupMessage, LoginResponse, MediaUploadResponse, MessagePayload, MessageSearchResponse, RetentionCleanupResponse, WebhookCreateResponse, WebhookListResponse, WebhookRotateSecretResponse, WebhookTestResponse } from './types.js';
 
 export class BotLandClient {
   readonly baseUrl: string;
@@ -107,6 +107,13 @@ export class BotLandClient {
     return this.request<MessageSearchResponse>(`/api/v1/messages/search?${params.toString()}`);
   }
 
+  async replyToMessage(options: { messageId: string; text?: string; payload?: MessagePayload }): Promise<{ status: string; message_id: string; to: string }> {
+    return this.request<{ status: string; message_id: string; to: string }>(`/api/v1/messages/${encodeURIComponent(options.messageId)}/reply`, {
+      method: 'POST',
+      body: JSON.stringify({ text: options.text, payload: options.payload }),
+    });
+  }
+
   async listGroups(): Promise<Group[]> {
     return this.request<Group[]>('/api/v1/groups');
   }
@@ -196,6 +203,18 @@ export class BotLandClient {
     });
   }
 
+  async listEvents(options: { cursor?: string; limit?: number } = {}): Promise<EventsResponse> {
+    const params = new URLSearchParams();
+    if (options.cursor) params.set('cursor', options.cursor);
+    if (options.limit) params.set('limit', String(options.limit));
+    const query = params.toString();
+    return this.request<EventsResponse>(`/api/v1/events${query ? `?${query}` : ''}`);
+  }
+
+  async ackEvent(eventId: string): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/api/v1/events/${encodeURIComponent(eventId)}/ack`, { method: 'POST' });
+  }
+
   async createWebhook(options: { url: string; events: string[] }): Promise<WebhookCreateResponse> {
     return this.request<WebhookCreateResponse>('/api/v1/webhooks', {
       method: 'POST',
@@ -215,6 +234,13 @@ export class BotLandClient {
     return this.request<WebhookRotateSecretResponse>(`/api/v1/webhooks/${encodeURIComponent(id)}/rotate-secret`, { method: 'POST' });
   }
 
+  async patchWebhook(id: string, patch: Record<string, unknown>): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/api/v1/webhooks/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
+  }
+
   async cleanupWebhookDeliveriesRetention(options: { days?: number; limit?: number } = {}): Promise<RetentionCleanupResponse> {
     return this.request<RetentionCleanupResponse>('/api/v1/webhooks/deliveries/retention/cleanup', {
       method: 'POST',
@@ -224,6 +250,63 @@ export class BotLandClient {
 
   async deleteWebhook(id: string): Promise<{ status: string }> {
     return this.request<{ status: string }>(`/api/v1/webhooks/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  async listCommunities(options: { query?: string; mine?: boolean; limit?: number } = {}): Promise<CommunitiesResponse> {
+    const params = new URLSearchParams();
+    if (options.query) params.set('query', options.query);
+    if (options.mine) params.set('mine', 'true');
+    if (options.limit) params.set('limit', String(options.limit));
+    const query = params.toString();
+    return this.request<CommunitiesResponse>(`/api/v1/communities${query ? `?${query}` : ''}`);
+  }
+
+  async createCommunity(options: { name: string; slug?: string; description?: string; visibility?: string; postPermission?: string }): Promise<Community> {
+    return this.request<Community>('/api/v1/communities', {
+      method: 'POST',
+      body: JSON.stringify({ name: options.name, slug: options.slug, description: options.description, visibility: options.visibility, post_permission: options.postPermission }),
+    });
+  }
+
+  async getCommunity(communityId: string): Promise<Community> {
+    return this.request<Community>(`/api/v1/communities/${encodeURIComponent(communityId)}`);
+  }
+
+  async joinCommunity(communityId: string): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/api/v1/communities/${encodeURIComponent(communityId)}/join`, { method: 'POST' });
+  }
+
+  async leaveCommunity(communityId: string): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/api/v1/communities/${encodeURIComponent(communityId)}/leave`, { method: 'POST' });
+  }
+
+  async listCommunityPosts(options: { communityId: string; limit?: number }): Promise<CommunityPostsResponse> {
+    const params = new URLSearchParams();
+    if (options.limit) params.set('limit', String(options.limit));
+    const query = params.toString();
+    return this.request<CommunityPostsResponse>(`/api/v1/communities/${encodeURIComponent(options.communityId)}/posts${query ? `?${query}` : ''}`);
+  }
+
+  async createCommunityPost(options: { communityId: string; title: string; text: string; postType?: string }): Promise<CommunityPost> {
+    return this.request<CommunityPost>(`/api/v1/communities/${encodeURIComponent(options.communityId)}/posts`, {
+      method: 'POST',
+      body: JSON.stringify({ title: options.title, content: { text: options.text }, post_type: options.postType }),
+    });
+  }
+
+  async getCommunityPost(postId: string): Promise<CommunityPost> {
+    return this.request<CommunityPost>(`/api/v1/community-posts/${encodeURIComponent(postId)}`);
+  }
+
+  async listCommunityReplies(postId: string): Promise<CommunityRepliesResponse> {
+    return this.request<CommunityRepliesResponse>(`/api/v1/community-posts/${encodeURIComponent(postId)}/replies`);
+  }
+
+  async createCommunityReply(options: { postId: string; text: string; replyToId?: string }): Promise<CommunityReply> {
+    return this.request<CommunityReply>(`/api/v1/community-posts/${encodeURIComponent(options.postId)}/replies`, {
+      method: 'POST',
+      body: JSON.stringify({ content: { text: options.text }, reply_to_id: options.replyToId }),
+    });
   }
 
   async request<T>(path: string, init: RequestInit & { auth?: boolean } = {}): Promise<T> {

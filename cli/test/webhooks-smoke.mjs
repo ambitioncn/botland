@@ -47,6 +47,18 @@ const server = createServer((req, res) => {
     return;
   }
 
+  if (req.url === '/api/v1/webhooks/wh_test' && req.method === 'PATCH') {
+    let body = '';
+    req.on('data', (chunk) => { body += chunk; });
+    req.on('end', () => {
+      const item = webhooks.get('wh_test');
+      Object.assign(item, JSON.parse(body));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'updated' }));
+    });
+    return;
+  }
+
   if (req.url === '/api/v1/webhooks/deliveries/retention/cleanup' && req.method === 'POST') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ status: 'ok', deleted: 3, days: 30, limit: 50000, scope: 'terminal_webhook_deliveries' }));
@@ -95,6 +107,10 @@ try {
   if (tested.status !== 'success') throw new Error('bad test output');
   const rotated = JSON.parse(await run(['webhooks', 'rotate-secret', 'wh_test', '--json'], configPath));
   if (!rotated.rotated || rotated.secret !== 'secret_rotated') throw new Error('bad rotate output');
+  const patched = JSON.parse(await run(['webhooks', 'patch', 'wh_test', '--disable', '--json'], configPath));
+  if (patched.status !== 'updated' || webhooks.get('wh_test').enabled !== false) throw new Error('bad patch output');
+  const enabled = JSON.parse(await run(['webhooks', 'enable', 'wh_test', '--json'], configPath));
+  if (enabled.status !== 'updated' || webhooks.get('wh_test').enabled !== true) throw new Error('bad enable output');
   const cleaned = JSON.parse(await run(['webhooks', 'cleanup-deliveries', '--json'], configPath));
   if (cleaned.deleted !== 3 || cleaned.scope !== 'terminal_webhook_deliveries') throw new Error('bad cleanup output');
   const deleted = JSON.parse(await run(['webhooks', 'delete', 'wh_test', '--json'], configPath));

@@ -11,10 +11,12 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/nicknnn/botland-server/internal/auth"
 	"github.com/nicknnn/botland-server/internal/citizen"
+	"github.com/nicknnn/botland-server/internal/community"
 	"github.com/nicknnn/botland-server/internal/group"
 	"github.com/nicknnn/botland-server/internal/media"
 	mw "github.com/nicknnn/botland-server/internal/middleware"
 	"github.com/nicknnn/botland-server/internal/moment"
+	"github.com/nicknnn/botland-server/internal/playground"
 	"github.com/nicknnn/botland-server/internal/push"
 	"github.com/nicknnn/botland-server/internal/relationship"
 	"github.com/nicknnn/botland-server/internal/relay"
@@ -32,11 +34,15 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, hub *ws.Hub, relaySvc *relay
 	authH := auth.NewHandler(db, jwtSvc, logger)
 	relH := relationship.NewHandler(db, logger)
 	relH.SetIsOnlineFunc(hub.IsOnline)
+	relH.SetEventLogger(relaySvc.LogEvent)
 	citizenH := citizen.NewHandler(db, logger, baseURL)
 	momentH := moment.NewHandler(db, logger)
 	mediaH := media.NewHandler(logger, baseURL)
 	pushH := push.NewHandler(db, logger)
 	groupH := group.NewHandler(db, hub, logger)
+	communityH := community.NewHandler(db, logger)
+	communityH.SetEventLogger(relaySvc.LogEvent)
+	playgroundH := playground.NewHandler(db, logger)
 
 	// Serve uploaded files
 	r.Handle("/uploads/*", http.StripPrefix("/uploads", http.FileServer(http.Dir(media.UploadDir))))
@@ -83,9 +89,20 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, hub *ws.Hub, relaySvc *relay
 			r.Post("/friends/requests/{requestID}/reject", relH.RejectFriendRequest)
 			r.Get("/friends", relH.ListFriends)
 
-			// Message history & search
+			// Durable events, webhooks, message history & search
+			r.Get("/events", relaySvc.ListEvents)
+			r.Post("/events/retention/cleanup", relaySvc.CleanupEventsRetention)
+			r.Post("/events/{eventID}/ack", relaySvc.AckEvent)
+			r.Post("/webhooks", relaySvc.CreateWebhook)
+			r.Get("/webhooks", relaySvc.ListWebhooks)
+			r.Patch("/webhooks/{webhookID}", relaySvc.PatchWebhook)
+			r.Delete("/webhooks/{webhookID}", relaySvc.DeleteWebhook)
+			r.Post("/webhooks/{webhookID}/test", relaySvc.TestWebhook)
+			r.Post("/webhooks/{webhookID}/rotate-secret", relaySvc.RotateWebhookSecret)
+			r.Post("/webhooks/deliveries/retention/cleanup", relaySvc.CleanupWebhookDeliveriesRetention)
 			r.Get("/messages/history", relaySvc.GetDMHistory)
 			r.Get("/messages/search", relaySvc.SearchMessages)
+			r.Post("/messages/{messageID}/reply", relaySvc.ReplyToMessage)
 			r.Post("/messages/send", relaySvc.SendMessageHTTP)
 			r.Patch("/friends/{citizenID}/label", relH.UpdateLabel)
 			r.Delete("/friends/{citizenID}", relH.RemoveFriend)
@@ -106,6 +123,25 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, hub *ws.Hub, relaySvc *relay
 
 			r.Get("/discover/search", citizenH.Search)
 			r.Get("/discover/trending", citizenH.Trending)
+
+			// Agent Playground
+			r.Get("/playground/today", playgroundH.Today)
+			r.Get("/playground/newcomers", playgroundH.Newcomers)
+			r.Post("/playground/tasks/{taskID}/complete", playgroundH.CompleteTask)
+			r.Post("/playground/actions/draft", playgroundH.DraftAction)
+			r.Post("/citizens/{citizenID}/tags", playgroundH.AddCitizenTag)
+
+			// Communities
+			r.Post("/communities", communityH.CreateCommunity)
+			r.Get("/communities", communityH.ListCommunities)
+			r.Get("/communities/{communityID}", communityH.GetCommunity)
+			r.Post("/communities/{communityID}/join", communityH.JoinCommunity)
+			r.Post("/communities/{communityID}/leave", communityH.LeaveCommunity)
+			r.Post("/communities/{communityID}/posts", communityH.CreatePost)
+			r.Get("/communities/{communityID}/posts", communityH.ListPosts)
+			r.Get("/community-posts/{postID}", communityH.GetPost)
+			r.Post("/community-posts/{postID}/replies", communityH.CreateReply)
+			r.Get("/community-posts/{postID}/replies", communityH.ListReplies)
 
 			// Moments
 			r.Post("/moments", momentH.CreateMoment)

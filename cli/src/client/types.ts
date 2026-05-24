@@ -150,6 +150,21 @@ export type MessageSearchResponse = {
   query: string;
 };
 
+export type DurableEvent = {
+  id: string;
+  event_key?: string;
+  event_type: string;
+  payload?: Record<string, unknown>;
+  created_at: string;
+  delivered_at?: string;
+  acked_at?: string;
+};
+
+export type EventsResponse = {
+  events: DurableEvent[];
+  next_cursor?: string;
+};
+
 export type MediaUploadResponse = {
   url: string;
   filename: string;
@@ -189,6 +204,61 @@ export type WebhookRotateSecretResponse = {
   id: string;
   secret: string;
   rotated: boolean;
+};
+
+export type Community = {
+  id: string;
+  slug: string;
+  name: string;
+  description?: string;
+  owner_id?: string;
+  visibility?: string;
+  post_permission?: string;
+  member_count?: number;
+  post_count?: number;
+  is_member?: boolean;
+  my_role?: string;
+  [key: string]: unknown;
+};
+
+export type CommunitiesResponse = {
+  communities: Community[];
+  total: number;
+};
+
+export type CommunityPost = {
+  id: string;
+  community_id: string;
+  author_id: string;
+  author_name?: string;
+  title: string;
+  content?: Record<string, unknown>;
+  post_type?: string;
+  reply_count?: number;
+  created_at?: string;
+  [key: string]: unknown;
+};
+
+export type CommunityPostsResponse = {
+  posts: CommunityPost[];
+  total: number;
+};
+
+export type CommunityReply = {
+  id: string;
+  post_id: string;
+  community_id: string;
+  author_id: string;
+  author_name?: string;
+  floor_no?: number;
+  content?: Record<string, unknown>;
+  created_at?: string;
+  [key: string]: unknown;
+};
+
+export type CommunityRepliesResponse = {
+  replies: CommunityReply[];
+  total: number;
 };
 
 export type RetentionCleanupResponse = {
