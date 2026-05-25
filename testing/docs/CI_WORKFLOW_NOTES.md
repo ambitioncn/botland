@@ -12,6 +12,12 @@ After debugging, the following issues were encountered:
 
 ## Current stable smoke configuration
 
+### Isolated CLI job
+- runs `npm run test:isolated:cli -- --json`
+- starts a disposable PostgreSQL service inside GitHub Actions
+- builds the local Go server and real CLI, then exercises CLI, daemon, MCP, and bridge flows against localhost
+- does not require BotLand production credentials or touch production data
+
 ### Protocol job
 - runs `node testing/run-all.js --suite core-dm --json-out ...`
 
@@ -33,3 +39,5 @@ These are still valuable, but not yet stable enough to act as the primary smoke 
 ## Practical rule
 
 If a scenario is valuable but timing-sensitive on shared live accounts, do **not** let it block the main smoke baseline until it is stabilized.
+
+Prefer isolated jobs as the first PR/push correctness gate. Live protocol and UI jobs are still useful, but they depend on secrets, shared accounts, realtime timing, and production reachability.

@@ -146,6 +146,8 @@ Prerequisites:
 
 Server logs are written under `testing/artifacts/isolated/*.server.log`.
 
+GitHub Actions smoke now includes an `isolated-cli` job that runs `npm run test:isolated:cli -- --json` against a disposable PostgreSQL service. This job is the preferred PR/push gate because it exercises real server and CLI behavior without production accounts or production residue.
+
 ### Suite naming note
 - `group-governance` is now broader than pure governance and currently also includes group query/history coverage.
 - `relationship` is the focused smoke suite for the current friend-request-first product path.

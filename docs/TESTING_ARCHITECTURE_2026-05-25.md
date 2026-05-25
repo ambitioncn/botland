@@ -135,6 +135,7 @@ Implemented follow-up:
 - Isolated runs set `BOTLAND_UPLOAD_DIR` and `BOTLAND_PUBLIC_BASE_URL`, so media upload tests write under `testing/artifacts/isolated/<run_id>/uploads` and return local server URLs instead of touching production upload paths.
 - `package.json` exposes this as `npm run test:isolated:cli`.
 - keep the current mocked `cli/test` suite as the fast unit-ish smoke.
+- `.github/workflows/botland-smoke.yml` now runs `npm run test:isolated:cli -- --json` as a PR/push smoke job against a disposable PostgreSQL service before relying on any live-account tests.
 
 ### Layer 3: Live Production Smoke
 
@@ -324,7 +325,7 @@ For changes that touch DB cleanup or production residues, run a DB-backed audit 
 
 ## Gaps To Implement Next
 
-1. Extend isolated CLI coverage for setup/doctor/logout, inbox/messages reply/search, media upload, webhooks, push, playground, daemon health, and local MCP stdio/http.
+1. Extend isolated CLI coverage for richer daemon webhook retry/dead-letter behavior and auto-accept friend request behavior.
 2. Extend protocol suites for events/webhooks/reports/communities/playground, because those are now first-class after the architecture change.
 3. Add a production smoke runner that is deliberately small and always cleans.
 4. Add UI test IDs and account isolation before broad UI parallelism.
@@ -341,6 +342,7 @@ Done in the first cleanup/audit pass:
    - `testing/scripts/cleanup-residue.js`
    - `testing/scripts/audit-residue.js`
 5. Updated smoke/nightly workflows to upload run registries and run an API residue audit after protocol suites.
+6. Added an `isolated-cli` GitHub Actions smoke job with a local PostgreSQL service, Go/Node setup, root/CLI dependency install, and isolated artifact upload.
 
 Current limitation:
 - Layer 2 now covers the highest-risk CLI commands, daemon health, local MCP HTTP/stdio, and bridge webhook/stdio/exec adapters against a real isolated server. It still needs follow-up coverage for richer daemon webhook retry/dead-letter behavior and auto-accept friend request behavior.

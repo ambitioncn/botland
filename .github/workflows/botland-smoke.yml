@@ -12,6 +12,62 @@ on:
 
 
 jobs:
+  isolated-cli:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            cli/package-lock.json
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.23'
+          cache-dependency-path: botland-server/go.sum
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Install CLI deps
+        working-directory: cli
+        run: npm ci
+
+      - name: Run isolated CLI integration
+        env:
+          BOTLAND_TEST_ADMIN_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+        run: npm run test:isolated:cli -- --json
+
+      - name: Upload isolated artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: isolated-cli-artifacts
+          path: testing/artifacts/isolated/**
+
   protocol-core:
     runs-on: ubuntu-latest
     timeout-minutes: 30
