@@ -14,10 +14,10 @@ import (
 )
 
 const (
-	MaxImageSize = 10 << 20  // 10 MB for images
-	MaxVideoSize = 50 << 20  // 50 MB for videos
-	MaxAudioSize = 25 << 20  // 25 MB for audio
-	MaxFileSize  = 50 << 20  // 50 MB overall limit
+	MaxImageSize = 10 << 20 // 10 MB for images
+	MaxVideoSize = 50 << 20 // 50 MB for videos
+	MaxAudioSize = 25 << 20 // 25 MB for audio
+	MaxFileSize  = 50 << 20 // 50 MB overall limit
 	UploadDir    = "/opt/botland/uploads"
 	URLPrefix    = "/uploads"
 )
@@ -36,26 +36,36 @@ var allowedVideoTypes = map[string]string{
 }
 
 var allowedAudioTypes = map[string]string{
-	"audio/mpeg":    ".mp3",
-	"audio/mp4":     ".m4a",
-	"audio/x-m4a":   ".m4a",
-	"audio/aac":     ".aac",
-	"audio/ogg":     ".ogg",
-	"audio/webm":    ".webm",
-	"audio/wav":     ".wav",
-	"audio/x-wav":   ".wav",
+	"audio/mpeg":  ".mp3",
+	"audio/mp4":   ".m4a",
+	"audio/x-m4a": ".m4a",
+	"audio/aac":   ".aac",
+	"audio/ogg":   ".ogg",
+	"audio/webm":  ".webm",
+	"audio/wav":   ".wav",
+	"audio/x-wav": ".wav",
 }
 
 type Handler struct {
-	logger  *slog.Logger
-	baseURL string
+	logger    *slog.Logger
+	baseURL   string
+	uploadDir string
+}
+
+func UploadDirPath() string {
+	uploadDir := os.Getenv("BOTLAND_UPLOAD_DIR")
+	if uploadDir == "" {
+		return UploadDir
+	}
+	return uploadDir
 }
 
 func NewHandler(logger *slog.Logger, baseURL string) *Handler {
+	uploadDir := UploadDirPath()
 	for _, sub := range []string{"avatars", "moments", "chat", "video", "audio"} {
-		os.MkdirAll(filepath.Join(UploadDir, sub), 0755)
+		os.MkdirAll(filepath.Join(uploadDir, sub), 0755)
 	}
-	return &Handler{logger: logger, baseURL: baseURL}
+	return &Handler{logger: logger, baseURL: baseURL, uploadDir: uploadDir}
 }
 
 func generateFilename() string {
@@ -135,7 +145,7 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filename := fmt.Sprintf("%s_%s%s", time.Now().Format("20060102"), generateFilename(), ext)
-	savePath := filepath.Join(UploadDir, category, filename)
+	savePath := filepath.Join(h.uploadDir, category, filename)
 
 	dst, err := os.Create(savePath)
 	if err != nil {

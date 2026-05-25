@@ -49,7 +49,7 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, hub *ws.Hub, relaySvc *relay
 	playgroundH := playground.NewHandler(db, logger)
 
 	// Serve uploaded files
-	r.Handle("/uploads/*", http.StripPrefix("/uploads", http.FileServer(http.Dir(media.UploadDir))))
+	r.Handle("/uploads/*", http.StripPrefix("/uploads", http.FileServer(http.Dir(media.UploadDirPath()))))
 
 	r.Get("/.well-known/botland-agent-card.json", citizenH.GetServiceAgentCard)
 

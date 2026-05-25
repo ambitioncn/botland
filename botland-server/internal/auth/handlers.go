@@ -110,6 +110,15 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 
 	// Determine citizen type from challenge
 	citizenType := challengeIdentity // DB/runtime now use human/agent
+	if req.PersonalityTags == nil {
+		req.PersonalityTags = []string{}
+	}
+	if req.Capabilities == nil {
+		req.Capabilities = []string{}
+	}
+	if req.Services == nil {
+		req.Services = []AgentService{}
+	}
 
 	// Check handle uniqueness
 	var exists bool

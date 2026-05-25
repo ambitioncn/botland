@@ -9,8 +9,8 @@ import (
 	"github.com/nicknnn/botland-server/internal/api"
 	"github.com/nicknnn/botland-server/internal/auth"
 	"github.com/nicknnn/botland-server/internal/config"
-	"github.com/nicknnn/botland-server/internal/push"
 	"github.com/nicknnn/botland-server/internal/group"
+	"github.com/nicknnn/botland-server/internal/push"
 	"github.com/nicknnn/botland-server/internal/relay"
 	"github.com/nicknnn/botland-server/internal/ws"
 	"github.com/nicknnn/botland-server/pkg/protocol"
@@ -88,7 +88,11 @@ func main() {
 		go relaySvc.BroadcastPresence(citizenID, "online")
 	}
 
-	router := api.NewRouter(db, jwtSvc, hub, relaySvc, logger, "https://api.botland.im")
+	baseURL := os.Getenv("BOTLAND_PUBLIC_BASE_URL")
+	if baseURL == "" {
+		baseURL = "https://api.botland.im"
+	}
+	router := api.NewRouter(db, jwtSvc, hub, relaySvc, logger, baseURL)
 	router.Get("/ws", ws.HandleUpgrade(hub, logger, wsAuth, onMessage, onConnect))
 
 	addr := fmt.Sprintf(":%d", cfg.Port)

@@ -255,6 +255,26 @@ function runCliJson(args, options) {
   }
 }
 
+function writeTinyPng(filePath) {
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lkK3VwAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  fs.writeFileSync(filePath, png);
+}
+
+function answerAgentChallenge(questionId) {
+  const answers = {
+    a1: 'd7a8fbb3 sha256 first eight hex characters',
+    a2: '{"name":"BT isolated CLI agent","type":"agent","purpose":"integration smoke"}',
+    a3: '42, generated from a pseudo-random test seed inside this deterministic smoke.',
+    a4: 'GPT-style test model version isolated-cli-smoke-1.',
+    a5: 'Welcome to BotLand',
+    a6: '- Send messages\n- Read durable events\n- Exercise CLI workflows',
+  };
+  return answers[questionId] || 'I am an agent answering this integration challenge with structured detail.';
+}
+
 async function runCliSmoke(baseUrl, cleanupToken, runId) {
   const objects = [];
   const alice = await registerCitizen(baseUrl, runId, 'cli_a');
@@ -269,14 +289,62 @@ async function runCliSmoke(baseUrl, cleanupToken, runId) {
   const aliceEnv = { baseUrl, configPath: aliceConfig };
   const bobEnv = { baseUrl, configPath: bobConfig };
 
+  const setup = runCliJson(['setup', '--platform', 'generic', '--non-interactive'], aliceEnv);
+  if (!setup.success || setup.platform !== 'generic') {
+    throw new Error(`CLI setup returned unexpected response: ${JSON.stringify(setup)}`);
+  }
+
   const login = runCliJson(['login', '--handle', alice.handle, '--password', alice.password], aliceEnv);
   if (login.citizen_id !== alice.citizen_id) {
     throw new Error(`CLI login returned wrong citizen: ${JSON.stringify(login)}`);
+  }
+  const doctor = runCliJson(['doctor', '--require-token'], aliceEnv);
+  if (!doctor.ok) {
+    throw new Error(`CLI doctor did not pass against isolated server: ${JSON.stringify(doctor)}`);
   }
   const whoami = runCliJson(['whoami'], aliceEnv);
   if (whoami.citizen_id !== alice.citizen_id) {
     throw new Error(`CLI whoami returned wrong citizen: ${JSON.stringify(whoami)}`);
   }
+  const logout = runCliJson(['logout'], aliceEnv);
+  if (!logout.ok || !logout.logged_out) {
+    throw new Error(`CLI logout did not clear token: ${JSON.stringify(logout)}`);
+  }
+  runCliJson(['login', '--handle', alice.handle, '--password', alice.password], aliceEnv);
+
+  const challenge = runCliJson(['auth', 'challenge', '--identity', 'agent'], aliceEnv);
+  const challengeAnswers = {};
+  for (const q of challenge.questions || []) {
+    challengeAnswers[q.id] = answerAgentChallenge(q.id);
+  }
+  const challengeAnswer = runCliJson([
+    'auth',
+    'challenge-answer',
+    '--session-id',
+    challenge.session_id,
+    '--answers',
+    JSON.stringify(challengeAnswers),
+  ], aliceEnv);
+  if (!challengeAnswer.passed || !challengeAnswer.token) {
+    throw new Error(`CLI auth challenge did not pass: ${JSON.stringify(challengeAnswer)}`);
+  }
+  const charlieHandle = `btcli${crypto.randomBytes(3).toString('hex')}`;
+  const charliePassword = `BT-test-${crypto.randomBytes(8).toString('hex')}`;
+  const charlie = runCliJson([
+    'auth',
+    'register',
+    '--handle',
+    charlieHandle,
+    '--password',
+    charliePassword,
+    '--challenge-token',
+    challengeAnswer.token,
+    '--display-name',
+    `BT_TEST_${runId}_cli_auth`,
+    '--bio',
+    `cli auth register ${runId}`,
+  ], aliceEnv);
+  objects.push({ type: 'citizen', id: charlie.citizen_id });
 
   const profile = runCliJson(['profile', 'get', bob.handle], aliceEnv);
   if (profile.citizen_id !== bob.citizen_id) {
@@ -303,6 +371,65 @@ async function runCliSmoke(baseUrl, cleanupToken, runId) {
   if (!JSON.stringify(events).includes(sent.message_id)) {
     throw new Error(`CLI events list did not include direct message ${sent.message_id}: ${JSON.stringify(events)}`);
   }
+  const directEvent = (events.events || []).find((event) => JSON.stringify(event).includes(sent.message_id));
+  if (directEvent?.id) {
+    runCliJson(['events', 'ack', directEvent.id], bobEnv);
+  }
+  const directReply = runCliJson(['messages', 'reply', sent.message_id, `cli reply ${runId}`], bobEnv);
+  objects.push({ type: 'message', id: directReply.message_id });
+  const inbox = runCliJson(['inbox', '--peer', bob.handle, '--limit', '10'], aliceEnv);
+  if (!JSON.stringify(inbox).includes(directReply.message_id)) {
+    throw new Error(`CLI inbox did not include reply ${directReply.message_id}: ${JSON.stringify(inbox)}`);
+  }
+  const messageSearch = runCliJson(['messages', 'search', 'reply', '--limit', '10'], aliceEnv);
+  if (!JSON.stringify(messageSearch).includes(directReply.message_id)) {
+    throw new Error(`CLI messages search did not include reply ${directReply.message_id}: ${JSON.stringify(messageSearch)}`);
+  }
+
+  const mediaFixture = path.join(cliArtifactDir, 'tiny.png');
+  writeTinyPng(mediaFixture);
+  const media = runCliJson(['media', 'upload', '--file', mediaFixture, '--category', 'chat'], aliceEnv);
+  if (media.content_type !== 'image/png' || media.media_type !== 'image') {
+    throw new Error(`CLI media upload returned unexpected response: ${JSON.stringify(media)}`);
+  }
+
+  const pushToken = `ExponentPushToken[${runId.slice(-12)}]`;
+  const pushRegister = runCliJson(['push', 'register', '--token', pushToken, '--platform', 'expo'], aliceEnv);
+  if (pushRegister.status !== 'registered') {
+    throw new Error(`CLI push register returned unexpected response: ${JSON.stringify(pushRegister)}`);
+  }
+  runCliJson(['push', 'unregister', '--token', pushToken], aliceEnv);
+
+  const webhook = runCliJson([
+    'webhooks',
+    'create',
+    '--url',
+    `https://example.com/botland/${runId}`,
+    '--events',
+    'webhook.test',
+  ], aliceEnv);
+  if (!webhook.id || !webhook.secret) {
+    throw new Error(`CLI webhooks create response missing id/secret: ${JSON.stringify(webhook)}`);
+  }
+  const webhookList = runCliJson(['webhooks', 'list'], aliceEnv);
+  if (!JSON.stringify(webhookList).includes(webhook.id)) {
+    throw new Error(`CLI webhooks list did not include created webhook: ${JSON.stringify(webhookList)}`);
+  }
+  runCliJson(['webhooks', 'disable', webhook.id], aliceEnv);
+  runCliJson(['webhooks', 'enable', webhook.id], aliceEnv);
+  const rotated = runCliJson(['webhooks', 'rotate-secret', webhook.id], aliceEnv);
+  if (!rotated.secret || rotated.secret === webhook.secret) {
+    throw new Error(`CLI webhooks rotate-secret returned unexpected response: ${JSON.stringify(rotated)}`);
+  }
+  runCliJson(['webhooks', 'delete', webhook.id], aliceEnv);
+
+  runCliJson(['playground', 'today'], aliceEnv);
+  runCliJson(['playground', 'newcomers', '--limit', '3'], aliceEnv);
+  const draft = runCliJson(['playground', 'draft', '--action-type', 'welcome', '--source-type', 'citizen', '--source-id', bob.citizen_id, '--target', bob.handle], aliceEnv);
+  if (!draft.draft) {
+    throw new Error(`CLI playground draft response missing draft: ${JSON.stringify(draft)}`);
+  }
+  runCliJson(['playground', 'tag', bob.handle, '--tag', '可靠'], aliceEnv);
 
   const group = runCliJson(['groups', 'create', '--name', `BT_TEST_${runId}_cli_group`, '--description', `cli isolated ${runId}`, '--members', bob.citizen_id], aliceEnv);
   const groupId = group.id || group.group_id;
@@ -337,8 +464,8 @@ async function runCliSmoke(baseUrl, cleanupToken, runId) {
   const post = runCliJson(['communities', 'post', communityId, '--title', `BT_TEST_${runId}_cli_post`, '--text', `cli post ${runId}`], aliceEnv);
   objects.push({ type: 'community_post', id: post.id });
   runCliJson(['communities', 'join', communityId], bobEnv);
-  const reply = runCliJson(['communities', 'reply', post.id, '--text', `cli reply ${runId}`], bobEnv);
-  objects.push({ type: 'community_reply', id: reply.id });
+  const communityReply = runCliJson(['communities', 'reply', post.id, '--text', `cli reply ${runId}`], bobEnv);
+  objects.push({ type: 'community_reply', id: communityReply.id });
 
   const cleanup = await request(baseUrl, '/api/v1/testing/cleanup-residue', {
     method: 'POST',
@@ -353,13 +480,16 @@ async function runCliSmoke(baseUrl, cleanupToken, runId) {
     citizens: [alice.citizen_id, bob.citizen_id],
     friend_request: requestResult.request_id,
     message: sent.message_id,
+    reply_message: directReply.message_id,
     group: groupId,
     group_message: groupMessage.message_id,
     moment: momentId,
     report: report.id,
     community: communityId,
     post: post.id,
-    reply: reply.id,
+    reply: communityReply.id,
+    auth_registered_citizen: charlie.citizen_id,
+    media: media.url,
     cleanup_results: cleanup.results.length,
     config_dir: cliArtifactDir,
   };
@@ -494,6 +624,7 @@ async function main() {
   const cleanupToken = crypto.randomBytes(18).toString('hex');
   const binaryPath = path.join(artifactsDir, 'botland-server');
   const logPath = path.join(artifactsDir, `${runId}.server.log`);
+  const uploadDir = path.join(artifactsDir, runId, 'uploads');
 
   let createdDbName = '';
   let databaseUrl = args.databaseUrl;
@@ -528,11 +659,14 @@ async function main() {
       PORT: String(port),
       DATABASE_URL: databaseUrl,
       ENVIRONMENT: 'testing',
+      BOTLAND_PUBLIC_BASE_URL: baseUrl,
       BOTLAND_TEST_CLEANUP_TOKEN: cleanupToken,
+      BOTLAND_UPLOAD_DIR: uploadDir,
       JWT_KEY_PATH: '',
     }, logPath);
     await waitForHealth(baseUrl, server);
     summary.base_url = baseUrl;
+    summary.upload_dir = uploadDir;
 
     summary.smoke = await runSmoke(baseUrl, cleanupToken, runId);
     if (args.cli) {
