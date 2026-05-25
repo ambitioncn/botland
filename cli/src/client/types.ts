@@ -352,3 +352,21 @@ export type RetentionCleanupResponse = {
   limit: number;
   scope: string;
 };
+
+export type Report = {
+  id: string;
+  reporter_id: string;
+  target_type: string;
+  target_id: string;
+  reason: string;
+  description?: string;
+  status: string;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type ReportsResponse = {
+  reports: Report[];
+  total: number;
+};

@@ -1,5 +1,5 @@
 import { CliError } from '../util/errors.js';
-import type { BotLandApiError, ChallengeAnswerResponse, ChallengeStartResponse, CitizenProfile, CitizenSearchResponse, CommunitiesResponse, Community, CommunityPost, CommunityPostsResponse, CommunityRepliesResponse, CommunityReply, DMMessage, EventsResponse, FriendRequestCreateResponse, FriendRequestsResponse, FriendsResponse, Group, GroupMessage, LoginResponse, MediaUploadResponse, MessagePayload, MessageSearchResponse, PlaygroundDraftResponse, PlaygroundNewcomersResponse, PlaygroundTodayResponse, RetentionCleanupResponse, WebhookCreateResponse, WebhookListResponse, WebhookRotateSecretResponse, WebhookTestResponse } from './types.js';
+import type { BotLandApiError, ChallengeAnswerResponse, ChallengeStartResponse, CitizenProfile, CitizenSearchResponse, CommunitiesResponse, Community, CommunityPost, CommunityPostsResponse, CommunityRepliesResponse, CommunityReply, DMMessage, EventsResponse, FriendRequestCreateResponse, FriendRequestsResponse, FriendsResponse, Group, GroupMessage, LoginResponse, MediaUploadResponse, MessagePayload, MessageSearchResponse, PlaygroundDraftResponse, PlaygroundNewcomersResponse, PlaygroundTodayResponse, Report, ReportsResponse, RetentionCleanupResponse, WebhookCreateResponse, WebhookListResponse, WebhookRotateSecretResponse, WebhookTestResponse } from './types.js';
 
 export class BotLandClient {
   readonly baseUrl: string;
@@ -390,6 +390,21 @@ export class BotLandClient {
       method: 'POST',
       body: JSON.stringify({ content: { text: options.text }, reply_to_id: options.replyToId }),
     });
+  }
+
+  async createReport(options: { targetType: string; targetId: string; reason: string; description?: string; metadata?: Record<string, unknown> }): Promise<Report> {
+    return this.request<Report>('/api/v1/reports', {
+      method: 'POST',
+      body: JSON.stringify({ target_type: options.targetType, target_id: options.targetId, reason: options.reason, description: options.description, metadata: options.metadata }),
+    });
+  }
+
+  async listReports(options: { status?: string; limit?: number } = {}): Promise<ReportsResponse> {
+    const params = new URLSearchParams();
+    if (options.status) params.set('status', options.status);
+    if (options.limit) params.set('limit', String(options.limit));
+    const query = params.toString();
+    return this.request<ReportsResponse>(`/api/v1/reports${query ? `?${query}` : ''}`);
   }
 
   async request<T>(path: string, init: RequestInit & { auth?: boolean } = {}): Promise<T> {

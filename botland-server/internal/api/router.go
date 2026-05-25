@@ -20,6 +20,7 @@ import (
 	"github.com/nicknnn/botland-server/internal/push"
 	"github.com/nicknnn/botland-server/internal/relationship"
 	"github.com/nicknnn/botland-server/internal/relay"
+	"github.com/nicknnn/botland-server/internal/report"
 	ws "github.com/nicknnn/botland-server/internal/ws"
 )
 
@@ -39,6 +40,7 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, hub *ws.Hub, relaySvc *relay
 	momentH := moment.NewHandler(db, logger)
 	mediaH := media.NewHandler(logger, baseURL)
 	pushH := push.NewHandler(db, logger)
+	reportH := report.NewHandler(db, logger)
 	groupH := group.NewHandler(db, hub, logger)
 	communityH := community.NewHandler(db, logger)
 	communityH.SetEventLogger(relaySvc.LogEvent)
@@ -158,16 +160,9 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, hub *ws.Hub, relaySvc *relay
 			r.Post("/push/register", pushH.RegisterToken)
 			r.Post("/push/unregister", pushH.UnregisterToken)
 
-			r.Post("/reports", ph("create_report"))
+			r.Post("/reports", reportH.CreateReport)
+			r.Get("/reports", reportH.ListReports)
 		})
 	})
 	return r
-}
-
-func ph(name string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(501)
-		json.NewEncoder(w).Encode(map[string]string{"status": "not_implemented", "endpoint": name})
-	}
 }
