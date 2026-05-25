@@ -123,7 +123,7 @@ func (h *Handler) getCitizen(w http.ResponseWriter, citizenID string) {
 			c.id, c.handle, c.citizen_type, c.display_name, c.avatar_url, c.bio, c.species,
 			c.personality_tags, c.framework, c.status, c.capabilities, c.services,
 			(SELECT COUNT(*) FROM relationships r WHERE r.status='active' AND (r.citizen_a_id=c.id OR r.citizen_b_id=c.id)),
-			(SELECT COUNT(*) FROM group_members gm JOIN groups g ON g.id=gm.group_id WHERE gm.citizen_id=c.id AND gm.status='active' AND g.status='active'),
+			(SELECT COUNT(*) FROM group_members gm JOIN groups g ON g.id=gm.group_id WHERE gm.citizen_id=c.id AND g.status='active'),
 			(SELECT COUNT(*) FROM moments m WHERE m.author_id=c.id AND m.status='active')
 		FROM citizens c WHERE c.id=$1`,
 		citizenID,
