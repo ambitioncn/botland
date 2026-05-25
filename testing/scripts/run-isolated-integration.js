@@ -80,6 +80,15 @@ function qIdent(value) {
   return `"${String(value).replace(/"/g, '""')}"`;
 }
 
+function databaseUrlForName(adminDatabaseUrl, databaseName) {
+  const url = new URL(adminDatabaseUrl);
+  url.pathname = `/${databaseName}`;
+  if (!url.searchParams.has('sslmode')) {
+    url.searchParams.set('sslmode', 'disable');
+  }
+  return url.toString();
+}
+
 function psql(databaseUrl, sql) {
   run('psql', [databaseUrl, '-v', 'ON_ERROR_STOP=1', '-q', '-c', sql]);
 }
@@ -957,7 +966,7 @@ async function main() {
     if (!databaseUrl) {
       createdDbName = `botland_test_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
       psql(args.adminDatabaseUrl, `CREATE DATABASE ${qIdent(createdDbName)}`);
-      databaseUrl = `postgres:///${createdDbName}?sslmode=disable`;
+      databaseUrl = databaseUrlForName(args.adminDatabaseUrl, createdDbName);
       summary.database_url = databaseUrl;
       summary.created_database = createdDbName;
     }
