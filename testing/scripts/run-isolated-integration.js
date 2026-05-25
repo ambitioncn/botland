@@ -8,13 +8,16 @@ const { spawn, spawnSync } = require('child_process');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 const serverDir = path.join(repoRoot, 'botland-server');
+const cliDir = path.join(repoRoot, 'cli');
 const migrationsDir = path.join(serverDir, 'migrations');
 const artifactsDir = path.join(repoRoot, 'testing', 'artifacts', 'isolated');
 
 function parseArgs(argv) {
   const args = {
     keepDb: false,
+    cli: false,
     skipBuild: false,
+    skipCliBuild: false,
     json: false,
     databaseUrl: process.env.BOTLAND_ISOLATED_DATABASE_URL || '',
     port: Number(process.env.BOTLAND_ISOLATED_PORT || 0),
@@ -23,7 +26,9 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--keep-db') args.keepDb = true;
+    else if (arg === '--cli') args.cli = true;
     else if (arg === '--skip-build') args.skipBuild = true;
+    else if (arg === '--skip-cli-build') args.skipCliBuild = true;
     else if (arg === '--json') args.json = true;
     else if (arg === '--database-url') args.databaseUrl = argv[++i] || '';
     else if (arg === '--port') args.port = Number(argv[++i] || 0);
@@ -49,6 +54,8 @@ Options:
   --admin-database-url <url>  Admin DB URL for create/drop, default postgres:///postgres
   --port <port>              Local server port, default random free port
   --skip-build               Reuse testing/artifacts/isolated/botland-server
+  --cli                      Also run real CLI commands against the isolated server
+  --skip-cli-build           Reuse cli/dist instead of running npm run build
   --keep-db                  Keep the generated database after the run
   --json                     Print only the final JSON summary
 `);
@@ -104,6 +111,10 @@ function migrationFiles() {
 function buildServer(binaryPath) {
   fs.mkdirSync(path.dirname(binaryPath), { recursive: true });
   run('go', ['build', '-o', binaryPath, './cmd/server'], { cwd: serverDir });
+}
+
+function buildCli() {
+  run('npm', ['run', 'build'], { cwd: cliDir });
 }
 
 function startServer(binaryPath, env, logPath) {
@@ -200,6 +211,158 @@ async function registerCitizen(baseUrl, runId, suffix) {
     },
   });
   return { handle, password, ...registered };
+}
+
+function cliBinaryPath() {
+  return path.join(cliDir, 'dist', 'index.js');
+}
+
+function deriveWsUrl(baseUrl) {
+  const url = new URL(baseUrl);
+  url.protocol = url.protocol === 'http:' ? 'ws:' : 'wss:';
+  url.pathname = '/ws';
+  url.search = '';
+  url.hash = '';
+  return url.toString().replace(/\/+$/, '');
+}
+
+function runCli(args, options = {}) {
+  const res = spawnSync('node', [cliBinaryPath(), ...args], {
+    cwd: cliDir,
+    env: {
+      ...process.env,
+      BOTLAND_BASE_URL: options.baseUrl,
+      BOTLAND_WS_URL: options.wsUrl || deriveWsUrl(options.baseUrl),
+      BOTLAND_CONFIG: options.configPath,
+      BOTLAND_TOKEN: options.token || '',
+    },
+    input: options.input,
+    encoding: 'utf8',
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  if (res.status !== 0) {
+    throw new Error(`botland ${args.join(' ')} failed with exit ${res.status}\nstdout:\n${res.stdout}\nstderr:\n${res.stderr}`);
+  }
+  return res.stdout;
+}
+
+function runCliJson(args, options) {
+  const stdout = runCli([...args, '--json'], options);
+  try {
+    return JSON.parse(stdout);
+  } catch (err) {
+    throw new Error(`botland ${args.join(' ')} returned invalid JSON: ${stdout}`);
+  }
+}
+
+async function runCliSmoke(baseUrl, cleanupToken, runId) {
+  const objects = [];
+  const alice = await registerCitizen(baseUrl, runId, 'cli_a');
+  const bob = await registerCitizen(baseUrl, runId, 'cli_b');
+  objects.push({ type: 'citizen', id: alice.citizen_id });
+  objects.push({ type: 'citizen', id: bob.citizen_id });
+
+  const cliArtifactDir = path.join(artifactsDir, runId);
+  fs.mkdirSync(cliArtifactDir, { recursive: true });
+  const aliceConfig = path.join(cliArtifactDir, 'alice.config.json');
+  const bobConfig = path.join(cliArtifactDir, 'bob.config.json');
+  const aliceEnv = { baseUrl, configPath: aliceConfig };
+  const bobEnv = { baseUrl, configPath: bobConfig };
+
+  const login = runCliJson(['login', '--handle', alice.handle, '--password', alice.password], aliceEnv);
+  if (login.citizen_id !== alice.citizen_id) {
+    throw new Error(`CLI login returned wrong citizen: ${JSON.stringify(login)}`);
+  }
+  const whoami = runCliJson(['whoami'], aliceEnv);
+  if (whoami.citizen_id !== alice.citizen_id) {
+    throw new Error(`CLI whoami returned wrong citizen: ${JSON.stringify(whoami)}`);
+  }
+
+  const profile = runCliJson(['profile', 'get', bob.handle], aliceEnv);
+  if (profile.citizen_id !== bob.citizen_id) {
+    throw new Error(`CLI profile get could not resolve bob: ${JSON.stringify(profile)}`);
+  }
+  const discover = runCliJson(['discover', 'search', bob.handle], aliceEnv);
+  if (!JSON.stringify(discover).includes(bob.citizen_id)) {
+    throw new Error(`CLI discover search did not include bob: ${JSON.stringify(discover)}`);
+  }
+
+  const requestResult = runCliJson(['friends', 'send', '--target', bob.handle, '--greeting', `hello from cli ${runId}`], aliceEnv);
+  objects.push({ type: 'friend_request', id: requestResult.request_id });
+  runCliJson(['login', '--handle', bob.handle, '--password', bob.password], bobEnv);
+  runCliJson(['friends', 'accept', requestResult.request_id], bobEnv);
+  objects.push({ type: 'friendship', id: `${alice.citizen_id}:${bob.citizen_id}`, from_id: alice.citizen_id, to_id: bob.citizen_id });
+  const friendsList = runCliJson(['friends', 'list'], aliceEnv);
+  if (!JSON.stringify(friendsList).includes(bob.citizen_id)) {
+    throw new Error(`CLI friends list did not include bob: ${JSON.stringify(friendsList)}`);
+  }
+
+  const sent = runCliJson(['send', '--to', bob.handle, `cli direct ${runId}`], aliceEnv);
+  objects.push({ type: 'message', id: sent.message_id });
+  const events = runCliJson(['events', 'list', '--limit', '10'], bobEnv);
+  if (!JSON.stringify(events).includes(sent.message_id)) {
+    throw new Error(`CLI events list did not include direct message ${sent.message_id}: ${JSON.stringify(events)}`);
+  }
+
+  const group = runCliJson(['groups', 'create', '--name', `BT_TEST_${runId}_cli_group`, '--description', `cli isolated ${runId}`, '--members', bob.citizen_id], aliceEnv);
+  const groupId = group.id || group.group_id;
+  if (!groupId) throw new Error(`CLI groups create response missing id: ${JSON.stringify(group)}`);
+  objects.push({ type: 'group', id: groupId });
+  const groupMessage = runCliJson(['send', '--to', `group:${groupId}`, `cli group ${runId}`], aliceEnv);
+  objects.push({ type: 'message', id: groupMessage.message_id });
+  runCliJson(['groups', 'messages', groupId, '--limit', '5'], aliceEnv);
+
+  const moment = runCliJson(['moments', 'post', '--text', `cli moment ${runId}`, '--visibility', 'public'], aliceEnv);
+  const momentId = moment.moment_id || moment.id;
+  if (!momentId) throw new Error(`CLI moments post response missing id: ${JSON.stringify(moment)}`);
+  objects.push({ type: 'moment', id: momentId });
+  runCliJson(['moments', 'timeline', '--limit', '5'], aliceEnv);
+
+  const report = runCliJson(['reports', 'create', '--target-type', 'moment', '--target-id', momentId, '--reason', 'test', '--description', `cli isolated report ${runId}`], bobEnv);
+  objects.push({ type: 'report', id: report.id });
+  runCliJson(['reports', 'list', '--limit', '5'], bobEnv);
+
+  const community = runCliJson([
+    'communities',
+    'create',
+    '--name',
+    `BT_TEST_${runId}_cli_community`,
+    '--slug',
+    `bt-cli-${runId.toLowerCase().replace(/_/g, '-').slice(0, 30)}`,
+    '--description',
+    `cli isolated ${runId}`,
+  ], aliceEnv);
+  const communityId = community.id;
+  objects.push({ type: 'community', id: communityId });
+  const post = runCliJson(['communities', 'post', communityId, '--title', `BT_TEST_${runId}_cli_post`, '--text', `cli post ${runId}`], aliceEnv);
+  objects.push({ type: 'community_post', id: post.id });
+  runCliJson(['communities', 'join', communityId], bobEnv);
+  const reply = runCliJson(['communities', 'reply', post.id, '--text', `cli reply ${runId}`], bobEnv);
+  objects.push({ type: 'community_reply', id: reply.id });
+
+  const cleanup = await request(baseUrl, '/api/v1/testing/cleanup-residue', {
+    method: 'POST',
+    headers: { 'X-Botland-Test-Cleanup-Token': cleanupToken },
+    body: { run_id: runId, objects },
+  });
+  if (!cleanup.ok) {
+    throw new Error(`CLI cleanup route returned ok=false: ${JSON.stringify(cleanup)}`);
+  }
+
+  return {
+    citizens: [alice.citizen_id, bob.citizen_id],
+    friend_request: requestResult.request_id,
+    message: sent.message_id,
+    group: groupId,
+    group_message: groupMessage.message_id,
+    moment: momentId,
+    report: report.id,
+    community: communityId,
+    post: post.id,
+    reply: reply.id,
+    cleanup_results: cleanup.results.length,
+    config_dir: cliArtifactDir,
+  };
 }
 
 async function runSmoke(baseUrl, cleanupToken, runId) {
@@ -354,6 +517,9 @@ async function main() {
     if (!args.skipBuild) {
       buildServer(binaryPath);
     }
+    if (args.cli && !args.skipCliBuild) {
+      buildCli();
+    }
 
     const port = args.port || await getFreePort();
     const baseUrl = `http://127.0.0.1:${port}`;
@@ -369,6 +535,9 @@ async function main() {
     summary.base_url = baseUrl;
 
     summary.smoke = await runSmoke(baseUrl, cleanupToken, runId);
+    if (args.cli) {
+      summary.cli_smoke = await runCliSmoke(baseUrl, cleanupToken, runId);
+    }
     summary.ok = true;
   } finally {
     if (server && server.exitCode === null) {

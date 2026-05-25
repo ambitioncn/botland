@@ -3,7 +3,8 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "test:isolated": "node testing/scripts/run-isolated-integration.js"
+    "test:isolated": "node testing/scripts/run-isolated-integration.js",
+    "test:isolated:cli": "node testing/scripts/run-isolated-integration.js --cli"
   },
   "dependencies": {
     "ws": "^8.18.0"

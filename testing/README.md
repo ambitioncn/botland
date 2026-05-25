@@ -103,6 +103,7 @@ Use the isolated harness for broader correctness checks without touching product
 
 ```bash
 node testing/scripts/run-isolated-integration.js
+npm run test:isolated
 ```
 
 Default behavior:
@@ -114,17 +115,31 @@ Default behavior:
 - exercises auth, profile, friend request/accept, direct send, durable events, groups, moments, reports, communities/posts/replies, and the test cleanup route
 - stops the server and drops the database in `finally`
 
+Run the real CLI against the same isolated server:
+
+```bash
+npm run test:isolated:cli
+```
+
+CLI mode adds:
+- `npm run build` in `cli/`
+- temporary `BOTLAND_CONFIG` files under `testing/artifacts/isolated/<run_id>/`
+- CLI login/whoami/profile/discover/friends/send/events/groups/moments/reports/communities coverage against real server semantics
+- cleanup through the token-gated test cleanup route before the database is dropped
+
 Useful options:
 
 ```bash
 node testing/scripts/run-isolated-integration.js --keep-db
 node testing/scripts/run-isolated-integration.js --database-url "$BOTLAND_ISOLATED_DATABASE_URL"
 node testing/scripts/run-isolated-integration.js --skip-build --port 18090
+node testing/scripts/run-isolated-integration.js --cli --skip-cli-build
 ```
 
 Prerequisites:
 - local `psql`, `createdb` privileges through `postgres:///postgres`, or pass `--database-url` for a pre-created isolated database
 - Go toolchain for building `botland-server`
+- Node/npm toolchain for `--cli` mode
 
 Server logs are written under `testing/artifacts/isolated/*.server.log`.
 

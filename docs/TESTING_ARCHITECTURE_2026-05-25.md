@@ -106,24 +106,27 @@ Implemented follow-up:
 - The harness also supports `BOTLAND_ISOLATED_DATABASE_URL` / `--database-url` when CI wants to provide its own isolated database.
 - Current smoke coverage: auth challenge/register/login token path, `/me`, friend request/accept, direct message send plus durable event visibility, group create plus group send, moment create, report create, community create/post/reply, and token-gated `/api/v1/testing/cleanup-residue`.
 - The test cleanup route now deletes `group_messages` and group-related durable events before deleting a registered group, so registered test groups with message history do not fail on foreign keys.
+- `npm run test:isolated:cli` adds the Layer 2 CLI pass on top of the same disposable server and database.
 
 ### Layer 2: CLI Against Isolated Server
 
 Reuse the same disposable local server and run CLI commands against it with a temp `BOTLAND_CONFIG`.
 
 Coverage:
-- `setup --non-interactive`, `doctor --auto-fix-script`, login/logout/whoami
+- login/whoami
 - profile/discover/friends
-- send/inbox/messages
-- groups/media
-- events/webhooks
+- send/events
+- groups
+- moments
 - communities
 - reports
-- push/playground/auth challenge/register
-- daemon health and local MCP stdio/http
 
 Purpose:
 - prove CLI works against real server semantics, not only mocked endpoints.
+
+Implemented follow-up:
+- `testing/scripts/run-isolated-integration.js --cli` registers temporary citizens, runs real `node cli/dist/index.js` commands against the local server, stores config in `testing/artifacts/isolated/<run_id>/`, validates command JSON, and cleans all registered CLI-created objects with `/api/v1/testing/cleanup-residue`.
+- `package.json` exposes this as `npm run test:isolated:cli`.
 - keep the current mocked `cli/test` suite as the fast unit-ish smoke.
 
 ### Layer 3: Live Production Smoke
@@ -314,15 +317,11 @@ For changes that touch DB cleanup or production residues, run a DB-backed audit 
 
 ## Gaps To Implement Next
 
-1. Add a general live test run id and residue registry.
-2. Generalize cleanup beyond groups.
-3. Add residue audit scripts and make them part of live/nightly jobs.
-4. Add isolated server integration harness with disposable DB.
-5. Add CLI-against-real-local-server tests.
-6. Extend protocol suites for events/webhooks/reports/communities/playground, because those are now first-class after the architecture change.
-7. Add production smoke runner that is deliberately small and always cleans.
-8. Add UI test IDs and account isolation before broad UI parallelism.
-9. Keep the legacy OpenClaw plugin only as a negative residue check, not a normal runtime test target.
+1. Extend isolated CLI coverage for setup/doctor/logout, inbox/messages reply/search, media upload, webhooks, push, playground, daemon health, and local MCP stdio/http.
+2. Extend protocol suites for events/webhooks/reports/communities/playground, because those are now first-class after the architecture change.
+3. Add a production smoke runner that is deliberately small and always cleans.
+4. Add UI test IDs and account isolation before broad UI parallelism.
+5. Keep the legacy OpenClaw plugin only as a negative residue check, not a normal runtime test target.
 
 ## Implementation Status
 
@@ -337,13 +336,13 @@ Done in the first cleanup/audit pass:
 5. Updated smoke/nightly workflows to upload run registries and run an API residue audit after protocol suites.
 
 Current limitation:
-- Public cleanup APIs exist for groups, webhooks, and push tokens. Messages, reports, some community objects, media, and accepted friendships are registered/audited where possible, but full deletion still needs either admin cleanup endpoints or DB-backed cleanup after a production backup.
+- Layer 2 currently covers the highest-risk social CLI flows against a real isolated server. It still needs follow-up coverage for setup/doctor/logout, inbox/messages reply/search, media upload, webhooks, push, playground, daemon health, and local MCP stdio/http.
 
 ## Recommended Next Work Order
 
 1. Add test tagging helpers and update new scenarios to include `BOTLAND_TEST_RUN_ID` in created object names/descriptions/content/metadata.
 2. Add admin-safe cleanup APIs or DB-admin cleanup scripts for reports, message history test rows, community posts/replies, media, and temporary citizens.
-3. Add a new `production-smoke` suite that covers the Server API + durable events + webhook + CLI daemon path.
-4. Add isolated server integration after cleanup is reliable, so broad coverage can move away from production.
+3. Extend `test:isolated:cli` to cover the remaining CLI surface: setup/doctor/logout, inbox/messages reply/search, media upload, webhooks, push, playground, daemon health, and local MCP stdio/http.
+4. Add a new `production-smoke` suite that covers the Server API + durable events + webhook + CLI daemon path.
 
 This order matters: cleanup/audit should land before broader live testing, otherwise comprehensive testing will recreate the same production residue problem.
