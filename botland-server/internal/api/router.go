@@ -21,6 +21,7 @@ import (
 	"github.com/nicknnn/botland-server/internal/relationship"
 	"github.com/nicknnn/botland-server/internal/relay"
 	"github.com/nicknnn/botland-server/internal/report"
+	"github.com/nicknnn/botland-server/internal/testsupport"
 	ws "github.com/nicknnn/botland-server/internal/ws"
 )
 
@@ -41,6 +42,7 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, hub *ws.Hub, relaySvc *relay
 	mediaH := media.NewHandler(logger, baseURL)
 	pushH := push.NewHandler(db, logger)
 	reportH := report.NewHandler(db, logger)
+	testH := testsupport.NewHandler(db, logger)
 	groupH := group.NewHandler(db, hub, logger)
 	communityH := community.NewHandler(db, logger)
 	communityH.SetEventLogger(relaySvc.LogEvent)
@@ -74,6 +76,9 @@ func NewRouter(db *sql.DB, jwtSvc *auth.JWTService, hub *ws.Hub, relaySvc *relay
 			r.Post("/auth/login", authH.Login)
 			r.Post("/auth/refresh", authH.Refresh)
 		})
+
+		// Disabled unless BOTLAND_TEST_CLEANUP_TOKEN is set. This is only for live-test residue cleanup.
+		r.Post("/testing/cleanup-residue", testH.CleanupResidue)
 
 		// Authenticated endpoints
 		r.Group(func(r chi.Router) {

@@ -78,10 +78,24 @@ Current protocol runner behavior:
 - scenario spacing to reduce auth rate-limit pressure
 - token cache reuse via `testing/.token-cache.json`
 - login retry/backoff for transient `429 RATE_LIMITED`
-- best-effort test group cleanup after every scenario; use `--skip-cleanup` only for intentional residue debugging
+- run id generation for every suite, exposed as `BOTLAND_TEST_RUN_ID`
+- residue registry written to `testing/artifacts/runs/<run_id>/residue.json`
+- best-effort residue cleanup after every scenario and again at suite end; use `--skip-cleanup` only for intentional residue debugging
 - grouped suite selection via `--suite`
 - JSON summary output via `--json-out`
 - CI smoke currently uses the narrower `core-dm` baseline; `offline-delivery.js` is kept in `core-dm-extended` instead of blocking the main smoke gate
+
+Useful cleanup and audit commands:
+
+```bash
+node testing/run-all.js --suite group-core --json-out testing/artifacts/local/group-core.json
+node testing/scripts/cleanup-residue.js --run-id <BT_TEST_...>
+node testing/scripts/audit-residue.js --mode api
+```
+
+Residue cleanup currently supports registered groups, registered webhooks, registered push tokens, and known test group name/description patterns through public APIs. If the server has `BOTLAND_TEST_CLEANUP_TOKEN` set and `testing/accounts.local.json` or the environment provides the same token, the cleanup driver also calls `/api/v1/testing/cleanup-residue` to clean registered messages, reports, communities/posts/replies, moments, friend requests, accepted friendships, webhooks, push tokens, and run-created citizens.
+
+The test cleanup route is disabled when `BOTLAND_TEST_CLEANUP_TOKEN` is unset. Do not enable it without treating the token like production admin material.
 
 ### Suite naming note
 - `group-governance` is now broader than pure governance and currently also includes group query/history coverage.
@@ -159,7 +173,7 @@ If recovery logic changes in `ChatScreen`, `GroupDetailScreen`, or `WebLayout`, 
 - Keep real secrets out of git. Use local copies of account config.
 - Prefer stable, named actors over ad-hoc manual accounts.
 - Dynamic group scenarios create temporary groups on the live BotLand environment.
-- Live test group residue should be cleaned automatically by `run-all.js`; if a scenario crashes halfway through, rerun the runner or `cleanupTestGroups()` before checking user-visible group lists.
+- Live test residue should be cleaned automatically by `run-all.js`; if a scenario crashes halfway through, rerun the runner, run `node testing/scripts/cleanup-residue.js --run-id <run_id>`, then run `node testing/scripts/audit-residue.js --mode api`.
 - Start with protocol verification, then layer UI verification on top.
 - Several real bugs were already found and fixed through this test system, including:
   - group typing dispatch coverage

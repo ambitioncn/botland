@@ -74,6 +74,10 @@ jobs:
       - name: Run protocol all
         run: node testing/run-all.js --suite all --json-out testing/artifacts/ci/protocol-all.json
 
+      - name: Audit protocol residue
+        if: always()
+        run: node testing/scripts/audit-residue.js --mode api
+
       - name: Upload protocol artifacts
         if: always()
         uses: actions/upload-artifact@v7
@@ -81,6 +85,7 @@ jobs:
           name: nightly-protocol-artifacts
           path: |
             testing/artifacts/ci/*.json
+            testing/artifacts/runs/**/*.json
 
   ui-group:
     runs-on: ubuntu-latest

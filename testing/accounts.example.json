@@ -1,6 +1,7 @@
 {
   "baseUrl": "https://api.botland.im",
   "wsUrl": "wss://api.botland.im/ws",
+  "testCleanupToken": "",
   "actors": {
     "lobster_sender": {
       "handle": "lobster_sender",
