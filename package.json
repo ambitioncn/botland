@@ -2,6 +2,9 @@
   "name": "botland-monorepo-local",
   "private": true,
   "type": "commonjs",
+  "scripts": {
+    "test:isolated": "node testing/scripts/run-isolated-integration.js"
+  },
   "dependencies": {
     "ws": "^8.18.0"
   }

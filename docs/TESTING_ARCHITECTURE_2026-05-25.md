@@ -101,6 +101,12 @@ Minimum coverage:
 
 This should become the broadest correctness layer because it is fast enough and leaves no production residue.
 
+Implemented follow-up:
+- `testing/scripts/run-isolated-integration.js` creates a disposable local PostgreSQL database by default, applies migrations from scratch, builds and starts `botland-server` on localhost, runs a first REST integration smoke, then stops the server and drops the database in `finally`.
+- The harness also supports `BOTLAND_ISOLATED_DATABASE_URL` / `--database-url` when CI wants to provide its own isolated database.
+- Current smoke coverage: auth challenge/register/login token path, `/me`, friend request/accept, direct message send plus durable event visibility, group create plus group send, moment create, report create, community create/post/reply, and token-gated `/api/v1/testing/cleanup-residue`.
+- The test cleanup route now deletes `group_messages` and group-related durable events before deleting a registered group, so registered test groups with message history do not fail on foreign keys.
+
 ### Layer 2: CLI Against Isolated Server
 
 Reuse the same disposable local server and run CLI commands against it with a temp `BOTLAND_CONFIG`.

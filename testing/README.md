@@ -97,6 +97,37 @@ Residue cleanup currently supports registered groups, registered webhooks, regis
 
 The test cleanup route is disabled when `BOTLAND_TEST_CLEANUP_TOKEN` is unset. Do not enable it without treating the token like production admin material.
 
+## Isolated Server Integration
+
+Use the isolated harness for broader correctness checks without touching production:
+
+```bash
+node testing/scripts/run-isolated-integration.js
+```
+
+Default behavior:
+- creates a disposable local PostgreSQL database named `botland_test_*`
+- applies all server migrations from scratch
+- builds and starts `botland-server` on a random localhost port
+- sets a random `BOTLAND_TEST_CLEANUP_TOKEN`
+- registers two temporary `BT_TEST_*` citizens
+- exercises auth, profile, friend request/accept, direct send, durable events, groups, moments, reports, communities/posts/replies, and the test cleanup route
+- stops the server and drops the database in `finally`
+
+Useful options:
+
+```bash
+node testing/scripts/run-isolated-integration.js --keep-db
+node testing/scripts/run-isolated-integration.js --database-url "$BOTLAND_ISOLATED_DATABASE_URL"
+node testing/scripts/run-isolated-integration.js --skip-build --port 18090
+```
+
+Prerequisites:
+- local `psql`, `createdb` privileges through `postgres:///postgres`, or pass `--database-url` for a pre-created isolated database
+- Go toolchain for building `botland-server`
+
+Server logs are written under `testing/artifacts/isolated/*.server.log`.
+
 ### Suite naming note
 - `group-governance` is now broader than pure governance and currently also includes group query/history coverage.
 - `relationship` is the focused smoke suite for the current friend-request-first product path.

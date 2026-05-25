@@ -109,7 +109,7 @@ func cleanupOne(tx *sql.Tx, obj CleanupObject) CleanupResult {
 
 	switch obj.Type {
 	case "group":
-		return execCleanup(tx, obj, "delete group", `DELETE FROM groups WHERE id=$1`, obj.ID)
+		return cleanupGroup(tx, obj)
 	case "message":
 		return cleanupMessage(tx, obj)
 	case "event":
@@ -137,6 +137,29 @@ func cleanupOne(tx *sql.Tx, obj CleanupObject) CleanupResult {
 	default:
 		return CleanupResult{Type: obj.Type, ID: obj.ID, Action: "skip", Status: "skipped", Error: "unsupported object type"}
 	}
+}
+
+func cleanupGroup(tx *sql.Tx, obj CleanupObject) CleanupResult {
+	var rows int64
+	res, err := tx.Exec(`DELETE FROM group_messages WHERE group_id=$1`, obj.ID)
+	if err != nil {
+		return cleanupError(obj, "delete group messages", err)
+	}
+	rows += rowsAffected(res)
+
+	res, err = tx.Exec(`DELETE FROM event_log WHERE payload->'chat'->>'id'=$1 OR payload->>'group_id'=$1`, obj.ID)
+	if err != nil {
+		return cleanupError(obj, "delete group events", err)
+	}
+	rows += rowsAffected(res)
+
+	res, err = tx.Exec(`DELETE FROM groups WHERE id=$1`, obj.ID)
+	if err != nil {
+		return cleanupError(obj, "delete group", err)
+	}
+	rows += rowsAffected(res)
+
+	return cleanupStatus(obj, "delete group", rows)
 }
 
 func cleanupMessage(tx *sql.Tx, obj CleanupObject) CleanupResult {
