@@ -255,6 +255,193 @@ function runCliJson(args, options) {
   }
 }
 
+function spawnCli(args, options = {}) {
+  return spawn('node', [cliBinaryPath(), ...args], {
+    cwd: cliDir,
+    env: {
+      ...process.env,
+      BOTLAND_BASE_URL: options.baseUrl,
+      BOTLAND_WS_URL: options.wsUrl || deriveWsUrl(options.baseUrl),
+      BOTLAND_CONFIG: options.configPath,
+      BOTLAND_TOKEN: options.token || '',
+    },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+}
+
+async function stopChild(child) {
+  if (!child || child.exitCode !== null) return;
+  child.kill('SIGTERM');
+  await sleep(300);
+  if (child.exitCode === null) child.kill('SIGKILL');
+}
+
+async function fetchJson(url, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastErr;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(url);
+      const text = await res.text();
+      if (res.ok) return text ? JSON.parse(text) : {};
+      lastErr = new Error(`${url} returned ${res.status}: ${text}`);
+    } catch (err) {
+      lastErr = err;
+    }
+    await sleep(150);
+  }
+  throw lastErr || new Error(`timed out fetching ${url}`);
+}
+
+async function waitForCondition(fn, timeoutMs, description) {
+  const deadline = Date.now() + timeoutMs;
+  let lastValue;
+  while (Date.now() < deadline) {
+    lastValue = await fn();
+    if (lastValue) return lastValue;
+    await sleep(150);
+  }
+  throw new Error(`timed out waiting for ${description}${lastValue ? `: ${JSON.stringify(lastValue)}` : ''}`);
+}
+
+async function mcpHttpRequest(port, payload) {
+  const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok || data.error) {
+    throw new Error(`MCP HTTP request failed: ${JSON.stringify(data)}`);
+  }
+  return data;
+}
+
+function waitForStdioResponse(child, id, timeoutMs = 5000) {
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (chunk) => { stdout += chunk.toString('utf8'); });
+  child.stderr.on('data', (chunk) => { stderr += chunk.toString('utf8'); });
+  return new Promise((resolve, reject) => {
+    const timer = setInterval(() => {
+      const lines = stdout.split(/\r?\n/).filter(Boolean);
+      for (const line of lines) {
+        try {
+          const parsed = JSON.parse(line);
+          if (parsed.id === id) {
+            clearInterval(timer);
+            clearTimeout(timeout);
+            resolve(parsed);
+            return;
+          }
+        } catch {}
+      }
+    }, 50);
+    const timeout = setTimeout(() => {
+      clearInterval(timer);
+      reject(new Error(`timed out waiting for MCP stdio response ${id}\nstdout:\n${stdout}\nstderr:\n${stderr}`));
+    }, timeoutMs);
+  });
+}
+
+async function runCliDaemonSmoke(baseUrl, runId, aliceEnv, bobEnv, aliceHandle) {
+  const healthPort = await getFreePort();
+  const statePath = path.join(path.dirname(aliceEnv.configPath), 'daemon.state.jsonl');
+  const deadLetterPath = path.join(path.dirname(aliceEnv.configPath), 'daemon.dead-letter.jsonl');
+  const child = spawnCli([
+    'daemon',
+    'start',
+    '--health-port',
+    String(healthPort),
+    '--timeout-ms',
+    '15000',
+    '--state',
+    statePath,
+    '--dead-letter',
+    deadLetterPath,
+    '--jsonl',
+  ], aliceEnv);
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (chunk) => { stdout += chunk.toString('utf8'); });
+  child.stderr.on('data', (chunk) => { stderr += chunk.toString('utf8'); });
+  try {
+    await waitForCondition(async () => {
+      const health = await fetchJson(`http://127.0.0.1:${healthPort}/health`, 500).catch(() => null);
+      return health?.websocket_connected ? health : null;
+    }, 5000, 'daemon websocket health');
+    const sent = runCliJson(['send', '--to', aliceHandle, `cli daemon ${runId}`], bobEnv);
+    const health = await waitForCondition(async () => {
+      const current = await fetchJson(`http://127.0.0.1:${healthPort}/health`, 500).catch(() => null);
+      return current?.events_received > 0 ? current : null;
+    }, 7000, 'daemon event receipt');
+    return { health_port: healthPort, event_message: sent.message_id, events_received: health.events_received };
+  } finally {
+    await stopChild(child);
+    if (child.exitCode !== 0 && child.exitCode !== null) {
+      throw new Error(`daemon smoke process exited ${child.exitCode}\nstdout:\n${stdout}\nstderr:\n${stderr}`);
+    }
+  }
+}
+
+async function runCliMcpHttpSmoke(baseUrl, runId, aliceEnv, bobHandle) {
+  const port = await getFreePort();
+  const child = spawnCli(['mcp', 'http', '--host', '127.0.0.1', '--port', String(port)], aliceEnv);
+  let stderr = '';
+  child.stderr.on('data', (chunk) => { stderr += chunk.toString('utf8'); });
+  try {
+    await fetchJson(`http://127.0.0.1:${port}/health`, 5000);
+    const tools = await mcpHttpRequest(port, { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} });
+    if (!JSON.stringify(tools).includes('botland_whoami')) {
+      throw new Error(`MCP HTTP tools/list missing botland_whoami: ${JSON.stringify(tools)}`);
+    }
+    const whoami = await mcpHttpRequest(port, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'botland_whoami', arguments: {} } });
+    if (!JSON.stringify(whoami).includes('citizen_id')) {
+      throw new Error(`MCP HTTP whoami returned unexpected response: ${JSON.stringify(whoami)}`);
+    }
+    const sent = await mcpHttpRequest(port, {
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/call',
+      params: { name: 'botland_send_message', arguments: { to: bobHandle, text: `mcp http ${runId}` } },
+    });
+    const sentText = JSON.stringify(sent);
+    const match = sentText.match(/msg_[A-Z0-9]+/);
+    if (!match) throw new Error(`MCP HTTP send did not return message id: ${sentText}`);
+    return { port, message: match[0] };
+  } finally {
+    await stopChild(child);
+    if (child.exitCode !== 0 && child.exitCode !== null) {
+      throw new Error(`MCP HTTP process exited ${child.exitCode}\nstderr:\n${stderr}`);
+    }
+  }
+}
+
+async function runCliMcpStdioSmoke(aliceEnv) {
+  const child = spawnCli(['mcp', 'stdio'], aliceEnv);
+  let stderr = '';
+  child.stderr.on('data', (chunk) => { stderr += chunk.toString('utf8'); });
+  try {
+    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })}\n`);
+    const tools = await waitForStdioResponse(child, 1);
+    if (!JSON.stringify(tools).includes('botland_whoami')) {
+      throw new Error(`MCP stdio tools/list missing botland_whoami: ${JSON.stringify(tools)}`);
+    }
+    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'botland_whoami', arguments: {} } })}\n`);
+    const whoami = await waitForStdioResponse(child, 2);
+    if (!JSON.stringify(whoami).includes('citizen_id')) {
+      throw new Error(`MCP stdio whoami returned unexpected response: ${JSON.stringify(whoami)}`);
+    }
+    return { tools: true, whoami: true };
+  } finally {
+    try { child.stdin.end(); } catch {}
+    await stopChild(child);
+    if (child.exitCode !== 0 && child.exitCode !== null) {
+      throw new Error(`MCP stdio process exited ${child.exitCode}\nstderr:\n${stderr}`);
+    }
+  }
+}
+
 function writeTinyPng(filePath) {
   const png = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lkK3VwAAAABJRU5ErkJggg==',
@@ -439,6 +626,13 @@ async function runCliSmoke(baseUrl, cleanupToken, runId) {
   objects.push({ type: 'message', id: groupMessage.message_id });
   runCliJson(['groups', 'messages', groupId, '--limit', '5'], aliceEnv);
 
+  const daemon = await runCliDaemonSmoke(baseUrl, runId, aliceEnv, bobEnv, alice.handle);
+  objects.push({ type: 'message', id: daemon.event_message });
+
+  const mcpHttp = await runCliMcpHttpSmoke(baseUrl, runId, aliceEnv, bob.handle);
+  objects.push({ type: 'message', id: mcpHttp.message });
+  const mcpStdio = await runCliMcpStdioSmoke(aliceEnv);
+
   const moment = runCliJson(['moments', 'post', '--text', `cli moment ${runId}`, '--visibility', 'public'], aliceEnv);
   const momentId = moment.moment_id || moment.id;
   if (!momentId) throw new Error(`CLI moments post response missing id: ${JSON.stringify(moment)}`);
@@ -490,6 +684,9 @@ async function runCliSmoke(baseUrl, cleanupToken, runId) {
     reply: communityReply.id,
     auth_registered_citizen: charlie.citizen_id,
     media: media.url,
+    daemon,
+    mcp_http: mcpHttp,
+    mcp_stdio: mcpStdio,
     cleanup_results: cleanup.results.length,
     config_dir: cliArtifactDir,
   };

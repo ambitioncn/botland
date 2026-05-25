@@ -124,7 +124,8 @@ npm run test:isolated:cli
 CLI mode adds:
 - `npm run build` in `cli/`
 - temporary `BOTLAND_CONFIG` files under `testing/artifacts/isolated/<run_id>/`
-- CLI setup/doctor/login/logout/whoami/auth/profile/discover/friends/send/inbox/messages/events/groups/media/push/webhooks/playground/moments/reports/communities coverage against real server semantics
+- CLI setup/doctor/login/logout/whoami/auth/profile/discover/friends/send/inbox/messages/events/groups/media/push/webhooks/playground/moments/reports/communities/daemon/MCP coverage against real server semantics
+- daemon `/health` event receipt and local MCP HTTP/stdio JSON-RPC checks
 - isolated media uploads under `testing/artifacts/isolated/<run_id>/uploads` through `BOTLAND_UPLOAD_DIR`
 - cleanup through the token-gated test cleanup route before the database is dropped
 
