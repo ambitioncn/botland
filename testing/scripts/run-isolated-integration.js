@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const fs = require('fs');
+const http = require('http');
 const net = require('net');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
@@ -442,6 +443,128 @@ async function runCliMcpStdioSmoke(aliceEnv) {
   }
 }
 
+async function startBridgeWebhookReceiver(runId) {
+  const received = [];
+  const server = http.createServer((req, res) => {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk) => { body += chunk; });
+    req.on('end', () => {
+      if (req.method !== 'POST') {
+        res.writeHead(404);
+        res.end('not found');
+        return;
+      }
+      const event = body.trim() ? JSON.parse(body) : {};
+      received.push(event);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ reply: { text: `bridge webhook reply ${runId}` } }));
+    });
+  });
+  const port = await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => resolve(server.address().port));
+  });
+  return {
+    port,
+    url: `http://127.0.0.1:${port}/botland/events`,
+    received,
+    close: () => new Promise((resolve) => server.close(resolve)),
+  };
+}
+
+async function waitForInboxText(env, peer, text, timeoutMs = 7000) {
+  return waitForCondition(async () => {
+    const inbox = runCliJson(['inbox', '--peer', peer, '--limit', '20'], env);
+    return JSON.stringify(inbox).includes(text) ? inbox : null;
+  }, timeoutMs, `inbox text ${text}`);
+}
+
+async function runCliBridgeSmoke(baseUrl, runId, aliceEnv, bobEnv, aliceHandle, groupId) {
+  const bridgeArtifactDir = path.dirname(aliceEnv.configPath);
+  const webhook = await startBridgeWebhookReceiver(runId);
+  const webhookChild = spawnCli(['bridge', '--webhook', webhook.url, '--timeout-ms', '12000', '--jsonl'], aliceEnv);
+  let webhookStdout = '';
+  let webhookStderr = '';
+  webhookChild.stdout.on('data', (chunk) => { webhookStdout += chunk.toString('utf8'); });
+  webhookChild.stderr.on('data', (chunk) => { webhookStderr += chunk.toString('utf8'); });
+  const webhookText = `bridge webhook trigger ${runId}`;
+  try {
+    await sleep(500);
+    runCliJson(['send', '--to', aliceHandle, webhookText], bobEnv);
+    await waitForCondition(async () => webhook.received.length > 0 ? webhook.received[0] : null, 7000, 'bridge webhook receiver');
+    await waitForInboxText(bobEnv, aliceHandle, `bridge webhook reply ${runId}`);
+  } finally {
+    await stopChild(webhookChild);
+    await webhook.close();
+    if (webhookChild.exitCode !== 0 && webhookChild.exitCode !== null) {
+      throw new Error(`bridge webhook process exited ${webhookChild.exitCode}\nstdout:\n${webhookStdout}\nstderr:\n${webhookStderr}`);
+    }
+  }
+
+  const stdioAgent = path.join(bridgeArtifactDir, 'bridge-stdio-agent.mjs');
+  fs.writeFileSync(stdioAgent, `
+import readline from 'node:readline';
+const rl = readline.createInterface({ input: process.stdin });
+rl.on('line', (line) => {
+  const event = JSON.parse(line);
+  console.log(JSON.stringify({ type: 'botland.reply', reply: { text: 'bridge stdio reply ${runId}: ' + event.message.text } }));
+});
+`);
+  const stdioChild = spawnCli(['bridge', '--stdio', '--cmd', `${process.execPath} ${stdioAgent}`, '--timeout-ms', '12000', '--jsonl'], aliceEnv);
+  let stdioStdout = '';
+  let stdioStderr = '';
+  stdioChild.stdout.on('data', (chunk) => { stdioStdout += chunk.toString('utf8'); });
+  stdioChild.stderr.on('data', (chunk) => { stdioStderr += chunk.toString('utf8'); });
+  const stdioText = `bridge stdio trigger ${runId}`;
+  try {
+    await sleep(500);
+    runCliJson(['send', '--to', aliceHandle, stdioText], bobEnv);
+    await waitForInboxText(bobEnv, aliceHandle, `bridge stdio reply ${runId}: ${stdioText}`);
+  } finally {
+    await stopChild(stdioChild);
+    if (stdioChild.exitCode !== 0 && stdioChild.exitCode !== null) {
+      throw new Error(`bridge stdio process exited ${stdioChild.exitCode}\nstdout:\n${stdioStdout}\nstderr:\n${stdioStderr}`);
+    }
+  }
+
+  const execAgent = path.join(bridgeArtifactDir, 'bridge-exec-agent.mjs');
+  fs.writeFileSync(execAgent, `
+let input = '';
+process.stdin.on('data', (chunk) => { input += chunk; });
+process.stdin.on('end', () => {
+  const event = JSON.parse(input);
+  console.log(JSON.stringify({ type: 'botland.reply', text: 'bridge exec reply ${runId}: ' + event.message.text }));
+});
+`);
+  const execChild = spawnCli(['bridge', '--exec', `${process.execPath} ${execAgent}`, '--timeout-ms', '12000', '--max-concurrency', '1', '--jsonl'], aliceEnv);
+  let execStdout = '';
+  let execStderr = '';
+  execChild.stdout.on('data', (chunk) => { execStdout += chunk.toString('utf8'); });
+  execChild.stderr.on('data', (chunk) => { execStderr += chunk.toString('utf8'); });
+  const execText = `bridge exec trigger ${runId}`;
+  try {
+    await sleep(500);
+    runCliJson(['send', '--to', `group:${groupId}`, execText], bobEnv);
+    runCliJson(['groups', 'messages', groupId, '--limit', '20'], bobEnv);
+    await waitForCondition(async () => {
+      const messages = runCliJson(['groups', 'messages', groupId, '--limit', '20'], bobEnv);
+      return JSON.stringify(messages).includes(`bridge exec reply ${runId}: ${execText}`) ? messages : null;
+    }, 7000, 'bridge exec group reply');
+  } finally {
+    await stopChild(execChild);
+    if (execChild.exitCode !== 0 && execChild.exitCode !== null) {
+      throw new Error(`bridge exec process exited ${execChild.exitCode}\nstdout:\n${execStdout}\nstderr:\n${execStderr}`);
+    }
+  }
+
+  return {
+    webhook_events: webhook.received.length,
+    stdio: true,
+    exec: true,
+  };
+}
+
 function writeTinyPng(filePath) {
   const png = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lkK3VwAAAABJRU5ErkJggg==',
@@ -632,6 +755,7 @@ async function runCliSmoke(baseUrl, cleanupToken, runId) {
   const mcpHttp = await runCliMcpHttpSmoke(baseUrl, runId, aliceEnv, bob.handle);
   objects.push({ type: 'message', id: mcpHttp.message });
   const mcpStdio = await runCliMcpStdioSmoke(aliceEnv);
+  const bridge = await runCliBridgeSmoke(baseUrl, runId, aliceEnv, bobEnv, alice.handle, groupId);
 
   const moment = runCliJson(['moments', 'post', '--text', `cli moment ${runId}`, '--visibility', 'public'], aliceEnv);
   const momentId = moment.moment_id || moment.id;
@@ -687,6 +811,7 @@ async function runCliSmoke(baseUrl, cleanupToken, runId) {
     daemon,
     mcp_http: mcpHttp,
     mcp_stdio: mcpStdio,
+    bridge,
     cleanup_results: cleanup.results.length,
     config_dir: cliArtifactDir,
   };

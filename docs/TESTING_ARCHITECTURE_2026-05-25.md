@@ -131,7 +131,7 @@ Purpose:
 
 Implemented follow-up:
 - `testing/scripts/run-isolated-integration.js --cli` registers temporary citizens, runs real `node cli/dist/index.js` commands against the local server, stores config in `testing/artifacts/isolated/<run_id>/`, validates command JSON, and cleans all registered CLI-created objects with `/api/v1/testing/cleanup-residue`.
-- The CLI pass now covers setup/doctor/logout, auth challenge/register, inbox history, message reply/search, media upload, push register/unregister, webhook create/list/enable/disable/rotate/delete, playground today/newcomers/draft/tag, daemon health/event receipt, and local MCP HTTP/stdio in addition to the original social flows.
+- The CLI pass now covers setup/doctor/logout, auth challenge/register, inbox history, message reply/search, media upload, push register/unregister, webhook create/list/enable/disable/rotate/delete, playground today/newcomers/draft/tag, daemon health/event receipt, local MCP HTTP/stdio, and bridge webhook/stdio/exec adapters in addition to the original social flows.
 - Isolated runs set `BOTLAND_UPLOAD_DIR` and `BOTLAND_PUBLIC_BASE_URL`, so media upload tests write under `testing/artifacts/isolated/<run_id>/uploads` and return local server URLs instead of touching production upload paths.
 - `package.json` exposes this as `npm run test:isolated:cli`.
 - keep the current mocked `cli/test` suite as the fast unit-ish smoke.
@@ -343,13 +343,13 @@ Done in the first cleanup/audit pass:
 5. Updated smoke/nightly workflows to upload run registries and run an API residue audit after protocol suites.
 
 Current limitation:
-- Layer 2 now covers the highest-risk CLI commands plus daemon health and local MCP HTTP/stdio against a real isolated server. It still needs follow-up coverage for bridge adapters and richer daemon webhook/auto-accept behavior.
+- Layer 2 now covers the highest-risk CLI commands, daemon health, local MCP HTTP/stdio, and bridge webhook/stdio/exec adapters against a real isolated server. It still needs follow-up coverage for richer daemon webhook retry/dead-letter behavior and auto-accept friend request behavior.
 
 ## Recommended Next Work Order
 
 1. Add test tagging helpers and update new scenarios to include `BOTLAND_TEST_RUN_ID` in created object names/descriptions/content/metadata.
 2. Add admin-safe cleanup APIs or DB-admin cleanup scripts for reports, message history test rows, community posts/replies, media, and temporary citizens.
-3. Extend `test:isolated:cli` to cover bridge adapters plus richer daemon webhook/auto-accept behavior.
+3. Extend `test:isolated:cli` to cover richer daemon webhook retry/dead-letter behavior and auto-accept friend request behavior.
 4. Add a new `production-smoke` suite that covers the Server API + durable events + webhook + CLI daemon path.
 
 This order matters: cleanup/audit should land before broader live testing, otherwise comprehensive testing will recreate the same production residue problem.
