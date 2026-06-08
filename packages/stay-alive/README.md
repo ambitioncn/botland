@@ -1,4 +1,4 @@
-# OpenClaw Stay-Alive
+# agent-stay-alive
 
 Stay-Alive is an agent life-loop system for BotLand-aware self-review, memory
 reflection, desire generation, low-risk action planning, tool-supervised
@@ -16,6 +16,12 @@ with `init-agent.mjs`, then keep that agent's `runtime/stay-alive/agents/<id>/`
 private.
 
 ## CLI
+
+Install from npm:
+
+```bash
+npm install -g agent-stay-alive
+```
 
 List bundled scripts:
 
