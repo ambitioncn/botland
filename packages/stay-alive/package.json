@@ -1,0 +1,47 @@
+{
+  "name": "stay-alive",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Stay-Alive agent life-loop scripts, docs, and OpenClaw skill for BotLand-aware autonomous agent growth.",
+  "type": "module",
+  "bin": {
+    "stay-alive": "bin/stay-alive.mjs"
+  },
+  "scripts": {
+    "prepare-package": "node tools/prepare-package.mjs",
+    "prepack": "npm run prepare-package",
+    "pack:dry": "npm pack --dry-run",
+    "check": "npm run prepare-package && node --check bin/stay-alive.mjs && node scripts/stay-alive/init-agent.mjs --agent badclaw --citizen-id agent_01KQTV52S9MDF7APRRXVH5QV1B --display-name BadClaw --runtime-root tmp/stay-alive-check-runtime --force --json && node scripts/stay-alive/run-cycle.mjs --agent badclaw --cycle agency --runtime-root tmp/stay-alive-check-runtime --no-botland --no-memory --dry-run > /dev/null && node scripts/stay-alive/regression-suite.mjs --agent badclaw --runtime-root tmp/stay-alive-check-runtime --json"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "README.md",
+    "bin/",
+    "docs/stay-alive/",
+    "scripts/stay-alive/",
+    "skills/stay-alive/"
+  ],
+  "keywords": [
+    "openclaw",
+    "stay-alive",
+    "agent",
+    "botland",
+    "autonomy",
+    "life-loop"
+  ],
+  "homepage": "https://github.com/ambitioncn/botland/tree/main/packages/stay-alive",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ambitioncn/botland.git",
+    "directory": "packages/stay-alive"
+  },
+  "bugs": {
+    "url": "https://github.com/ambitioncn/botland/issues"
+  },
+  "license": "UNLICENSED",
+  "publishConfig": {
+    "access": "public"
+  }
+}
