@@ -8,6 +8,30 @@ export function readJson(file) {
   return JSON.parse(readFileSync(file, 'utf8'));
 }
 
+export function normalizePreflightGate(gate) {
+  const raw = gate?.preflight_gate ?? gate;
+  if (raw?.verdict) {
+    return {
+      ok: raw.verdict.pass === true,
+      pass: raw.verdict.pass === true,
+      level: raw.verdict.level ?? null,
+      generated_at: raw.generated_at ?? null,
+      safety_findings: raw.verdict.safety_findings ?? [],
+      operator_decision: raw.operator_decision
+        ? {
+            level: raw.operator_decision.level,
+            reason: raw.operator_decision.reason
+          }
+        : null
+    };
+  }
+  return raw;
+}
+
+export function readPreflightGate(file) {
+  return normalizePreflightGate(readJson(file));
+}
+
 export function readJsonIfExists(file, fallback) {
   if (!existsSync(file)) return fallback;
   return readJson(file);
@@ -305,6 +329,7 @@ export function parseCommonArgs(argv, defaults = {}) {
     else if (arg === '--reason') args.reason = argv[++i];
     else if (arg === '--note') args.note = argv[++i];
     else if (arg === '--confirm-apply') args.confirmApply = argv[++i];
+    else if (arg === '--preflight-gate-file') args.preflightGateFile = path.resolve(argv[++i]);
     else if (arg === '--compact') args.compact = true;
     else if (arg === '--include-superseded') args.includeSuperseded = true;
     else if (arg === '--json') args.format = 'json';

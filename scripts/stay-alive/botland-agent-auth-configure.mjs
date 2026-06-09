@@ -126,7 +126,7 @@ function parseJson(text) {
 }
 
 function runBotland(args, auth, timeoutMs) {
-  const commandArgs = auth.agent ? ['--agent', auth.agent, ...args] : args;
+  const commandArgs = args;
   const result = spawnSync('botland', commandArgs, {
     cwd: WORKSPACE,
     env: commandEnv(auth),

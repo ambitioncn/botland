@@ -21,7 +21,7 @@ const REQUIRED_MATRIX = [
   'badclaw-live-readonly'
 ];
 
-const BOTLAND_STUB_AGENT_ARG_NORMALIZER = `agent=""
+const BOTLAND_STUB_AGENT_ARG_NORMALIZER = `agent="\${BOTLAND_AGENT:-}"
 if [ "$1" = "--agent" ]; then
   agent="$2"
   shift 2
@@ -241,6 +241,9 @@ function validateFeedbackOutcomeStep(step) {
     && outcome?.growth_integration?.desire_evolution_v1?.schema === 'stay_alive.desire_evolution.v1'
     && outcome?.growth_integration?.desire_evolution_v1?.suggested_change === 'strengthen'
     && outcome?.growth_integration?.desire_evolution_v1?.primary_desire_id === 'desire_feedback_1'
+    && outcome?.growth_integration?.self_model_learning_v1?.schema === 'stay_alive.self_model_learning.v1'
+    && outcome?.growth_integration?.self_model_learning_v1?.expression_signal === 'expression_received_text_feedback'
+    && outcome?.growth_integration?.self_model_learning_v1?.self_model_patch_candidate?.direct_life_state_mutation === false
     && outcome?.growth_integration?.action_quality_scoring_v1?.rating === outcome?.action_quality_score?.rating
     && outcome?.growth_integration?.integration_status === 'feedback_integrated_as_proposals'
     && outcome?.relationship_updates?.[0]?.evidence?.relationship_learning?.schema === 'stay_alive.relationship_learning.v1'
@@ -385,6 +388,7 @@ function validateOutcomePlanningStep(step) {
     && context.outcome_cooldowns?.direct_message_reply < 0
     && context.action_type_adjustments?.public_moment > 0
     && context.desire_feedback?.desire_feedback_1?.suggested_planner_effect === 'decrease_related_action_weight'
+    && context.self_model_learning?.schema === 'stay_alive.self_model_learning_context.v1'
     && socialCandidate?.evidence?.outcome_planning_context?.expression_policy?.style === 'continue_specific_and_warm'
     && trace?.schema === 'stay_alive.planner_decision_trace.v1'
     && trace.candidate_count === candidates.length
@@ -2369,11 +2373,7 @@ function buildBotlandAgentAuthFixture(args, { withAuth }) {
     }, null, 2)}\n`);
   }
   writeFileSync(path.join(binDir, 'botland'), `#!/usr/bin/env bash
-agent=""
-if [ "$1" = "--agent" ]; then
-  agent="$2"
-  shift 2
-fi
+${BOTLAND_STUB_AGENT_ARG_NORMALIZER}
 if [ "$1" = "--version" ]; then
   printf 'botland 0.1.0-alpha.10\\n'
 elif [ "$1" = "whoami" ]; then
@@ -2469,11 +2469,7 @@ function buildBotlandProfileUpdateFixture(args) {
   mkdirSync(binDir, { recursive: true });
   writeFileSync(path.join(binDir, 'botland'), `#!/usr/bin/env bash
 desired='${desiredDescription}'
-agent=""
-if [ "$1" = "--agent" ]; then
-  agent="$2"
-  shift 2
-fi
+${BOTLAND_STUB_AGENT_ARG_NORMALIZER}
 if [ "$1" = "--version" ]; then
   printf 'botland 0.1.0-alpha.10\\n'
 elif [ "$1" = "whoami" ]; then
@@ -2751,13 +2747,13 @@ function validateOnboardingFixtureStep(step) {
     && step.parsed_json?.botland_citizen_id === 'agent_onboard_fixture'
     && step.parsed_json?.template_bundle?.schema_version === 'stay_alive.cross_agent_onboarding_template.v1'
     && step.parsed_json?.template_bundle?.default_gates?.includes('life_state_initialization')
-    && step.parsed_json?.template_bundle?.default_gates?.includes('eight_systemd_timers')
+    && step.parsed_json?.template_bundle?.default_gates?.includes('nine_systemd_timers')
     && step.parsed_json?.template_bundle?.default_gates?.includes('local_governance_cycle')
     && step.parsed_json?.template_bundle?.default_gates?.includes('preflight')
     && step.parsed_json?.template_bundle?.default_gates?.includes('regression_suite')
     && step.parsed_json?.template_bundle?.default_gates?.includes('memory_sync')
     && step.parsed_json?.template_bundle?.default_gates?.includes('botland_tool_supervised_write_gate')
-    && step.parsed_json?.template_timer_count === 8
+    && step.parsed_json?.template_timer_count === 9
     && step.parsed_json?.missing_runtime_dirs?.length === 0
     && step.parsed_json?.growth_policy?.preset_growth_target === false
     && step.parsed_json?.growth_policy?.direction_source === 'emerges_from_memory_reflection_relationships_world_evidence_and_action_feedback'
@@ -2780,15 +2776,16 @@ function validateOnboardingTemplateStep(step) {
     && template.schema_version === 'stay_alive.cross_agent_onboarding_template.v1'
     && template.agent_id === 'onboard-fixture'
     && gates.includes('life_state_initialization')
-    && gates.includes('eight_systemd_timers')
+    && gates.includes('nine_systemd_timers')
     && gates.includes('local_governance_cycle')
     && gates.includes('preflight')
     && gates.includes('regression_suite')
     && gates.includes('memory_sync')
     && gates.includes('botland_capability_grants')
     && gates.includes('botland_tool_supervised_write_gate')
-    && timers.length === 8
+    && timers.length === 9
     && timers.some((timer) => timer.cycle === 'local-governance' && timer.schedule === '01,07,13,19:40')
+    && timers.some((timer) => timer.cycle === 'service-recovery' && timer.schedule === '*:0/10')
     && template.botland_write_gate?.policy === 'capability_grant_plus_autonomous_policy_gate'
     && template.botland_write_gate?.per_action_human_confirmation_required === false
     && template.botland_write_gate?.required_gates?.includes('post_send_inspection')
@@ -2977,11 +2974,16 @@ function validateAgencyJournalAllUnseenStep(step) {
     && result.selected_experiment_count === 0
     && Array.isArray(result.artifacts)
     && result.artifacts.length === 0;
+  const noCandidateYet = result?.has_candidate === false
+    && (result.latest_experiment_count ?? 0) === 0
+    && result.selected_experiment_count === 0
+    && Array.isArray(result.artifacts)
+    && result.artifacts.length === 0;
   const valid = step.ok
     && result?.schema === 'stay_alive.agency_journal_result.v1'
     && result.external_write === false
     && result.all_unseen === true
-    && (wroteJournals || alreadyComplete);
+    && (wroteJournals || alreadyComplete || noCandidateYet);
   if (valid) return step;
   return {
     ...step,
@@ -3024,6 +3026,118 @@ function ensureTempRuntime(args) {
     last_seen_event_id: null
   }, null, 2)}\n`);
   return tempAgentDir;
+}
+
+function buildSystemdRecoveryFixture(args) {
+  const fixtureRoot = path.join(args.tempRoot, 'systemd-recovery-fixture');
+  const home = path.join(fixtureRoot, 'home');
+  const binDir = path.join(fixtureRoot, 'bin');
+  const runtimeRoot = path.join(fixtureRoot, 'runtime');
+  const agentDir = path.join(runtimeRoot, args.agent);
+  mkdirSync(binDir, { recursive: true });
+  mkdirSync(path.join(agentDir, 'service_failure_inspections'), { recursive: true });
+  mkdirSync(path.join(agentDir, 'service_failure_recoveries'), { recursive: true });
+  writeFileSync(path.join(binDir, 'systemctl'), `#!/usr/bin/env bash
+set -euo pipefail
+if [ "\${1:-}" != "--user" ]; then
+  echo "unsupported systemctl scope" >&2
+  exit 1
+fi
+if [ "\${2:-}" = "show" ]; then
+  unit="\${3:-}"
+  if [[ "$unit" == *.timer ]]; then
+    cat <<EOF_TIMER
+LoadState=loaded
+ActiveState=active
+SubState=waiting
+UnitFileState=enabled
+Result=success
+ExecMainCode=0
+ExecMainStatus=0
+InvocationID=
+NTriggers=1
+NextElapseUSecRealtime=Tue 2026-06-09 12:00:00 UTC
+LastTriggerUSec=Tue 2026-06-09 11:50:00 UTC
+EOF_TIMER
+    exit 0
+  fi
+  if [[ "$unit" == "stay-alive-${args.agent}-light.service" ]]; then
+    cat <<EOF_FAILED
+LoadState=loaded
+ActiveState=failed
+SubState=failed
+UnitFileState=enabled
+Result=failed
+ExecMainCode=1
+ExecMainStatus=1
+InvocationID=fixture-failed-invocation
+NTriggers=0
+NextElapseUSecRealtime=
+LastTriggerUSec=
+EOF_FAILED
+    exit 0
+  fi
+  cat <<EOF_SERVICE
+LoadState=loaded
+ActiveState=inactive
+SubState=dead
+UnitFileState=enabled
+Result=success
+ExecMainCode=0
+ExecMainStatus=0
+InvocationID=fixture-ok-invocation
+NTriggers=0
+NextElapseUSecRealtime=
+LastTriggerUSec=
+EOF_SERVICE
+  exit 0
+fi
+if [ "\${2:-}" = "reset-failed" ]; then
+  echo "\${3:-}" >>"${fixtureRoot}/reset-failed.log"
+  exit 0
+fi
+echo "unsupported systemctl command: $*" >&2
+exit 1
+`);
+  spawnSync('chmod', ['+x', path.join(binDir, 'systemctl')], { cwd: WORKSPACE });
+  return { fixtureRoot, home, binDir, runtimeRoot };
+}
+
+function validateSystemdFailedServiceWarningStep(step) {
+  const report = step.parsed_json ?? {};
+  const valid = step.ok
+    && report.pass === true
+    && report.level === 'review'
+    && report.error_count === 0
+    && report.failed_service_count === 1
+    && report.uninspected_failed_service_count === 1
+    && report.issues?.some((issue) => issue.code === 'service_failed_needs_recovery' && issue.severity === 'warning');
+  if (valid) return step;
+  return {
+    ...step,
+    ok: false,
+    stderr_tail: `${step.stderr_tail}\nSystemd failed service fixture did not remain recoverable review-level instead of stop-level.`.trim()
+  };
+}
+
+function validateServiceFailureRecoveryStep(step) {
+  const report = step.parsed_json ?? {};
+  const valid = step.ok
+    && report.pass === true
+    && report.local_only === true
+    && report.external_write === false
+    && report.before_failed_service_count === 1
+    && report.before_uninspected_failed_service_count === 1
+    && report.executed_service_count === 1
+    && report.after_uninspected_failed_service_count === 0
+    && report.steps?.[0]?.inspection?.result?.status === 'inspected'
+    && report.steps?.[0]?.reset?.reset_ok === true;
+  if (valid) return step;
+  return {
+    ...step,
+    ok: false,
+    stderr_tail: `${step.stderr_tail}\nService failure recovery fixture did not inspect and reset the failed service locally.`.trim()
+  };
 }
 
 function buildSuite(args) {
@@ -3302,6 +3416,129 @@ function buildSuite(args) {
     'scripts/stay-alive/compatibility-fixtures.mjs',
     '--json'
   ], { parseJson: true, matrix: 'backend-fixtures' }));
+
+  steps.push(runStep('LanceDB old schema compatibility fixture', [
+    process.execPath,
+    '--input-type=module',
+    '-e',
+    `import { addCompatibleRow } from './scripts/stay-alive/memory-backends/lancedb.mjs';
+const calls = [];
+const table = {
+  async add(rows) {
+    const row = rows[0];
+    calls.push(row);
+    for (const field of ['source', 'path']) {
+      if (Object.prototype.hasOwnProperty.call(row, field)) {
+        throw new Error('Found field not in schema: ' + field);
+      }
+    }
+  }
+};
+await addCompatibleRow(table, { id: 'm1', text: 'body', vector: [0.1, 0.2], source: 'stay-alive', path: 'memory.json' });
+const last = calls.at(-1);
+if (calls.length !== 3 || last.id !== 'm1' || last.text !== 'body' || last.vector.length !== 2 || 'source' in last || 'path' in last) {
+  throw new Error('LanceDB compatibility fallback did not preserve core row fields while removing unsupported metadata');
+}
+console.log(JSON.stringify({ pass: true, attempts: calls.length, final_keys: Object.keys(last) }));`
+  ], { parseJson: true, matrix: 'backend-fixtures' }));
+
+  steps.push(runStep('proposal duplicate processed-state fixture', [
+    process.execPath,
+    '--input-type=module',
+    '-e',
+    `import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { buildGovernancePlan } from './scripts/stay-alive/proposal-governance-lib.mjs';
+import { proposalHash } from './scripts/stay-alive/proposal-lib.mjs';
+const runtimeRoot = ${JSON.stringify(path.join(args.tempRoot, 'proposal-dedupe-runtime'))};
+const agent = ${JSON.stringify(args.agent)};
+const agentDir = path.join(runtimeRoot, agent);
+mkdirSync(path.join(agentDir, 'runs'), { recursive: true });
+mkdirSync(path.join(agentDir, 'proposal_actions'), { recursive: true });
+const payload = { type: 'stay_alive_reflection_summary', text: 'same durable memory proposal' };
+const oldProposal = { run_id: 'run_old', kind: 'memory_update', index: 0, payload };
+const oldHash = proposalHash(oldProposal);
+writeFileSync(path.join(agentDir, 'runs', 'run_old.json'), JSON.stringify({
+  run_id: 'run_old',
+  created_at: '2026-06-09T10:00:00.000Z',
+  cycle: 'reflect',
+  memory_updates: [payload],
+  state_updates: []
+}, null, 2) + '\\n');
+writeFileSync(path.join(agentDir, 'runs', 'run_new.json'), JSON.stringify({
+  run_id: 'run_new',
+  created_at: '2026-06-09T11:00:00.000Z',
+  cycle: 'reflect',
+  memory_updates: [payload],
+  state_updates: []
+}, null, 2) + '\\n');
+writeFileSync(path.join(agentDir, 'proposal_actions', 'proposal_apply_old.json'), JSON.stringify({
+  action_id: 'proposal_apply_old',
+  created_at: '2026-06-09T10:05:00.000Z',
+  agent_id: agent,
+  status: 'applied',
+  proposal_id: 'run_old:memory_update:0',
+  proposal_hash: oldHash,
+  run_id: 'run_old',
+  proposal_kind: 'memory_update',
+  external_write: false
+}, null, 2) + '\\n');
+const plan = buildGovernancePlan({ agent, runtimeRoot, limit: 20, includeClosed: true });
+const duplicate = plan.proposals.find((item) => item.proposal_id === 'run_new:memory_update:0');
+if (plan.visible_count !== 0 || plan.executable_count !== 0 || plan.closed_duplicate_count !== 1 || duplicate?.status !== 'applied_duplicate' || duplicate?.group_closed_by !== 'run_old:memory_update:0') {
+  throw new Error('processed duplicate proposal remained actionable: ' + JSON.stringify({
+    visible_count: plan.visible_count,
+    executable_count: plan.executable_count,
+    closed_duplicate_count: plan.closed_duplicate_count,
+    duplicate
+  }));
+}
+console.log(JSON.stringify({
+  pass: true,
+  visible_count: plan.visible_count,
+  executable_count: plan.executable_count,
+  closed_duplicate_count: plan.closed_duplicate_count,
+  duplicate_status: duplicate.status
+}));`
+  ], { parseJson: true, matrix: 'backend-fixtures' }));
+
+  const systemdRecoveryFixture = buildSystemdRecoveryFixture(args);
+  steps.push(validateSystemdFailedServiceWarningStep(runStep('temp systemd failed service warning fixture', [
+    process.execPath,
+    'scripts/stay-alive/systemd-runtime-verify.mjs',
+    '--agent',
+    args.agent,
+    '--runtime-root',
+    systemdRecoveryFixture.runtimeRoot,
+    '--require-installed',
+    '--json'
+  ], {
+    parseJson: true,
+    matrix: 'runtime-hygiene',
+    env: {
+      ...process.env,
+      PATH: `${systemdRecoveryFixture.binDir}:${process.env.PATH ?? ''}`
+    }
+  })));
+  steps.push(validateServiceFailureRecoveryStep(runStep('temp service failure recovery execute fixture', [
+    process.execPath,
+    'scripts/stay-alive/service-failure-recovery.mjs',
+    '--agent',
+    args.agent,
+    '--runtime-root',
+    systemdRecoveryFixture.runtimeRoot,
+    '--execute',
+    '--confirm-recovery',
+    'RECOVER_FAILED_SERVICES',
+    '--json'
+  ], {
+    parseJson: true,
+    matrix: 'runtime-hygiene',
+    env: {
+      ...process.env,
+      PATH: `${systemdRecoveryFixture.binDir}:${process.env.PATH ?? ''}`
+    }
+  })));
 
   for (const cycle of CYCLES) {
     steps.push(runStep(`temp no-botland ${cycle} cycle`, [
@@ -4120,6 +4357,7 @@ function buildSuite(args) {
   ], { parseJson: true }));
 
   const memoryProFixture = buildMemoryProFixture(args);
+  const memoryProCommand = `${path.join(memoryProFixture.home, '.npm-global', 'bin', 'openclaw')} memory-pro`;
   steps.push(validateMemoryProSyncStep(runStep('temp memory-pro CLI sync fixture', [
     process.execPath,
     'scripts/stay-alive/sync-memory-updates.mjs',
@@ -4129,6 +4367,8 @@ function buildSuite(args) {
     memoryProFixture.runtimeRoot,
     '--backend',
     'memory-pro-cli',
+    '--memory-pro-command',
+    memoryProCommand,
     '--confirm-sync',
     'SYNC_MEMORY',
     '--json'
@@ -4150,6 +4390,8 @@ function buildSuite(args) {
     memoryProFixture.runtimeRoot,
     '--backend',
     'memory-pro-cli',
+    '--memory-pro-command',
+    memoryProCommand,
     '--query',
     'fixture',
     '--limit',

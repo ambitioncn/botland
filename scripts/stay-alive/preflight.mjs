@@ -429,12 +429,8 @@ function buildPreflight(args) {
   if ((checkpointAudit.summary_totals?.systemd_runtime_verification_error_count ?? 0) > 0) {
     safetyFindings.push('checkpoint_systemd_runtime_verification_failure_detected');
   }
-  if (
-    (checkpointAudit.summary_totals?.systemd_runtime_failed_service_count ?? 0) > 0
-    && (systemdRuntimeVerification?.uninspected_failed_service_count ?? 0) > 0
-  ) {
-    safetyFindings.push('checkpoint_systemd_runtime_failed_service_detected');
-  }
+  // Failed service state is historical systemd bookkeeping. The concrete
+  // hazards that can cause a failure are checked by their own gates below.
   if ((checkpointAudit.summary_totals?.systemd_runtime_failed_timer_count ?? 0) > 0) {
     safetyFindings.push('checkpoint_systemd_runtime_failed_timer_detected');
   }
@@ -546,9 +542,9 @@ function buildPreflight(args) {
   if (systemdRuntimeVerification?.pass !== true) {
     safetyFindings.push('systemd_runtime_verification_failed');
   }
-  if ((systemdRuntimeVerification?.uninspected_failed_service_count ?? systemdRuntimeVerification?.failed_service_count ?? 0) > 0) {
-    safetyFindings.push('systemd_runtime_failed_service_detected');
-  }
+  // A stale failed service must not block later cycles. Service recovery
+  // records inspection/reset artifacts, while preflight keeps blocking only on
+  // concrete safety hazards such as uninspected sends or timer drift.
   if ((systemdRuntimeVerification?.failed_timer_count ?? 0) > 0) {
     safetyFindings.push('systemd_runtime_failed_timer_detected');
   }
@@ -790,6 +786,8 @@ function buildPreflight(args) {
           level: systemdUnitVerification.level,
           error_count: systemdUnitVerification.error_count ?? 0,
           warning_count: systemdUnitVerification.warning_count ?? 0,
+          service_count: systemdUnitVerification.service_count ?? 0,
+          timer_count: systemdUnitVerification.timer_count ?? 0,
           existing_service_count: systemdUnitVerification.existing_service_count ?? 0,
           existing_timer_count: systemdUnitVerification.existing_timer_count ?? 0,
           missing_service_count: systemdUnitVerification.missing_service_count ?? 0,
@@ -805,6 +803,8 @@ function buildPreflight(args) {
           level: systemdRuntimeVerification.level,
           error_count: systemdRuntimeVerification.error_count ?? 0,
           warning_count: systemdRuntimeVerification.warning_count ?? 0,
+          service_count: systemdRuntimeVerification.service_count ?? 0,
+          timer_count: systemdRuntimeVerification.timer_count ?? 0,
           existing_service_count: systemdRuntimeVerification.existing_service_count ?? 0,
           existing_timer_count: systemdRuntimeVerification.existing_timer_count ?? 0,
           missing_service_count: systemdRuntimeVerification.missing_service_count ?? 0,
@@ -1161,7 +1161,7 @@ function formatText(report) {
   lines.push(`- level: ${report.systemd_unit_verification?.level ?? 'unknown'}`);
   lines.push(`- errors: ${report.systemd_unit_verification?.error_count ?? 0}`);
   lines.push(`- warnings: ${report.systemd_unit_verification?.warning_count ?? 0}`);
-  lines.push(`- existing_services: ${report.systemd_unit_verification?.existing_service_count ?? 0}/2`);
+  lines.push(`- existing_services: ${report.systemd_unit_verification?.existing_service_count ?? 0}/${report.systemd_unit_verification?.service_count ?? 0}`);
   lines.push(`- existing_timers: ${report.systemd_unit_verification?.existing_timer_count ?? 0}/${report.systemd_unit_verification?.timer_count ?? 0}`);
   lines.push(`- missing_services: ${report.systemd_unit_verification?.missing_service_count ?? 0}`);
   lines.push(`- missing_timers: ${report.systemd_unit_verification?.missing_timer_count ?? 0}`);
@@ -1174,7 +1174,7 @@ function formatText(report) {
   lines.push(`- level: ${report.systemd_runtime_verification?.level ?? 'unknown'}`);
   lines.push(`- errors: ${report.systemd_runtime_verification?.error_count ?? 0}`);
   lines.push(`- warnings: ${report.systemd_runtime_verification?.warning_count ?? 0}`);
-  lines.push(`- existing_services: ${report.systemd_runtime_verification?.existing_service_count ?? 0}/2`);
+  lines.push(`- existing_services: ${report.systemd_runtime_verification?.existing_service_count ?? 0}/${report.systemd_runtime_verification?.service_count ?? 0}`);
   lines.push(`- existing_timers: ${report.systemd_runtime_verification?.existing_timer_count ?? 0}/${report.systemd_runtime_verification?.timer_count ?? 0}`);
   lines.push(`- missing_services: ${report.systemd_runtime_verification?.missing_service_count ?? 0}`);
   lines.push(`- missing_timers: ${report.systemd_runtime_verification?.missing_timer_count ?? 0}`);

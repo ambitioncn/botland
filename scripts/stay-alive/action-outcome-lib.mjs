@@ -782,6 +782,60 @@ function buildDesireEvolutionV1(sendAction, draftType, status, observation, life
   };
 }
 
+function buildSelfModelLearningV1(sendAction, draftType, status, observation, actionQualityScore) {
+  const interpretation = observation.feedback_interpretation ?? {};
+  const axes = actionQualityScore?.axes ?? {};
+  const hints = Array.isArray(actionQualityScore?.improvement_hints) ? actionQualityScore.improvement_hints : [];
+  const expressionSignal = status === 'feedback_received'
+    ? interpretation.has_text_feedback ? 'expression_received_text_feedback' : 'expression_received_ambient_feedback'
+    : status === 'stale_closed' ? 'expression_went_stale'
+      : status === 'stale_pending_close' ? 'expression_is_stale_pending'
+        : 'expression_waiting_for_feedback';
+  const motivationSignal = (axes.self_motivation ?? 0) >= 0.75
+    ? 'self_motivation_visible'
+    : (axes.self_motivation ?? 0) >= 0.55 ? 'self_motivation_partial' : 'self_motivation_thin';
+  const groundingSignal = (axes.context_grounding ?? 0) >= 0.75
+    ? 'context_grounded'
+    : (axes.context_grounding ?? 0) >= 0.55 ? 'context_partially_grounded' : 'context_thin';
+  const relationshipSignal = (axes.relationship_respect ?? 0) >= 0.75
+    ? 'relationship_boundary_respected'
+    : (axes.relationship_respect ?? 0) >= 0.55 ? 'relationship_boundary_partial' : 'relationship_boundary_weak';
+  const learningFocus = hints.length > 0
+    ? hints[0]
+    : status === 'feedback_received'
+      ? 'Keep actions grounded in concrete relationship context and explicit desire evidence.'
+      : status === 'stale_closed'
+        ? 'Prefer smaller or more context-bound actions before repeating this expression pattern.'
+        : 'Wait for clearer feedback before treating this action as identity evidence.';
+  return {
+    schema: 'stay_alive.self_model_learning.v1',
+    source: 'action_outcome_feedback',
+    action_id: sendAction.action_id,
+    action_type: draftType,
+    outcome_status: status,
+    expression_signal: expressionSignal,
+    motivation_signal: motivationSignal,
+    grounding_signal: groundingSignal,
+    relationship_signal: relationshipSignal,
+    quality_rating: actionQualityScore?.rating ?? null,
+    quality_overall: actionQualityScore?.overall ?? null,
+    suggested_self_model_attention: learningFocus,
+    self_model_patch_candidate: {
+      candidate_type: 'action_feedback_identity_evidence',
+      target: 'self_model.last_evolution_summary',
+      direct_life_state_mutation: false,
+      promotion_route: 'proposal_or_lifecycle_governance',
+      reason: `Action ${sendAction.action_id} produced ${status}; use this as self-understanding evidence, not direct identity mutation.`
+    },
+    safety: {
+      local_only: true,
+      external_write: false,
+      direct_life_state_mutation: false,
+      does_not_authorize_actions: true
+    }
+  };
+}
+
 function buildGrowthIntegration(sendAction, draftType, status, observation, proposals, actionQualityScore, lifeState) {
   const interpretation = observation.feedback_interpretation ?? {};
   const proposalCounts = {
@@ -792,6 +846,7 @@ function buildGrowthIntegration(sendAction, draftType, status, observation, prop
   };
   const relationshipLearningV1 = buildRelationshipLearningV1(sendAction, draftType, status, observation);
   const desireEvolutionV1 = buildDesireEvolutionV1(sendAction, draftType, status, observation, lifeState);
+  const selfModelLearningV1 = buildSelfModelLearningV1(sendAction, draftType, status, observation, actionQualityScore);
   return {
     schema: 'stay_alive.growth_integration.v2',
     source: 'action_outcome_integration_v1',
@@ -804,6 +859,8 @@ function buildGrowthIntegration(sendAction, draftType, status, observation, prop
     relationship_learning_v1: relationshipLearningV1,
     desire_evolution: desireEvolutionV1.reason,
     desire_evolution_v1: desireEvolutionV1,
+    self_model_learning: selfModelLearningV1.suggested_self_model_attention,
+    self_model_learning_v1: selfModelLearningV1,
     proposal_counts: proposalCounts,
     action_quality_score: actionQualityScore,
     action_quality_scoring_v1: {

@@ -39,9 +39,7 @@ export function parseJson(text) {
 
 function runProcess(command, commandArgs, options = {}) {
   const agent = options.agent ? String(options.agent) : null;
-  const finalArgs = command === 'botland' && agent
-    ? ['--agent', agent, ...commandArgs]
-    : commandArgs;
+  const finalArgs = commandArgs;
   const result = spawnSync(command, finalArgs, {
     cwd: options.cwd ?? process.cwd(),
     env: options.env ?? commandEnv(agent),
@@ -53,6 +51,7 @@ function runProcess(command, commandArgs, options = {}) {
   const stderr = result.stderr ? result.stderr.trim() : '';
   return {
     command: [command, ...finalArgs].join(' '),
+    agent_profile: command === 'botland' ? agent : null,
     started_at: options.startedAt ?? new Date().toISOString(),
     ok: result.status === 0 && !result.error,
     status: result.status,

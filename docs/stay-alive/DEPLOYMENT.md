@@ -66,7 +66,7 @@ The bundle includes:
 - `life_state.json`, `daemon_state.json`, `control_state.json`, and
   `onboarding.json`.
 - standard runtime artifact directories.
-- eight scheduled timers.
+- nine scheduled timers.
 - strict preflight and regression commands.
 - memory sync gates.
 - BotLand capability grants and tool-supervised write policy.
@@ -176,7 +176,7 @@ node scripts/stay-alive/preflight.mjs --agent <agent_id> --limit 50 --no-checkpo
 
 ## 7. Install User Systemd Timers
 
-Generate the standard eight user services and timers:
+Generate the standard nine user services and timers:
 
 ```bash
 bash scripts/stay-alive/install-systemd-user-timers.sh <agent_id>
@@ -204,6 +204,7 @@ Installed timers:
 - `stay-alive-<agent_id>-event-wakeup.timer`
 - `stay-alive-<agent_id>-botland-watchdog.timer`
 - `stay-alive-<agent_id>-local-governance.timer`
+- `stay-alive-<agent_id>-service-recovery.timer`
 
 Main cycle services run live read-only preflight before the runner:
 
@@ -230,6 +231,7 @@ systemctl --user cat stay-alive-<agent_id>-integrate.service
 systemctl --user cat stay-alive-<agent_id>-event-wakeup.service
 systemctl --user cat stay-alive-<agent_id>-botland-watchdog.service
 systemctl --user cat stay-alive-<agent_id>-local-governance.service
+systemctl --user cat stay-alive-<agent_id>-service-recovery.service
 ```
 
 Then run unit verification:
@@ -254,6 +256,7 @@ systemctl --user enable --now stay-alive-<agent_id>-integrate.timer
 systemctl --user enable --now stay-alive-<agent_id>-event-wakeup.timer
 systemctl --user enable --now stay-alive-<agent_id>-botland-watchdog.timer
 systemctl --user enable --now stay-alive-<agent_id>-local-governance.timer
+systemctl --user enable --now stay-alive-<agent_id>-service-recovery.timer
 ```
 
 Verify runtime state:
@@ -345,15 +348,23 @@ systemctl --user disable --now stay-alive-<agent_id>-integrate.timer
 systemctl --user disable --now stay-alive-<agent_id>-event-wakeup.timer
 systemctl --user disable --now stay-alive-<agent_id>-botland-watchdog.timer
 systemctl --user disable --now stay-alive-<agent_id>-local-governance.timer
+systemctl --user disable --now stay-alive-<agent_id>-service-recovery.timer
 ```
 
-For failed services, use the inspection flow rather than blindly restarting:
+For failed services, use the recovery flow rather than blindly restarting:
 
 ```bash
 node scripts/stay-alive/failed-service-packet.mjs --agent <agent_id> --json
 node scripts/stay-alive/inspect-service-failure.mjs --agent <agent_id> --unit <unit.service> --failure-fingerprint <hash>
 node scripts/stay-alive/reset-service-failure.mjs --agent <agent_id> --unit <unit.service> --failure-fingerprint <hash> --confirm-reset RESET_FAILED_SERVICE
+node scripts/stay-alive/service-failure-recovery.mjs --agent <agent_id> --execute --confirm-recovery RECOVER_FAILED_SERVICES --json
 ```
+
+`service-failure-recovery.mjs` is what the service-recovery timer runs. It
+inspects current failed services when needed, resets only matching failed
+fingerprints, never starts services, and never calls BotLand. Preflight reports
+stale failed service state as recovery work instead of using it as a permanent
+cycle blocker.
 
 Runtime cleanup should use recoverable archive/trash tools:
 

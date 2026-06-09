@@ -438,6 +438,8 @@ function summarizeActionOutcome(outcome) {
     relationship_learning_summary: outcome.growth_integration?.relationship_learning_v1?.summary ?? outcome.growth_integration?.relationship_learning ?? null,
     desire_evolution_change: outcome.growth_integration?.desire_evolution_v1?.suggested_change ?? null,
     desire_evolution_primary_desire_id: outcome.growth_integration?.desire_evolution_v1?.primary_desire_id ?? null,
+    self_model_learning_signal: outcome.growth_integration?.self_model_learning_v1?.expression_signal ?? null,
+    self_model_learning_attention: outcome.growth_integration?.self_model_learning_v1?.suggested_self_model_attention ?? null,
     proposal_counts: proposalCounts,
     recommended_next: outcome.growth_integration?.recommended_next ?? outcome.observation?.feedback_interpretation?.recommended_next ?? null
   };
@@ -451,6 +453,7 @@ function describeOutcomeWindow(outcomes) {
     quality_rating_counts: countBy(outcomes, (outcome) => outcome.action_quality_rating ?? 'unscored'),
     desire_evolution_counts: countBy(outcomes, (outcome) => outcome.desire_evolution_change ?? 'none'),
     relationship_learning_counts: countBy(outcomes, (outcome) => outcome.relationship_learning_confidence ?? 'none'),
+    self_model_learning_counts: countBy(outcomes, (outcome) => outcome.self_model_learning_signal ?? 'none'),
     feedback_received_count: outcomes.filter((outcome) => outcome.outcome_status === 'feedback_received').length,
     stale_count: outcomes.filter((outcome) => ['stale_pending_close', 'stale_closed'].includes(outcome.outcome_status)).length,
     proposal_counts: outcomes.reduce((acc, outcome) => {

@@ -41,7 +41,7 @@ runtime/stay-alive/agents/<agent_id>/
 
 Current core capabilities:
 
-- cross-agent onboarding template: `onboarding-template.mjs` and `init-agent.mjs` now define one default bundle for every new agent: life_state initialization, 8 timers, local governance, preflight, regression, memory sync, capability grants, and the BotLand tool-supervised write gate. BadClaw, 忘了鸭, and 小潮 validate the bundle as samples, not special cases.
+- cross-agent onboarding template: `onboarding-template.mjs` and `init-agent.mjs` now define one default bundle for every new agent: life_state initialization, 9 timers, local governance, service recovery, preflight, regression, memory sync, capability grants, and the BotLand tool-supervised write gate. BadClaw, 忘了鸭, and 小潮 validate the bundle as samples, not special cases.
 - scheduled `light`, `social`, `community`, `reflect`, `integrate`, `agency`, and event-wakeup cycles
 - Agency Core v1 for self-discovery questions, intrinsic desires, low-risk private experiments, growth journal seeds, and autonomy scoring
 - Private Growth Journal Continuity v1: agency reports and agency cycles now treat local private growth journals as first-class becoming evidence, including journal count, recent source-run coverage, experiment-type coverage, latest entries, and a continuity verdict
@@ -53,6 +53,7 @@ Current core capabilities:
 - Autonomous Social Cycle v1: `autonomous-social-cycle.mjs` orchestrates `run-cycle -> apply-action -> inspect-send -> action-outcome` for `light`, `social`, and `community` cycles. It only executes when called with `--execute --confirm-send SEND_DRAFT`, only for selected action intentions allowed by the active policy, and it updates local rate-limit timestamps after successful external execution.
 - Action Outcome Integration v1: inspected sends can become local outcome ledgers with context windows, action quality scores, growth integration, and memory/relationship/commitment/desire proposals; `integrate` now summarizes those outcomes as becoming evidence.
 - Outcome-Informed Action Planner v1: recent outcome ledgers now feed back into Choose through action-type score adjustments, outcome-aware cooldowns, relationship-aware expression policy, and desire-to-action feedback.
+- Outcome-to-Self Learning v1: outcome ledgers now carry `self_model_learning_v1`, so feedback can become self-understanding evidence for integrate/planner context without directly mutating `life_state`.
 - Planner Decision Trace / Explainability v1: every Choose step now records why a candidate was chosen or rejected, including score inputs, outcome influence, quality review, cooldown/desire effects, and the boundary between planner ranking and tool supervision.
 - Trace-Guided Self-Improvement v1: `trace-review.mjs` reviews recent planner traces, action outcomes, and tool-supervision decisions, then writes local `trace_reviews/` learning ledgers with counterfactual comparisons and proposal-only planner heuristic patches.
 - Self-Improvement Application v1: `planner-heuristic-patches.mjs` converts trace-review proposals into bounded `planner_patches/` ledgers with TTL, confidence, rollback conditions, and outcome validation; `run-cycle.mjs` can apply active patches as capped planner score influence and records that influence in the planner trace.
@@ -60,7 +61,9 @@ Current core capabilities:
 - Growth Continuity v1: `growth-continuity.mjs` and `run-cycle.mjs` now turn self-discovery growth material into growth memory promotion candidates, self-question lifecycle records, local growth experiment execution plans, interaction-to-identity candidates, desire evolution evidence, and real-interaction calibration.
 - Growth Apply v1: `growth-apply.mjs` and `run-cycle.mjs` now turn continuity evidence into local proposal ledger payloads, stable self-question threads, growth journal reflections, identity patch governance, desire lifecycle proposal payloads, and no-execute real-interaction smoke plans.
 - Durable Becoming v1: `durable-becoming.mjs` and `run-cycle.mjs` now turn Growth Apply evidence into local application plans, self-model version candidates, desire state-machine transitions, growth-memory retrieval evidence, and no-execute real-interaction smoke loops. `apply-durable-becoming.mjs` is the controlled local apply gate from those plans into `memory_updates`, `self_model_versions`, and bounded desire state-machine metadata.
-- Local Governance Autonomous Cycle v1: `local-governance-cycle.mjs` is the shared governance runner for all Stay-Alive agents. It runs preflight, safe proposal apply/dismiss, memory sync, trace review, and planner patch ledgers through the same universal policy for every agent. Agent differences should emerge from memory, relationships, world evidence, and action feedback, not from governance styles.
+- Local Governance Autonomous Cycle v1: `local-governance-cycle.mjs` is the shared governance runner for all Stay-Alive agents. It runs one shared preflight gate, safe proposal apply/dismiss batches, memory sync, trace review, and planner patch ledgers through the same universal policy for every agent. Agent differences should emerge from memory, relationships, world evidence, and action feedback, not from governance styles.
+- Proposal Processed-State Deduping v1: proposal governance closes repeated proposals at the duplicate-group level once an equivalent item has already been applied or dismissed, so old run artifacts stay auditable without making the backlog look infinite.
+- Service Failure Recovery v1: failed systemd services are recoverable runtime observations, not permanent preflight blockers. `service-failure-recovery.mjs` inspects current failed services, writes local ledgers, and resets failed state without starting services or touching BotLand.
 - World Discovery / Multi-Agent Personality Context v1: every cycle now carries read-only BotLand discovery/search/profile/message-search evidence when visible, plus local peer-agent personality contrast, so planning can notice the wider world while preserving each agent's distinct voice. External search also records query provenance, search quality, novelty/deduping, and an evidence-only safety policy.
 - legacy draft mirrors for older direct-message, public moment, community reply, and friend action review tools while the main model moves to intention/action
 - local proposal governance for memory, relationship, commitment, desire, and reflection updates
@@ -70,7 +73,7 @@ Current core capabilities:
 - 忘了鸭 local becoming validation: `lobster-duck` now has an independent Stay-Alive runtime seeded with initial facts and no preset growth target, plus no-Botland reflect/integrate/agency evidence and private growth journals showing `agent_becoming_visible`
 - BotLand live identity probe: `botland-live-identity-probe.mjs` records public card evidence and authenticated CLI identity evidence, but skips authenticated world surfaces unless `whoami` matches the target agent
 - BotLand agent auth readiness: `botland-agent-auth-readiness.mjs` checks CLI named profile/token-env auth without recording token values; it refuses to borrow ambient default CLI identity for new-agent live sensing
-- BotLand agent auth configure: `botland-agent-auth-configure.mjs` can write `profiles.<agent>` in BotLand `config.json` only from a named token env after `botland --agent <id> whoami` matches the target citizen id and `--confirm-write WRITE_AGENT_BOTLAND_AUTH_CONFIG` is supplied; it never accepts or records token values on the command line
+- BotLand agent auth configure: `botland-agent-auth-configure.mjs` can write `profiles.<agent>` in BotLand `config.json` only from a named token env after `BOTLAND_AGENT=<id> botland whoami` matches the target citizen id and `--confirm-write WRITE_AGENT_BOTLAND_AUTH_CONFIG` is supplied; it never accepts or records token values on the command line
 - life-state mutation protocol: all durable `life_state` writes are routed by actor/path ownership. Governance is restricted to reflection bookkeeping, lifecycle evolution owns durable relationship/commitment/desire surfaces, action execution owns bounded rate-limit bookkeeping, capability authorization owns write-policy boundaries, and onboarding/migration owns identity seed fields.
 - lifecycle evolution cycle: `lifecycle-evolution-cycle.mjs` autonomously applies eligible local relationship/commitment/desire lifecycle evidence through the mutation protocol. It does not perform BotLand writes and does not require daily human confirmation.
 
@@ -98,7 +101,7 @@ Default safety posture:
 - local governance may write local proposal, memory sync, trace review, planner patch, and governance audit ledgers only after `--execute --confirm-governance RUN_LOCAL_GOVERNANCE`; it never performs BotLand writes, profile updates, direct `life_state` bypasses, or durable relationship/commitment/desire promotions. Allowlisted reflection bookkeeping state updates may still pass through the existing `apply-proposal.mjs` gate.
 - growth apply does not directly write memory or mutate identity/desires; optional proposal-ledger writing still requires its explicit confirmation token and downstream apply routes.
 - durable becoming does not mutate `life_state`, sync long-term memory, or execute smoke actions by itself; optional local application ledgers require `--write-application-ledgers --confirm-write WRITE_DURABLE_BECOMING_LEDGERS`. Controlled local application uses `apply-durable-becoming.mjs --confirm-apply APPLY_DURABLE_BECOMING`; memory backend sync still remains a separate `sync-memory-updates.mjs --confirm-sync SYNC_MEMORY` gate.
-- preflight fails closed on unsafe runtime evidence, identity drift, malformed artifacts, uninspected sends, failed live bridge, or systemd guardrail drift
+- preflight fails closed on unsafe runtime evidence, identity drift, malformed artifacts, uninspected sends, failed live bridge, failed/disabled/inactive timers, or systemd guardrail drift. Stale failed service state is surfaced for recovery instead of cascading into every later cycle.
 
 ## Standard Gates
 
@@ -132,7 +135,7 @@ Auth readiness and live identity probe are read-only. Auth readiness looks for
 `profiles.<agent>` in `~/.config/botland/config.json` or
 `BOTLAND_TOKEN_<AGENT>` and never prints token values. Auth configure is the
 only local secret-config write gate: it reads the token from the env var only,
-verifies `botland --agent <id> whoami` against
+verifies `BOTLAND_AGENT=<id> botland whoami` against
 `life_state.botland.citizen_id`, writes a named profile only with the explicit
 confirmation token, and records no token value in runtime artifacts.
 The live probe can read public profile/card evidence to prove that a BotLand

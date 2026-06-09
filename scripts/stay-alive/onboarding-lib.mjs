@@ -13,7 +13,8 @@ export const DEFAULT_ONBOARDING_TIMER_CYCLES = [
   { cycle: 'integrate', schedule: '23:30', service_kind: 'run_cycle_dry_run' },
   { cycle: 'event-wakeup', schedule: '*:0/10', service_kind: 'event_wakeup' },
   { cycle: 'botland-watchdog', schedule: '*:0/2', service_kind: 'botland_watchdog' },
-  { cycle: 'local-governance', schedule: '01,07,13,19:40', service_kind: 'local_governance' }
+  { cycle: 'local-governance', schedule: '01,07,13,19:40', service_kind: 'local_governance' },
+  { cycle: 'service-recovery', schedule: '*:0/10', service_kind: 'service_recovery' }
 ];
 
 export const DEFAULT_ONBOARDING_RUNTIME_DIRS = [
@@ -59,7 +60,7 @@ export const DEFAULT_ONBOARDING_RUNTIME_DIRS = [
 
 export const ONBOARDING_STANDARD_GATES = [
   'life_state_initialization',
-  'eight_systemd_timers',
+  'nine_systemd_timers',
   'local_governance_cycle',
   'preflight',
   'regression_suite',

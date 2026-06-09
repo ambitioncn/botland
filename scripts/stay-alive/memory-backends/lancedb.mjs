@@ -77,6 +77,36 @@ function timestampIso(value) {
   return new Date(numeric).toISOString();
 }
 
+export function rowWithoutUnsupportedFields(row, error) {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const match = message.match(/field not in schema:\s*([A-Za-z0-9_]+)/i);
+  if (!match) return null;
+  const fieldName = match[1];
+  if (!Object.prototype.hasOwnProperty.call(row, fieldName)) return null;
+  const next = { ...row };
+  delete next[fieldName];
+  return next;
+}
+
+export async function addCompatibleRow(table, row) {
+  let candidate = row;
+  const removedFields = new Set();
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      await table.add([candidate]);
+      return;
+    } catch (error) {
+      const next = rowWithoutUnsupportedFields(candidate, error);
+      if (!next) throw error;
+      const removed = Object.keys(candidate).find((key) => !Object.prototype.hasOwnProperty.call(next, key));
+      if (!removed || removedFields.has(removed)) throw error;
+      removedFields.add(removed);
+      candidate = next;
+    }
+  }
+  throw new Error('Unable to add LanceDB memory row after removing unsupported schema fields');
+}
+
 export function createLanceDbBackend(config) {
   return {
     kind: 'lancedb',
@@ -99,7 +129,7 @@ export function createLanceDbBackend(config) {
       const vector = await embedWithOllama(event.content, config.embedding);
       const table = await openMemoryTable(config.db_path, vector.length);
       const memoryId = randomUUID();
-      await table.add([{
+      const row = {
         id: memoryId,
         text: event.content,
         vector,
@@ -109,7 +139,8 @@ export function createLanceDbBackend(config) {
         start_line: 0,
         end_line: 0,
         updated_at: Date.now()
-      }]);
+      };
+      await addCompatibleRow(table, row);
       return {
         ok: true,
         backend_kind: 'lancedb',

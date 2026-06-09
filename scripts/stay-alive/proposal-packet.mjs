@@ -44,13 +44,38 @@ function buildPacket(args) {
         run_created_at: item.run_created_at,
         cycle: item.cycle,
         kind: item.kind,
-        status: proposalStatus(itemHistory)
+        exact_status: proposalStatus(itemHistory)
       };
     });
-  const visibleGroup = group.filter((item) => ['proposed', 'approved'].includes(item.status));
-  const latest = visibleGroup[0] ?? group[0] ?? null;
-  const status = proposalStatus(history);
+  const applied = group.find((item) => item.exact_status === 'applied') ?? null;
+  const approved = group.find((item) => item.exact_status === 'approved') ?? null;
+  const dismissed = group.find((item) => item.exact_status === 'dismissed') ?? null;
+  const proposed = group.find((item) => item.exact_status === 'proposed') ?? null;
+  const closure = applied
+    ? { status: 'applied_duplicate', proposal: applied }
+    : dismissed
+      ? { status: 'dismissed_duplicate', proposal: dismissed }
+      : null;
+  const latest = approved ?? proposed ?? applied ?? dismissed ?? group[0] ?? null;
+  const exactStatus = proposalStatus(history);
+  const closedByDifferentProposal = closure
+    && closure.proposal
+    && closure.proposal.proposal_hash !== proposal.proposal_hash;
+  const status = exactStatus === 'proposed' && closedByDifferentProposal
+    ? closure.status
+    : exactStatus;
   const superseded = status === 'proposed' && latest && latest.proposal_hash !== proposal.proposal_hash;
+  const members = group.map((item) => {
+    const itemClosedByDifferentProposal = closure
+      && closure.proposal
+      && closure.proposal.proposal_hash !== item.proposal_hash
+      && item.exact_status === 'proposed';
+    return {
+      ...item,
+      status: itemClosedByDifferentProposal ? closure.status : item.exact_status,
+      group_closed_by: itemClosedByDifferentProposal ? closure.proposal.proposal_id : null
+    };
+  });
   return {
     read_only: true,
     generated_at: new Date().toISOString(),
@@ -65,6 +90,7 @@ function buildPacket(args) {
       kind: proposal.kind,
       index: proposal.index,
       status,
+      exact_status: exactStatus,
       apply_policy: proposal.payload?.apply_policy ?? null,
       target: proposalTarget(proposal),
       text: proposalText(proposal),
@@ -75,8 +101,10 @@ function buildPacket(args) {
       count: group.length,
       latest_proposal_id: latest?.proposal_id ?? null,
       latest_proposal_hash: latest?.proposal_hash ?? null,
+      group_closed_by: closedByDifferentProposal ? closure.proposal.proposal_id : null,
+      group_closed_status: closedByDifferentProposal ? closure.proposal.exact_status : null,
       superseded,
-      members: group
+      members
     },
     action_history: history.map((action) => ({
       action_id: action.action_id,
@@ -87,7 +115,9 @@ function buildPacket(args) {
     })),
     recommended_next: superseded
       ? 'Review the latest proposal in this duplicate group instead of this superseded one.'
-      : status === 'proposed'
+      : ['applied_duplicate', 'dismissed_duplicate'].includes(status)
+        ? 'No action needed; this duplicate group was already processed locally.'
+        : status === 'proposed'
         ? 'If the proposal is still useful, approve it locally before applying; otherwise dismiss it locally.'
         : status === 'approved'
           ? 'Apply only if this local memory/state update should become durable; otherwise dismiss it locally.'
@@ -121,6 +151,7 @@ function formatText(packet) {
     `Duplicate Group`,
     `- count: ${packet.duplicate_group.count}`,
     `- latest: ${packet.duplicate_group.latest_proposal_id ?? 'n/a'}`,
+    `- closed_by: ${packet.duplicate_group.group_closed_by ?? 'n/a'}`,
     `- superseded: ${packet.duplicate_group.superseded ? 'yes' : 'no'}`,
     '',
     `Action History`

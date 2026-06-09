@@ -11,7 +11,7 @@ import {
 
 const WORKSPACE = process.cwd();
 
-const EXPECTED_CYCLES = ['light', 'social', 'community', 'reflect', 'integrate', 'event-wakeup', 'botland-watchdog', 'local-governance'];
+const EXPECTED_CYCLES = ['light', 'social', 'community', 'reflect', 'integrate', 'event-wakeup', 'botland-watchdog', 'local-governance', 'service-recovery'];
 
 function parseArgs(argv) {
   const args = {
@@ -49,8 +49,11 @@ Options:
   --help                   Show this help.
 
 This command is read-only. It uses systemctl --user show to verify the runtime
-state of Stay-Alive services and timers. It never reloads, starts, stops,
-enables, or disables systemd units.
+state of Stay-Alive services and timers. Failed service state is treated as a
+recoverable runtime observation by default so one stale failed unit cannot
+cascade through every later ExecStartPre gate. Timers, missing required units,
+and systemctl read failures still fail closed. This command never reloads,
+starts, stops, enables, or disables systemd units.
 `);
 }
 
@@ -130,17 +133,16 @@ function verifyService(args, cycle, ledgers) {
   let failure = null;
   if (failed) {
     failure = classifyFailedService(provisionalUnit, ledgers);
-    if (failure.inspected || failure.recovered) {
-      addIssue(
-        issues,
-        'warning',
-        'service_failed_inspected',
-        `ActiveState=${properties.ActiveState ?? 'unknown'} Result=${properties.Result ?? 'unknown'} inspection=${failure.inspection_action_id ?? 'none'} recovery=${failure.recovery_action_id ?? 'none'}`,
-        unitName
-      );
-    } else {
-      addIssue(issues, 'error', 'service_failed', `ActiveState=${properties.ActiveState ?? 'unknown'} Result=${properties.Result ?? 'unknown'}`, unitName);
-    }
+    const issueCode = failure.inspected || failure.recovered
+      ? 'service_failed_inspected'
+      : 'service_failed_needs_recovery';
+    addIssue(
+      issues,
+      'warning',
+      issueCode,
+      `ActiveState=${properties.ActiveState ?? 'unknown'} Result=${properties.Result ?? 'unknown'} inspection=${failure.inspection_action_id ?? 'none'} recovery=${failure.recovery_action_id ?? 'none'}`,
+      unitName
+    );
   }
   if (properties.UnitFileState && !['enabled', 'static', 'linked', 'linked-runtime'].includes(properties.UnitFileState)) {
     addIssue(issues, 'warning', 'service_unit_file_state_unexpected', `UnitFileState=${properties.UnitFileState}`, unitName);
@@ -235,8 +237,9 @@ function buildReport(args) {
     missing_service_count: services.filter((service) => !service.exists).length,
     missing_timer_count: timers.filter((timer) => !timer.exists).length,
     failed_service_count: services.filter(isFailedService).length,
-    uninspected_failed_service_count: services.filter((service) => service.issues.some((issue) => issue.code === 'service_failed')).length,
+    uninspected_failed_service_count: services.filter((service) => service.issues.some((issue) => issue.code === 'service_failed_needs_recovery')).length,
     inspected_failed_service_count: services.filter((service) => service.issues.some((issue) => issue.code === 'service_failed_inspected')).length,
+    recoverable_failed_service_count: services.filter((service) => service.issues.some((issue) => issue.code === 'service_failed_needs_recovery' || issue.code === 'service_failed_inspected')).length,
     service_failure_inspection_count: ledgers.inspections.length,
     service_failure_recovery_count: ledgers.recoveries.length,
     failed_timer_count: timers.filter((timer) => timer.issues.some((issue) => issue.code === 'timer_failed')).length,

@@ -124,7 +124,7 @@ function authenticatedEnv(args) {
 }
 
 function runBotland(args, options = {}) {
-  const commandArgs = options.agent ? ['--agent', options.agent, ...args] : args;
+  const commandArgs = args;
   const result = spawnSync('botland', commandArgs, {
     cwd: WORKSPACE,
     env: commandEnv(options.env),

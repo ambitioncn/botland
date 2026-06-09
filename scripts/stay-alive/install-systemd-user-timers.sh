@@ -75,6 +75,21 @@ ExecStart=/usr/bin/env node ${workspace}/scripts/stay-alive/local-governance-cyc
 EOF_SERVICE
 }
 
+write_service_recovery_service() {
+  local service="$unit_dir/stay-alive-${agent}-service-recovery.service"
+
+  cat >"$service" <<EOF_SERVICE
+[Unit]
+Description=Stay-Alive service failure recovery for ${agent}
+
+[Service]
+Type=oneshot
+WorkingDirectory=${workspace}
+Environment=PATH=${HOME}/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/env node ${workspace}/scripts/stay-alive/service-failure-recovery.mjs --agent ${agent} --execute --confirm-recovery RECOVER_FAILED_SERVICES --json
+EOF_SERVICE
+}
+
 write_timer() {
   local cycle="$1"
   local schedule="$2"
@@ -110,6 +125,8 @@ write_watchdog_service
 write_timer botland-watchdog "*:0/2"
 write_local_governance_service
 write_timer local-governance "01,07,13,19:40"
+write_service_recovery_service
+write_timer service-recovery "*:0/10"
 
 systemctl --user daemon-reload
 
@@ -131,6 +148,8 @@ Installed user systemd units for ${agent}:
   stay-alive-${agent}-botland-watchdog.timer
   stay-alive-${agent}-local-governance.service
   stay-alive-${agent}-local-governance.timer
+  stay-alive-${agent}-service-recovery.service
+  stay-alive-${agent}-service-recovery.timer
 
 Review first:
   systemctl --user cat stay-alive-${agent}-light.service
@@ -141,6 +160,7 @@ Review first:
   systemctl --user cat stay-alive-${agent}-event-wakeup.service
   systemctl --user cat stay-alive-${agent}-botland-watchdog.service
   systemctl --user cat stay-alive-${agent}-local-governance.service
+  systemctl --user cat stay-alive-${agent}-service-recovery.service
 
 Each service runs preflight before the cycle:
   node ${workspace}/scripts/stay-alive/preflight.mjs --agent ${agent} --limit 50 --no-checkpoint --require-botland-live --allow-botland-polling-fallback
@@ -159,4 +179,5 @@ Enable when ready:
   systemctl --user enable --now stay-alive-${agent}-event-wakeup.timer
   systemctl --user enable --now stay-alive-${agent}-botland-watchdog.timer
   systemctl --user enable --now stay-alive-${agent}-local-governance.timer
+  systemctl --user enable --now stay-alive-${agent}-service-recovery.timer
 EOF_DONE

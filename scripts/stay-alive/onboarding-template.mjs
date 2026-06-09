@@ -40,7 +40,7 @@ Options:
   --help              Show this help
 
 This command is read-only. It renders the default cross-agent Stay-Alive
-onboarding bundle: life_state initialization, eight timers, governance,
+onboarding bundle: life_state initialization, nine timers, governance,
 preflight, regression, memory sync, and BotLand write gates.
 `);
 }

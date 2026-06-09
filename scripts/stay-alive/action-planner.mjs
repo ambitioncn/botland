@@ -544,6 +544,7 @@ function normalizeOutcomeForPlanning(outcome) {
   const growth = outcome?.growth_integration ?? {};
   const relationshipLearning = growth.relationship_learning_v1 ?? {};
   const desireEvolution = growth.desire_evolution_v1 ?? {};
+  const selfModelLearning = growth.self_model_learning_v1 ?? {};
   const quality = outcome?.action_quality_score ?? growth.action_quality_score ?? {};
   const interpretation = outcome?.observation?.feedback_interpretation ?? {};
   return {
@@ -558,6 +559,7 @@ function normalizeOutcomeForPlanning(outcome) {
     quality_overall: Number.isFinite(Number(quality.overall)) ? Number(quality.overall) : null,
     relationship_learning: relationshipLearning,
     desire_evolution: desireEvolution,
+    self_model_learning: selfModelLearning,
     recommended_next: growth.recommended_next ?? interpretation.recommended_next ?? null,
     improvement_hints: Array.isArray(quality.improvement_hints) ? quality.improvement_hints : []
   };
@@ -599,6 +601,7 @@ export function buildOutcomePlanningContext(outcomes = [], desires = [], generat
   const actionScores = {};
   const cooldowns = {};
   const desireFeedback = {};
+  const selfModelLearning = {};
   const surfaceItems = {};
 
   normalized.forEach((item) => {
@@ -618,6 +621,10 @@ export function buildOutcomePlanningContext(outcomes = [], desires = [], generat
             : change === 'pause_or_redirect' ? -22
               : 0;
       addScore(desireFeedback, desireId, delta);
+    }
+    const selfSignal = item.self_model_learning?.expression_signal;
+    if (selfSignal) {
+      addScore(selfModelLearning, selfSignal, 1);
     }
     const surface = item.surface;
     if (!surfaceItems[surface]) surfaceItems[surface] = [];
@@ -658,6 +665,16 @@ export function buildOutcomePlanningContext(outcomes = [], desires = [], generat
     outcome_cooldowns: Object.fromEntries(Object.entries(cooldowns).map(([key, value]) => [key, clampNumber(value, -24, 12)])),
     expression_policies: expressionPolicies,
     desire_feedback: desirePlanning,
+    self_model_learning: {
+      schema: 'stay_alive.self_model_learning_context.v1',
+      signal_counts: selfModelLearning,
+      evidence_count: normalized.filter((item) => item.self_model_learning?.schema === 'stay_alive.self_model_learning.v1').length,
+      latest_attention: normalized
+        .map((item) => item.self_model_learning?.suggested_self_model_attention)
+        .filter(Boolean)
+        .slice(0, 5),
+      direct_life_state_mutation: false
+    },
     evidence: normalized.slice(0, 12)
   };
 }

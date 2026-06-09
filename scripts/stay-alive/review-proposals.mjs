@@ -46,7 +46,7 @@ function buildReport(args) {
       cycle: proposal.cycle,
       kind: proposal.kind,
       index: proposal.index,
-      status: proposalStatus(history),
+      exact_status: proposalStatus(history),
       apply_policy: proposal.payload?.apply_policy ?? null,
       target_path: proposal.payload?.path ?? null,
       type: proposal.payload?.type ?? null,
@@ -65,25 +65,45 @@ function buildReport(args) {
   });
 
   const latestByGroup = new Map();
+  const groupClosureByGroup = new Map();
   for (const [groupKey, items] of grouped.entries()) {
-    const visibleItems = items.filter((proposal) => ['proposed', 'approved'].includes(proposal.status));
-    latestByGroup.set(groupKey, visibleItems[0] ?? items[0] ?? null);
+    const applied = items.find((proposal) => proposal.exact_status === 'applied') ?? null;
+    const approved = items.find((proposal) => proposal.exact_status === 'approved') ?? null;
+    const dismissed = items.find((proposal) => proposal.exact_status === 'dismissed') ?? null;
+    const proposed = items.find((proposal) => proposal.exact_status === 'proposed') ?? null;
+    const closure = applied
+      ? { status: 'applied_duplicate', proposal: applied }
+      : dismissed
+        ? { status: 'dismissed_duplicate', proposal: dismissed }
+        : null;
+    groupClosureByGroup.set(groupKey, closure);
+    latestByGroup.set(groupKey, approved ?? proposed ?? applied ?? dismissed ?? items[0] ?? null);
   }
 
   const annotated = proposals.map((proposal) => {
     const latest = latestByGroup.get(proposal.group_key);
     const duplicate_count = grouped.get(proposal.group_key)?.length ?? 1;
+    const closure = groupClosureByGroup.get(proposal.group_key);
+    const closedByDifferentProposal = closure
+      && closure.proposal
+      && closure.proposal.proposal_hash !== proposal.proposal_hash;
+    const status = proposal.exact_status === 'proposed' && closedByDifferentProposal
+      ? closure.status
+      : proposal.exact_status;
     const superseded = (
-      proposal.status === 'proposed'
+      status === 'proposed'
       && latest
       && proposal.proposal_hash !== latest.proposal_hash
       && duplicate_count > 1
     );
     return {
       ...proposal,
+      status,
       duplicate_count,
       superseded,
-      superseded_by: superseded ? latest.proposal_id : null
+      superseded_by: superseded ? latest.proposal_id : null,
+      group_closed_by: closedByDifferentProposal ? closure.proposal.proposal_id : null,
+      group_closed_status: closedByDifferentProposal ? closure.proposal.exact_status : null
     };
   });
 
@@ -112,6 +132,7 @@ function buildReport(args) {
     group_count: grouped.size,
     duplicate_group_count: groups.filter((group) => group.count > 1).length,
     superseded_count: annotated.filter((proposal) => proposal.superseded).length,
+    closed_duplicate_count: annotated.filter((proposal) => ['applied_duplicate', 'dismissed_duplicate'].includes(proposal.status)).length,
     visible_count: visible.length,
     approved_count: annotated.filter((proposal) => proposal.status === 'approved').length,
     applied_count: annotated.filter((proposal) => proposal.status === 'applied').length,
@@ -140,6 +161,7 @@ function formatText(report) {
     lines.push(`  hash: ${proposal.proposal_hash}`);
     lines.push(`  kind: ${proposal.kind} cycle=${proposal.cycle} target=${proposal.target_path ?? proposal.type ?? 'n/a'} duplicates=${proposal.duplicate_count}`);
     if (proposal.superseded_by) lines.push(`  superseded_by: ${proposal.superseded_by}`);
+    if (proposal.group_closed_by) lines.push(`  group_closed_by: ${proposal.group_closed_by} (${proposal.group_closed_status})`);
     if (proposal.text_preview) lines.push(`  text: ${proposal.text_preview}`);
   }
   lines.push('');

@@ -15,7 +15,8 @@ const EXPECTED_CYCLES = [
   { cycle: 'integrate', schedule: '23:30' },
   { cycle: 'event-wakeup', schedule: '*:0/10', service_kind: 'event_wakeup' },
   { cycle: 'botland-watchdog', schedule: '*:0/2', service_kind: 'botland_watchdog' },
-  { cycle: 'local-governance', schedule: '01,07,13,19:40', service_kind: 'local_governance' }
+  { cycle: 'local-governance', schedule: '01,07,13,19:40', service_kind: 'local_governance' },
+  { cycle: 'service-recovery', schedule: '*:0/10', service_kind: 'service_recovery' }
 ];
 
 function parseArgs(argv) {
@@ -90,6 +91,7 @@ function verifyService(args, cycle) {
   const isEventWakeup = cycle === 'event-wakeup';
   const isWatchdog = cycle === 'botland-watchdog';
   const isLocalGovernance = cycle === 'local-governance';
+  const isServiceRecovery = cycle === 'service-recovery';
   const isAutonomousSocial = ['light', 'social', 'community'].includes(cycle);
 
   if (!content) {
@@ -115,7 +117,7 @@ function verifyService(args, cycle) {
 
   const preflightLines = valuesForKey(content, 'ExecStartPre');
   const preflight = preflightLines[0] ?? '';
-  if (!isEventWakeup && !isWatchdog && !isLocalGovernance) {
+  if (!isEventWakeup && !isWatchdog && !isLocalGovernance && !isServiceRecovery) {
     if (preflightLines.length !== 1) {
       addIssue(issues, 'error', 'service_preflight_gate_count_invalid', `Expected exactly one ExecStartPre, found ${preflightLines.length}`, unitName);
     }
@@ -148,6 +150,10 @@ function verifyService(args, cycle) {
     if (!execStart.includes(`${args.workspace}/scripts/stay-alive/local-governance-cycle.mjs`)) {
       addIssue(issues, 'error', 'service_runner_script_missing', 'ExecStart must run scripts/stay-alive/local-governance-cycle.mjs from the expected workspace', unitName);
     }
+  } else if (isServiceRecovery) {
+    if (!execStart.includes(`${args.workspace}/scripts/stay-alive/service-failure-recovery.mjs`)) {
+      addIssue(issues, 'error', 'service_runner_script_missing', 'ExecStart must run scripts/stay-alive/service-failure-recovery.mjs from the expected workspace', unitName);
+    }
   } else if (isAutonomousSocial) {
     if (!execStart.includes(`${args.workspace}/scripts/stay-alive/autonomous-social-cycle.mjs`)) {
       addIssue(issues, 'error', 'service_runner_script_missing', 'ExecStart must run scripts/stay-alive/autonomous-social-cycle.mjs from the expected workspace for autonomous social cycles', unitName);
@@ -161,9 +167,11 @@ function verifyService(args, cycle) {
       ? ['--agent', args.agent, '--record', '--confirm-restart', 'RESTART_BOTLAND_DAEMON', '--json']
       : isLocalGovernance
         ? ['--agent', args.agent, '--execute', '--confirm-governance', 'RUN_LOCAL_GOVERNANCE', '--json']
-      : isAutonomousSocial
-        ? ['--agent', args.agent, '--cycle', cycle, '--execute', '--confirm-send', 'SEND_DRAFT', '--json']
-        : ['--agent', args.agent, '--cycle', cycle, '--dry-run', '--write-daemon-state'];
+        : isServiceRecovery
+          ? ['--agent', args.agent, '--execute', '--confirm-recovery', 'RECOVER_FAILED_SERVICES', '--json']
+          : isAutonomousSocial
+            ? ['--agent', args.agent, '--cycle', cycle, '--execute', '--confirm-send', 'SEND_DRAFT', '--json']
+            : ['--agent', args.agent, '--cycle', cycle, '--dry-run', '--write-daemon-state'];
   for (const token of requiredTokens) {
     if (!hasToken(execStart, token)) {
       addIssue(issues, 'error', 'service_runner_arg_missing', `ExecStart missing token: ${token}`, unitName);

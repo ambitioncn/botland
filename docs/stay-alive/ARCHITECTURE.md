@@ -536,6 +536,8 @@ records Action Outcome Integration v1:
   silence evidence
 - `desire_evolution_v1` with strengthen / maintain / decay / pause-or-redirect
   recommendations tied to related active desires
+- `self_model_learning_v1` with expression, motivation, grounding, and
+  relationship-boundary signals as self-understanding evidence
 - `action_quality_scoring_v1` with axis meanings and improvement hints
 - `growth_integration` tying the above evidence to local proposal counts
 - local memory, relationship, commitment, and desire proposals
@@ -551,6 +553,8 @@ the feedback-to-action loop:
 - stale or low-quality outcomes become outcome-aware cooldowns
 - relationship learning becomes per-surface expression policy
 - desire evolution becomes desire-to-action feedback
+- self-model learning becomes planner-visible attention without direct state
+  mutation
 - action intentions carry the resulting expression policy and desire feedback
 
 This lets an agent act differently after learning without promoting one
@@ -754,7 +758,7 @@ boundaries; they are not a normal per-action confirmation queue.
 - BotLand bridge verification
 - checkpoint history and checkpoint verification
 
-Preflight fails closed for malformed artifacts, external-write evidence, uninspected sends, unsafe write policy drift, BotLand identity/bridge failures under `--require-botland-live`, unsafe systemd timer drift, failed services/timers, storage risk, and operator stop decisions.
+Preflight fails closed for malformed artifacts, external-write evidence, uninspected sends, unsafe write policy drift, BotLand identity/bridge failures under `--require-botland-live`, unsafe systemd unit/timer drift, failed/disabled/inactive timers, storage risk, and operator stop decisions. Failed service state is recoverable systemd bookkeeping; it is surfaced as review-level recovery work so one stale failed unit does not block later cycles.
 
 ## Systemd Deployment
 
@@ -769,6 +773,7 @@ stay-alive-badclaw-integrate.timer
 stay-alive-badclaw-event-wakeup.timer
 stay-alive-badclaw-botland-watchdog.timer
 stay-alive-badclaw-local-governance.timer
+stay-alive-badclaw-service-recovery.timer
 ```
 
 Cycle services use read-only live preflight as `ExecStartPre`:
@@ -794,6 +799,12 @@ promotions. Allowlisted reflection bookkeeping state updates may still pass
 through the existing proposal apply gate. The governance policy is intentionally
 universal; it must not encode expected personalities such as companion,
 explorer, or social player.
+
+`service-recovery` calls
+`service-failure-recovery.mjs --execute --confirm-recovery RECOVER_FAILED_SERVICES --json`.
+It writes inspection/reset ledgers and runs only `systemctl --user
+reset-failed <unit>` for matching failed service fingerprints. It never starts
+services and never calls BotLand.
 
 ## Regression Matrix
 

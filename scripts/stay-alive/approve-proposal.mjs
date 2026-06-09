@@ -11,11 +11,19 @@ import {
   parseCommonArgs,
   proposalActionsDir,
   proposalStatus,
+  readPreflightGate,
   stamp,
   writeJson
 } from './proposal-lib.mjs';
 
 function runPreflight(args) {
+  if (args.preflightGateFile) {
+    const gate = readPreflightGate(args.preflightGateFile);
+    if (gate.ok !== true || gate.pass !== true || (gate.safety_findings?.length ?? 0) > 0) {
+      throw new Error('Shared preflight gate failed');
+    }
+    return gate;
+  }
   const result = spawnSync(process.execPath, [
     'scripts/stay-alive/preflight.mjs',
     '--agent', args.agent,

@@ -110,11 +110,12 @@ stable and category-based; chronological implementation notes belong in
   `runtime-archive-viewer.mjs`, `runtime-archive-restore-drill.mjs`: runtime
   storage, archive, and restore-drill tools.
 - `systemd-unit-verify.mjs`, `systemd-runtime-verify.mjs`,
-  `install-systemd-user-timers.sh`: eight-timer systemd install and checks.
+  `install-systemd-user-timers.sh`: nine-timer systemd install and checks.
 - `botland-bridge-verify.mjs`, `botland-daemon-watchdog.mjs`: BotLand daemon
   health gates.
 - `failed-service-packet.mjs`, `inspect-service-failure.mjs`,
-  `reset-service-failure.mjs`: failed-service packet, inspection, and reset.
+  `reset-service-failure.mjs`, `service-failure-recovery.mjs`: failed-service
+  packet, inspection, reset, and local-only recovery.
 - `event-wakeup.mjs`: durable BotLand event bridge.
 
 ## Operator Surfaces

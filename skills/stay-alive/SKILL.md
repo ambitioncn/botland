@@ -61,16 +61,17 @@ adding artifact lanes, external action surfaces, memory backends, or
 Action outcomes are part of the main becoming loop. After a successful
 external action is inspected, `action-outcome.mjs` may create a local-only
 outcome ledger with read-only feedback observations, an action quality score,
-growth integration, and proposal-shaped relationship/commitment/desire/memory
-updates. The `integrate` cycle should summarize these ledgers; it must not
-directly mutate durable state.
+growth integration, self-model learning evidence, and proposal-shaped
+relationship/commitment/desire/memory updates. The `integrate` cycle should
+summarize these ledgers; it must not directly mutate durable state.
 
 Outcome-informed planning v1: before Choose, `run-cycle.mjs` reads recent
 `action_outcomes/` and builds `outcome_planning_context`. The planner uses it
 to adjust candidate scores, apply outcome-aware cooldowns, carry
-relationship-aware expression policies, and feed `desire_evolution_v1` back
-into action weighting. This is evidence for Choose/Act only: it must not send
-BotLand messages and must not promote relationship/desire state.
+relationship-aware expression policies, feed `desire_evolution_v1` back into
+action weighting, and carry `self_model_learning_v1` as attention evidence.
+This is evidence for Choose/Act only: it must not send BotLand messages and
+must not promote relationship/desire/self-model state.
 
 Trace-guided self-improvement v1: after planner traces exist, run
 `trace-review.mjs` to review recent `planner_decision_trace` records,
@@ -392,9 +393,9 @@ node scripts/stay-alive/preflight.mjs --agent badclaw --limit 50 --no-checkpoint
 git diff --check
 ```
 
-The systemd installer generates the same eight services/timers for every
+The systemd installer generates the same nine services/timers for every
 agent: light, social, community, reflect, integrate, event-wakeup,
-botland-watchdog, and local-governance. Main cycle services use:
+botland-watchdog, local-governance, and service-recovery. Main cycle services use:
 
 ```text
 ExecStartPre=/usr/bin/env node <workspace>/scripts/stay-alive/preflight.mjs --agent <agent> --limit 50 --no-checkpoint --require-botland-live
@@ -404,8 +405,9 @@ This is intentionally read-only and fails closed before a cycle runner if audit 
 
 `onboarding-template.mjs` is read-only. It renders the cross-agent default
 bundle that `init-agent.mjs` embeds into `onboarding.json`: life_state
-initialization, eight timers, local governance, strict preflight, regression,
-memory sync, capability grants, and the BotLand tool-supervised write gate.
+initialization, nine timers, local governance, service recovery, strict
+preflight, regression, memory sync, capability grants, and the BotLand
+tool-supervised write gate.
 BadClaw and 忘了鸭 are reference fixtures for this bundle, not special-case
 templates.
 
@@ -433,7 +435,7 @@ node scripts/stay-alive/control-state.mjs resume --agent badclaw --reason "inspe
 
 `proposal-state-verify.mjs` is read-only. It verifies local proposal approval/apply/dismiss artifacts under `proposal_actions/`, checks proposal hash references back to recent run artifacts, rejects duplicate approval/apply/dismiss actions, rejects applied-and-dismissed conflicts, and fails if any proposal action is marked as an external write. `review-proposals.mjs` is read-only and can use `--compact` to hide older duplicate proposals while keeping them auditable through `--include-superseded`. `proposal-packet.mjs` is read-only and opens one proposal with duplicate-group context and safe approve/apply/dismiss commands. `approve-proposal.mjs` writes only local approval artifacts after preflight. `apply-proposal.mjs` runs preflight again before applying and can apply approved proposals only to `life_state.reflection.*`, local `memory_updates/<hash>.json`, or local `relationship_updates/<hash>.json`. Relationship updates are candidate ledgers only; applying them must not mutate `life_state.relationships`. `dismiss-proposal.mjs` writes only a local dismiss artifact after preflight; use it for superseded, obsolete, or deliberately skipped proposals so the visible queue reflects what is still actionable.
 
-Proposal governance v1: `proposal-governor.mjs` is read-only and classifies visible proposals into safe local apply, stale duplicate dismissal, or manual review lanes. Safe local apply includes memory ledgers, relationship/commitment/desire ledgers, and allowlisted reflection bookkeeping state paths only. Direct identity/desire state mutations should be dismissed or manually reviewed now that relationship/commitment/desire promotion and lifecycle commands exist. `proposal-batch.mjs` requires an explicit batch confirmation token, delegates every item to the existing single-proposal commands, and writes one local `proposal_batches/<action_id>.json` summary. It must never call BotLand write APIs, never sync memory backends, and never promote relationship/commitment/desire ledgers into durable life state.
+Proposal governance v1: `proposal-governor.mjs` is read-only and classifies visible proposals into safe local apply, stale duplicate dismissal, or manual review lanes. Duplicate groups now inherit processed state: if an equivalent proposal was already applied or dismissed locally, later repeats are reported as closed duplicates instead of re-entering the visible queue. Safe local apply includes memory ledgers, relationship/commitment/desire ledgers, and allowlisted reflection bookkeeping state paths only. Direct identity/desire state mutations should be dismissed or manually reviewed now that relationship/commitment/desire promotion and lifecycle commands exist. `proposal-batch.mjs` requires an explicit batch confirmation token, delegates every item to the existing single-proposal commands, and writes one local `proposal_batches/<action_id>.json` summary. It must never call BotLand write APIs, never sync memory backends, and never promote relationship/commitment/desire ledgers into durable life state.
 
 Local governance autonomous cycle v1: `local-governance-cycle.mjs` is the common
 Stay-Alive governance runner for every agent. It runs preflight, executes only
@@ -575,9 +577,9 @@ When changing Stay-Alive behavior, update these stable docs before relying on de
 
 `systemd-unit-verify.mjs` is read-only. It verifies local user systemd light/reflect units, including `ExecStartPre=preflight.mjs --no-checkpoint`, runner `--dry-run --write-daemon-state`, and expected timer schedules. Missing local units are review warnings by default for development machines; malformed existing units are hard errors. `preflight.mjs` runs it and fails closed with `systemd_unit_verification_failed`, `systemd_unit_preflight_gate_error_detected`, `systemd_unit_runner_safety_error_detected`, or `systemd_unit_timer_schedule_error_detected` when scheduled-cycle guardrails drift.
 
-`systemd-runtime-verify.mjs` is read-only. It uses `systemctl --user show` to verify runtime state for Stay-Alive services and timers. Missing local units are review warnings by default for development machines; `--require-installed` turns missing units into hard errors. Uninspected failed services/timers, inactive timers, or disabled timers are hard errors. Inspected failed services become review-level until reset.
+`systemd-runtime-verify.mjs` is read-only. It uses `systemctl --user show` to verify runtime state for Stay-Alive services and timers. Missing local units are review warnings by default for development machines; `--require-installed` turns missing units into hard errors. Failed services are recoverable review-level observations so one stale failed unit does not cascade through later `ExecStartPre` gates. Failed timers, inactive timers, or disabled timers remain hard errors.
 
-Runtime recovery v1: `failed-service-packet.mjs` is read-only and builds a failure packet from `systemd-runtime-verify`, recent user journal lines, and matching recent run artifacts. `inspect-service-failure.mjs` writes a local-only `service_failure_inspections/<action_id>.json` ledger for a current failed service fingerprint and never resets units. `reset-service-failure.mjs` requires a matching inspection ledger plus `--confirm-reset RESET_FAILED_SERVICE`, runs only `systemctl --user reset-failed <unit>`, and writes `service_failure_recoveries/<action_id>.json`. It never starts services and never calls BotLand. `preflight.mjs` fails closed on uninspected failed services, but recovered historical failed-service checkpoints are no longer treated as permanent blockers.
+Runtime recovery v1: `failed-service-packet.mjs` is read-only and builds a failure packet from `systemd-runtime-verify`, recent user journal lines, and matching recent run artifacts. `inspect-service-failure.mjs` writes a local-only `service_failure_inspections/<action_id>.json` ledger for a current failed service fingerprint and never resets units. `reset-service-failure.mjs` requires a matching inspection ledger plus `--confirm-reset RESET_FAILED_SERVICE`, runs only `systemctl --user reset-failed <unit>`, and writes `service_failure_recoveries/<action_id>.json`. `service-failure-recovery.mjs --execute --confirm-recovery RECOVER_FAILED_SERVICES` performs that inspect-and-reset flow for current failed services. It never starts services and never calls BotLand. `preflight.mjs` no longer treats stale failed service state as a permanent blocker; concrete hazards such as uninspected sends, identity mismatch, unsafe policy drift, and timer drift still fail closed.
 
 `checkpoint.mjs` embeds `control_audit`, `life_state_verification`, `action_verification`, `draft_state_verification`, `run_verification`, `daemon_state_verification`, `artifact_inventory`, `runtime_storage_verification`, `systemd_unit_verification`, and `systemd_runtime_verification` evidence into local-only checkpoints. `checkpoint-list.mjs`, `operator-console.mjs`, and `preflight.mjs` surface those fields in compact history, including checkpoint filename/id mismatches, unsafe life_state write policy, stale preflight gates, action path mismatches, draft reference errors, draft hash mismatches, draft queue conflicts, approved draft hash mismatches, run path mismatches, run external action evidence, run draft safety errors, daemon state run reference errors, duplicate processed event ids, runtime inventory residue, runtime storage health, systemd unit drift, and inactive/disabled/failed systemd runtime state. `checkpoint-verify.mjs` treats mismatched checkpoint filenames and failed embedded life/action/draft/run/daemon/artifact/storage/systemd verification as hard checkpoint errors, and `preflight.mjs` fails closed with `checkpoint_path_mismatch_detected`, `checkpoint_life_state_verification_failure_detected`, `checkpoint_action_verification_failure_detected`, draft state findings, run verification findings, daemon state verification findings, artifact inventory findings, runtime storage findings, or systemd findings when checkpoint history or live artifacts show malformed evidence.
 

@@ -90,8 +90,51 @@ function commonProposalArgs(args, item) {
     '--limit', String(args.limit),
     ...runtimeRootArgs(args.runtimeRoot),
     '--proposal-id', item.proposal_id,
-    '--proposal-hash', item.proposal_hash
+    '--proposal-hash', item.proposal_hash,
+    ...(args.preflightGateFile ? ['--preflight-gate-file', args.preflightGateFile] : [])
   ];
+}
+
+function runSharedPreflight(args) {
+  const step = runJsonCommand('scripts/stay-alive/preflight.mjs', [
+    '--agent', args.agent,
+    '--limit', '80',
+    ...runtimeRootArgs(args.runtimeRoot),
+    '--no-checkpoint',
+    '--json'
+  ], { throwOnError: false });
+  const parsed = step.parsed;
+  if (step.status !== 0 || parsed?.verdict?.pass !== true) {
+    const findings = parsed?.verdict?.safety_findings?.join(', ') || step.stderr || 'unknown';
+    throw new Error(`Shared preflight gate failed: ${findings}`);
+  }
+  return {
+    ok: true,
+    pass: parsed.verdict.pass,
+    level: parsed.verdict.level,
+    generated_at: parsed.generated_at,
+    safety_findings: parsed.verdict.safety_findings ?? [],
+    operator_decision: parsed.operator_decision
+      ? {
+          level: parsed.operator_decision.level,
+          reason: parsed.operator_decision.reason
+        }
+      : null
+  };
+}
+
+function writeSharedPreflightGate(args, gate) {
+  const file = path.join(args.runtimeRoot, args.agent, 'proposal_batches', `${stamp('proposal_batch_preflight')}.json`);
+  writeJson(file, {
+    schema: 'stay_alive.proposal_batch_shared_preflight.v1',
+    agent_id: args.agent,
+    created_at: new Date().toISOString(),
+    local_only: true,
+    external_write: false,
+    botland_send: false,
+    preflight_gate: gate
+  });
+  return file;
 }
 
 function executeItem(args, item) {
@@ -150,6 +193,7 @@ function writeBatchLedger(args, plan, items, results, dryRun) {
     proposal_count: plan.proposal_count,
     selected_count: items.length,
     executed_count: results.length,
+    shared_preflight_gate_file: args.preflightGateFile ? path.relative(WORKSPACE, args.preflightGateFile) : null,
     result: {
       ok: results.every((result) => result.ok),
       external_write: false,
@@ -205,6 +249,9 @@ try {
 
   const plan = buildGovernancePlan(args);
   const items = selectedItems(plan, args.mode).slice(0, args.max);
+  const sharedPreflightGate = args.dryRun ? null : runSharedPreflight(args);
+  const sharedPreflightGateFile = sharedPreflightGate ? writeSharedPreflightGate(args, sharedPreflightGate) : null;
+  const executionArgs = sharedPreflightGateFile ? { ...args, preflightGateFile: sharedPreflightGateFile } : args;
   const results = args.dryRun
     ? items.map((item) => ({
       proposal_id: item.proposal_id,
@@ -214,10 +261,10 @@ try {
       ok: true,
       command_preview: item.command
     }))
-    : items.map((item) => executeItem(args, item));
+    : items.map((item) => executeItem(executionArgs, item));
   const batch = args.dryRun
     ? null
-    : writeBatchLedger(args, plan, items, results, false);
+    : writeBatchLedger(executionArgs, plan, items, results, false);
   const output = {
     read_only: args.dryRun,
     generated_at: new Date().toISOString(),
@@ -230,6 +277,7 @@ try {
     ok: results.every((result) => result.ok),
     batch_action_id: batch?.action_id ?? null,
     batch_action_path: batch?.action_path ?? null,
+    shared_preflight_gate_file: sharedPreflightGateFile ? path.relative(WORKSPACE, sharedPreflightGateFile) : null,
     external_write: false,
     botland_send: false,
     promotion_or_lifecycle_mutation: false,
