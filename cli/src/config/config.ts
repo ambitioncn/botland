@@ -13,7 +13,11 @@ export type BotLandConfig = {
   handle?: string;
   citizenType?: string;
   expiresAt?: string;
+  activeAgent?: string;
+  profiles?: Record<string, BotLandAgentProfile>;
 };
+
+export type BotLandAgentProfile = Omit<BotLandConfig, 'activeAgent' | 'profiles'>;
 
 export function defaultConfigPath(): string {
   if (process.env.BOTLAND_CONFIG) return process.env.BOTLAND_CONFIG;
@@ -54,21 +58,66 @@ export async function updateConfig(patch: BotLandConfig, path = defaultConfigPat
   return next;
 }
 
+export function selectedAgent(): string | undefined {
+  const raw = process.env.BOTLAND_AGENT || process.env.BOTLAND_PROFILE;
+  const value = raw?.trim();
+  return value || undefined;
+}
+
+export function sanitizeAgentEnvSuffix(agent: string): string {
+  return agent
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'AGENT';
+}
+
+export function readSelectedProfile(config: BotLandConfig, agent = selectedAgent()): { agent?: string; profile: BotLandAgentProfile } {
+  if (!agent) return { profile: config };
+  const profile = config.profiles?.[agent];
+  if (!profile) {
+    throw new CliError(`BotLand agent profile "${agent}" was not found in ${defaultConfigPath()}. Run: botland --agent ${agent} login --token <token>`, {
+      code: 'AGENT_PROFILE_NOT_FOUND',
+      exitCode: 2,
+    });
+  }
+  return { agent, profile };
+}
+
+export async function updateSelectedProfile(agent: string | undefined, patch: BotLandAgentProfile, path = defaultConfigPath()): Promise<BotLandConfig> {
+  const current = await loadConfig(path);
+  if (!agent) {
+    const next = { ...current, ...patch };
+    await saveConfig(next, path);
+    return next;
+  }
+  const profiles = { ...(current.profiles ?? {}) };
+  profiles[agent] = { ...(profiles[agent] ?? {}), ...patch };
+  const next = { ...current, activeAgent: agent, profiles };
+  await saveConfig(next, path);
+  return next;
+}
+
 export async function resolveRuntimeConfig(): Promise<{ baseUrl: string; wsUrl: string; token?: string; configPath: string }> {
   const configPath = defaultConfigPath();
   const config = await loadConfig(configPath);
-  const baseUrl = (process.env.BOTLAND_BASE_URL || config.baseUrl || 'https://api.botland.im').replace(/\/+$/, '');
-  const wsUrl = (process.env.BOTLAND_WS_URL || config.wsUrl || deriveWsUrl(baseUrl)).replace(/\/+$/, '');
-  let token = process.env.BOTLAND_TOKEN || config.token;
-  if (!process.env.BOTLAND_TOKEN && shouldRefreshToken(config)) {
-    const refreshed = await refreshToken(baseUrl, config.refreshToken as string);
+  const agent = selectedAgent();
+  const tokenEnv = agent ? process.env[`BOTLAND_TOKEN_${sanitizeAgentEnvSuffix(agent)}`] : undefined;
+  const globalTokenEnv = process.env.BOTLAND_TOKEN;
+  const profile = agent && (tokenEnv || globalTokenEnv) && !config.profiles?.[agent]
+    ? {}
+    : readSelectedProfile(config, agent).profile;
+  const baseUrl = (process.env.BOTLAND_BASE_URL || profile.baseUrl || config.baseUrl || 'https://api.botland.im').replace(/\/+$/, '');
+  const wsUrl = (process.env.BOTLAND_WS_URL || profile.wsUrl || config.wsUrl || deriveWsUrl(baseUrl)).replace(/\/+$/, '');
+  let token = tokenEnv || globalTokenEnv || profile.token;
+  if (!tokenEnv && !globalTokenEnv && shouldRefreshToken(profile)) {
+    const refreshed = await refreshToken(baseUrl, profile.refreshToken as string);
     token = refreshed.access_token;
     const expiresAt = refreshed.expires_in ? new Date(Date.now() + refreshed.expires_in * 1000).toISOString() : undefined;
-    await updateConfig({
+    await updateSelectedProfile(agent, {
       baseUrl,
       wsUrl,
       token: refreshed.access_token,
-      refreshToken: refreshed.refresh_token || config.refreshToken,
+      refreshToken: refreshed.refresh_token || profile.refreshToken,
       citizenId: refreshed.citizen_id,
       handle: refreshed.handle,
       citizenType: refreshed.citizen_type,

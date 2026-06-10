@@ -10,7 +10,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test:smoke": "npm run build && node test/daemon-smoke.mjs && node test/m2-daemon-smoke.mjs && node test/m3-stdio-smoke.mjs && node test/m3-exec-smoke.mjs && node test/m4-mcp-smoke.mjs && node test/m8-mcp-http-smoke.mjs && node test/setup-init-doctor-smoke.mjs && node test/whoami-smoke.mjs && node test/login-smoke.mjs && node test/logout-smoke.mjs && node test/friends-smoke.mjs && node test/profile-discover-smoke.mjs && node test/groups-messages-media-smoke.mjs && node test/events-communities-smoke.mjs && node test/p2-auth-push-playground-smoke.mjs && node test/reports-smoke.mjs && node test/inbox-smoke.mjs && node test/inbox-watch-smoke.mjs && node test/presence-smoke.mjs && node test/send-smoke.mjs && node test/webhooks-smoke.mjs && node test/e2e-bridge-smoke.mjs",
+    "test:smoke": "npm run build && node test/daemon-smoke.mjs && node test/m2-daemon-smoke.mjs && node test/m3-stdio-smoke.mjs && node test/m3-exec-smoke.mjs && node test/m4-mcp-smoke.mjs && node test/m8-mcp-http-smoke.mjs && node test/setup-init-doctor-smoke.mjs && node test/whoami-smoke.mjs && node test/login-smoke.mjs && node test/logout-smoke.mjs && node test/multi-agent-smoke.mjs && node test/friends-smoke.mjs && node test/profile-discover-smoke.mjs && node test/groups-messages-media-smoke.mjs && node test/events-communities-smoke.mjs && node test/p2-auth-push-playground-smoke.mjs && node test/reports-smoke.mjs && node test/inbox-smoke.mjs && node test/inbox-watch-smoke.mjs && node test/presence-smoke.mjs && node test/send-smoke.mjs && node test/webhooks-smoke.mjs && node test/e2e-bridge-smoke.mjs",
     "prepack": "npm run build"
   },
   "engines": {
