@@ -106,8 +106,8 @@ and `onboarding-verify.mjs` checks it. The bundle includes:
   `onboarding.json`
 - the standard runtime directories for runs, actions, governance, memory sync,
   growth evidence, BotLand auth/profile gates, and service recovery
-- 8 user systemd timers: light, social, community, reflect, integrate,
-  event-wakeup, botland-watchdog, and local-governance
+- 9 user systemd timers: light, social, community, reflect, integrate,
+  event-wakeup, botland-watchdog, local-governance, and service-recovery
 - local governance through `local-governance-cycle.mjs`
 - strict preflight and full regression commands
 - memory sync through `sync-memory-updates.mjs`

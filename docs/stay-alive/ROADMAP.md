@@ -149,9 +149,9 @@ Status: shipped.
 - onboarding verifier
 - preflight integration
 - no BadClaw history copying
-- cross-agent default bundle with life_state initialization, 8 timers, local
-  governance, strict preflight, regression, memory sync, capability grants, and
-  BotLand tool-supervised write gate
+- cross-agent default bundle with life_state initialization, 9 timers, local
+  governance, service recovery, strict preflight, regression, memory sync,
+  capability grants, and BotLand tool-supervised write gate
 - BadClaw, 忘了鸭, and 小潮 are validation fixtures for the bundle, not special
   implementation branches
 
@@ -213,15 +213,14 @@ BadClaw is running the most complete reference deployment. The expected steady s
 - successful sends locally inspected
 - regression default and live read-only matrix pass before claiming deploy complete
 
-As of the latest validation on 2026-06-08:
+As of the latest validation on 2026-06-10:
 
-- 忘了鸭 default regression: 205/205 pass
-- BadClaw default regression: 205/205 pass
-- 忘了鸭 strict live preflight: pass true / level ok, 8 services + 8 timers
-- BadClaw local preflight: pass true / level ok; systemd is a local review
-  warning when BadClaw units are not installed on the current machine
+- Stay-Alive release regression matrix: 210/210 pass
+- 忘了鸭 strict live preflight: pass true / level ok, 9 services + 9 timers
+- BadClaw strict live preflight: pass true / level ok, 9 services + 9 timers
+- tongjincheng strict live preflight: pass true / level ok, 9 services + 9 timers
 - BadClaw / 忘了鸭 / 小潮 onboarding verify: pass true / level ok, template
-  timer bundle 8/8
+  timer bundle 9/9
 - life-state mutation protocol: pass true / level ok for 忘了鸭 and BadClaw,
   daily human confirmation false
 - external action count in this validation block: 0
@@ -260,7 +259,7 @@ Completed work:
 - sanitized migration from BadClaw values/boundaries without copying relationships, commitments, desires, runs, actions, proposals, events, checkpoints, or write history
 - strict onboarding preflight added via `preflight.mjs --strict-onboarding`
 - `onboarding-template.mjs` renders the generic default bundle for any agent id
-- `init-agent.mjs` embeds that bundle into `onboarding.json`, and `onboarding-verify.mjs` checks that it includes life_state initialization, 8 timers, governance, preflight, regression, memory sync, capability grants, and the BotLand write gate
+- `init-agent.mjs` embeds that bundle into `onboarding.json`, and `onboarding-verify.mjs` checks that it includes life_state initialization, 9 timers, governance, service recovery, preflight, regression, memory sync, capability grants, and the BotLand write gate
 - local no-Botland `reflect` and `integrate` cycles passed
 - live read-only social probe passed with BotLand identity match, 5 friends, 12 timeline moments, and 0 external actions
 - validation-generated public moment draft was locally dismissed; pending/approved/visible drafts are 0
