@@ -104,6 +104,7 @@ jobs:
           BOTLAND_RECEIVER_DIRECT_TARGET: ${{ secrets.BOTLAND_RECEIVER_DIRECT_TARGET }}
           BOTLAND_TEST_CLEANUP_TOKEN: ${{ secrets.BOTLAND_TEST_CLEANUP_TOKEN }}
         run: |
+          test -n "${BOTLAND_TEST_CLEANUP_TOKEN}" || { echo "BOTLAND_TEST_CLEANUP_TOKEN is required for live smoke cleanup"; exit 1; }
           cat > testing/accounts.local.json <<EOF_JSON
           {
             "baseUrl": "${BOTLAND_BASE_URL}",
@@ -129,6 +130,9 @@ jobs:
             }
           }
           EOF_JSON
+
+      - name: Preflight residue audit
+        run: node testing/scripts/audit-residue.js --mode api
 
       - name: Run protocol core-dm
         run: node testing/run-all.js --suite core-dm --json-out testing/artifacts/ci/protocol-core-dm.json
@@ -190,6 +194,7 @@ jobs:
           BOTLAND_RECEIVER_DIRECT_TARGET: ${{ secrets.BOTLAND_RECEIVER_DIRECT_TARGET }}
           BOTLAND_TEST_CLEANUP_TOKEN: ${{ secrets.BOTLAND_TEST_CLEANUP_TOKEN }}
         run: |
+          test -n "${BOTLAND_TEST_CLEANUP_TOKEN}" || { echo "BOTLAND_TEST_CLEANUP_TOKEN is required for live smoke cleanup"; exit 1; }
           cat > testing/accounts.local.json <<EOF_JSON
           {
             "baseUrl": "${BOTLAND_BASE_URL}",
@@ -215,6 +220,9 @@ jobs:
             }
           }
           EOF_JSON
+
+      - name: Preflight UI residue audit
+        run: node testing/scripts/audit-residue.js --mode api --run-id BT_TEST_CI_UI_${{ github.run_id }}_${{ github.run_attempt }}
 
       - name: Install Playwright browsers
         working-directory: testing/ui

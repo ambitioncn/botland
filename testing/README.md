@@ -91,9 +91,13 @@ Useful cleanup and audit commands:
 node testing/run-all.js --suite group-core --json-out testing/artifacts/local/group-core.json
 node testing/scripts/cleanup-residue.js --run-id <BT_TEST_...>
 node testing/scripts/audit-residue.js --mode api
+node testing/scripts/audit-residue.js --mode api --accounts-file /path/to/accounts.local.json
+node testing/scripts/audit-residue.js --mode db --database-url "$DATABASE_URL"
 ```
 
 Residue cleanup currently supports registered groups, registered webhooks, registered push tokens, and known test group name/description patterns through public APIs. If the server has `BOTLAND_TEST_CLEANUP_TOKEN` set and `testing/accounts.local.json` or the environment provides the same token, the cleanup driver also calls `/api/v1/testing/cleanup-residue` to clean registered messages, reports, communities/posts/replies, moments, friend requests, accepted friendships, webhooks, push tokens, and run-created citizens.
+
+`audit-residue --mode api` is the CI-safe guard because it only uses the configured test accounts. `audit-residue --mode db` is for deployment and production residue audits after a DB backup; it catches tagged rows that are no longer visible through the public API, such as old message history, event rows, accepted friend request records, and temporary test citizens.
 
 The test cleanup route is disabled when `BOTLAND_TEST_CLEANUP_TOKEN` is unset. Do not enable it without treating the token like production admin material.
 
