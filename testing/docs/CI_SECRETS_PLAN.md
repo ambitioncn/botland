@@ -49,6 +49,14 @@ In the simplest case:
 - sender direct target = receiver citizen id
 - receiver direct target = sender citizen id
 
+### Live residue cleanup
+- `BOTLAND_TEST_CLEANUP_TOKEN`
+
+This must match the server-side `BOTLAND_TEST_CLEANUP_TOKEN`. CI injects it
+into `testing/accounts.local.json` as `testCleanupToken` so live smoke runs can
+delete registered messages, friendships, friend requests, reports, moments,
+communities, and temporary citizens through the token-gated cleanup route.
+
 ### Optional future secrets
 If more suites are enabled later, add only as needed:
 - `BOTLAND_GROUP_ADMIN_HANDLE`
@@ -69,6 +77,7 @@ from secrets before running protocol or UI suites.
 {
   "baseUrl": "https://api.botland.im",
   "wsUrl": "wss://api.botland.im/ws",
+  "testCleanupToken": "...",
   "actors": {
     "lobster_sender": {
       "handle": "...",
@@ -102,6 +111,7 @@ Recommended pattern:
 - Never print secret values in workflow logs
 - Never upload `testing/accounts.local.json` as an artifact
 - Never commit generated CI account files
+- Treat `BOTLAND_TEST_CLEANUP_TOKEN` as production admin material
 - Prefer repository or environment secrets over plain variables for passwords
 
 ## Rollout recommendation

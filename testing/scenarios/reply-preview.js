@@ -37,8 +37,9 @@ const { loadAccounts, login, connectWS, waitForOpen, send } = require('../driver
       }
     };
     result.details.payload = payload;
-    send(ws, { type: 'message.send', id: `replypreview_${Date.now()}`, to: target, payload });
-    result.details.sent = true;
+    const msgId = `replypreview_${Date.now()}`;
+    send(ws, { type: 'message.send', id: msgId, to: target, payload });
+    result.details.sent = { id: msgId, text: payload.text };
     setTimeout(() => {
       result.ok = !errored;
       result.details.errorReceived = errored;

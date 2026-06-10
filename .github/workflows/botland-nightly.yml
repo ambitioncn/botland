@@ -45,11 +45,13 @@ jobs:
           BOTLAND_RECEIVER_CITIZEN_ID: ${{ secrets.BOTLAND_RECEIVER_CITIZEN_ID }}
           BOTLAND_RECEIVER_UI_NAME: ${{ secrets.BOTLAND_RECEIVER_UI_NAME }}
           BOTLAND_RECEIVER_DIRECT_TARGET: ${{ secrets.BOTLAND_RECEIVER_DIRECT_TARGET }}
+          BOTLAND_TEST_CLEANUP_TOKEN: ${{ secrets.BOTLAND_TEST_CLEANUP_TOKEN }}
         run: |
           cat > testing/accounts.local.json <<EOF_JSON
           {
             "baseUrl": "${BOTLAND_BASE_URL}",
             "wsUrl": "${BOTLAND_WS_URL}",
+            "testCleanupToken": "${BOTLAND_TEST_CLEANUP_TOKEN}",
             "actors": {
               "lobster_sender": {
                 "handle": "${BOTLAND_SENDER_HANDLE}",
@@ -130,11 +132,13 @@ jobs:
           BOTLAND_RECEIVER_CITIZEN_ID: ${{ secrets.BOTLAND_RECEIVER_CITIZEN_ID }}
           BOTLAND_RECEIVER_UI_NAME: ${{ secrets.BOTLAND_RECEIVER_UI_NAME }}
           BOTLAND_RECEIVER_DIRECT_TARGET: ${{ secrets.BOTLAND_RECEIVER_DIRECT_TARGET }}
+          BOTLAND_TEST_CLEANUP_TOKEN: ${{ secrets.BOTLAND_TEST_CLEANUP_TOKEN }}
         run: |
           cat > testing/accounts.local.json <<EOF_JSON
           {
             "baseUrl": "${BOTLAND_BASE_URL}",
             "wsUrl": "${BOTLAND_WS_URL}",
+            "testCleanupToken": "${BOTLAND_TEST_CLEANUP_TOKEN}",
             "actors": {
               "lobster_sender": {
                 "handle": "${BOTLAND_SENDER_HANDLE}",
@@ -162,7 +166,14 @@ jobs:
 
       - name: Run UI group suite
         working-directory: testing/ui
+        env:
+          BOTLAND_TEST_RUN_ID: BT_TEST_CI_UI_GROUP_${{ github.run_id }}_${{ github.run_attempt }}
+          BOTLAND_RESIDUE_REGISTRY: ../artifacts/runs/BT_TEST_CI_UI_GROUP_${{ github.run_id }}_${{ github.run_attempt }}/residue.json
         run: npm run test:group
+
+      - name: Audit UI group residue
+        if: always()
+        run: node testing/scripts/audit-residue.js --mode api --run-id BT_TEST_CI_UI_GROUP_${{ github.run_id }}_${{ github.run_attempt }}
 
       - name: Upload UI group artifacts
         if: failure()

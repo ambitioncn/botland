@@ -1,8 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { loadAccounts } from '../helpers/accounts';
 import { loginBotLand } from '../helpers/login';
-import { spawn } from 'child_process';
-import path from 'path';
+import { runJsonScenario } from '../helpers/residue';
 
 test('typing indicator appears in chat UI', async ({ page }) => {
   const consoleLines: string[] = [];
@@ -41,16 +40,7 @@ test('typing indicator appears in chat UI', async ({ page }) => {
   await expect(page.getByPlaceholder('输入消息...')).toBeVisible({ timeout: 10000 });
   await page.waitForTimeout(2000);
 
-  const scenarioPath = path.resolve(process.cwd(), '../scenarios/typing-basic.js');
-  await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [scenarioPath], { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'] });
-    let stderr = '';
-    child.stderr.on('data', d => { stderr += d.toString(); });
-    child.on('close', (code) => {
-      if (code === 0) resolve(null);
-      else reject(new Error(`typing-basic failed: ${stderr || code}`));
-    });
-  });
+  await runJsonScenario('typing-basic.js');
 
   await expect.poll(() => {
     return consoleLines.some(line => line.includes('[ws-raw]') && line.includes('\"type\":\"typing.start\"'));

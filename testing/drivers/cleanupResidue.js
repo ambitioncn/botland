@@ -120,6 +120,10 @@ function adminCleanupObjects(objects) {
   return (objects || []).filter((obj) => obj?.type && obj?.id && supported.has(obj.type));
 }
 
+function requiresTestSupportRoute(obj) {
+  return !['group', 'webhook', 'push_token'].includes(obj.type);
+}
+
 async function cleanupWithTestSupportRoute(cfg, registry, token) {
   const objects = adminCleanupObjects(registry.objects);
   if (objects.length === 0) return null;
@@ -162,6 +166,8 @@ async function cleanupResidue({ runId, registryPath, includePatternGroups = true
     patternGroupCleanup: null,
   };
   const adminCleaned = new Set();
+  const adminObjects = adminCleanupObjects(registry.objects);
+  const routeRequiredObjects = adminObjects.filter(requiresTestSupportRoute);
 
   const token = cleanupToken(cfg);
   if (token) {
@@ -176,10 +182,19 @@ async function cleanupResidue({ runId, registryPath, includePatternGroups = true
       }
     } catch (err) {
       const status = err && typeof err === 'object' ? err.status : undefined;
-      if (status !== 404) {
+      if (status === 404 && routeRequiredObjects.length === 0) {
+        // The server may intentionally disable the test cleanup route for
+        // suites that only need public cleanup APIs.
+      } else {
         summary.errors.push({ type: 'test_cleanup_route', action: 'cleanup', error: err instanceof Error ? err.message : String(err) });
       }
     }
+  } else if (routeRequiredObjects.length > 0) {
+    summary.errors.push({
+      type: 'test_cleanup_route',
+      action: 'cleanup',
+      error: `BOTLAND_TEST_CLEANUP_TOKEN is required to clean ${routeRequiredObjects.length} registered object(s)`,
+    });
   }
 
   for (const obj of registry.objects) {

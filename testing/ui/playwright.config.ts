@@ -2,6 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './specs',
+  globalTeardown: './global-teardown.js',
   // CI seeds groups through the live API before opening the UI. Production
   // rate-limit retries can legitimately make setup exceed Playwright's
   // 30s default even when the UI behavior is healthy.

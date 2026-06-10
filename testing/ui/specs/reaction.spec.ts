@@ -1,8 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { loadAccounts } from '../helpers/accounts';
 import { loginBotLand } from '../helpers/login';
-import { spawn } from 'child_process';
-import path from 'path';
+import { registerResidueObject, runJsonScenario } from '../helpers/residue';
 
 test('reaction chip appears on a visible message in chat UI', async ({ page }) => {
   const cfg = loadAccounts();
@@ -38,17 +37,15 @@ test('reaction chip appears on a visible message in chat UI', async ({ page }) =
   });
 
   if (!msgId) throw new Error('could not extract message id from rendered message');
-
-  const scenarioPath = path.resolve(process.cwd(), '../scenarios/inject-reaction.js');
-  await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [scenarioPath, msgId], { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'] });
-    let stderr = '';
-    child.stderr.on('data', d => { stderr += d.toString(); });
-    child.on('close', (code) => {
-      if (code === 0) resolve(null);
-      else reject(new Error(`inject-reaction failed: ${stderr || code}`));
-    });
+  registerResidueObject({
+    type: 'message',
+    id: msgId,
+    text: seedText,
+    source: 'reaction.spec.ts',
+    cleanup_policy: 'test_support_route',
   });
+
+  await runJsonScenario('inject-reaction.js', [msgId]);
 
   await expect(page.getByText('❤️ 1', { exact: false })).toBeVisible({ timeout: 10000 });
 });

@@ -1,37 +1,13 @@
 import { test, expect } from '@playwright/test';
 import { loadAccounts } from '../helpers/accounts';
 import { loginBotLand } from '../helpers/login';
-import { spawn } from 'child_process';
-import path from 'path';
+import { runJsonScenario } from '../helpers/residue';
 
 test('group mention text appears in group chat UI', async ({ page }) => {
   const cfg = loadAccounts();
   const viewer = cfg.actors.lobster_receiver;
 
-  const scenarioPath = path.resolve(process.cwd(), '../scenarios/group-mention-seed.js');
-  const seed = await new Promise<any>((resolve, reject) => {
-    const child = spawn(process.execPath, [scenarioPath], { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '';
-    let stderr = '';
-    let resolved = false;
-
-    child.stdout.on('data', d => {
-      stdout += d.toString();
-      try {
-        const parsed = JSON.parse(stdout.trim().split(/\n(?=\{)/).pop() || '{}');
-        if (!resolved && parsed?.details?.groupName && parsed?.details?.messageText && parsed?.details?.mentionDisplay) {
-          resolved = true;
-          resolve(parsed);
-        }
-      } catch {}
-    });
-    child.stderr.on('data', d => { stderr += d.toString(); });
-    child.on('close', (code) => {
-      if (!resolved) {
-        reject(new Error(`group-mention-seed failed before yielding usable details: ${stderr || code}`));
-      }
-    });
-  });
+  const seed = await runJsonScenario('group-mention-seed.js');
 
   const groupName = seed?.details?.groupName;
   const mentionDisplay = seed?.details?.mentionDisplay;

@@ -81,7 +81,7 @@ Related files:
 
 - [ ] UI tests are intentionally single-worker due to shared live accounts
 - [ ] Protocol suites use serialized execution + spacing to avoid auth rate limits
-- [ ] Shared live environment may produce residual data unless cleanup is added
+- [ ] Shared live environment requires `BOTLAND_TEST_CLEANUP_TOKEN`; registered residue cleanup must fail closed when it is missing
 - [ ] Workflow files are still drafts until above items are validated
 
 ## 10. Recommended first real enablement
