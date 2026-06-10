@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -151,7 +152,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'active')`,
 		citizenID, citizenType, req.Handle, req.DisplayName,
 		nilStr(req.AvatarURL), nilStr(req.Bio), nilStr(req.Species),
-		req.PersonalityTags, nilStr(req.Framework), req.Capabilities, servicesJSON,
+		pq.Array(req.PersonalityTags), nilStr(req.Framework), pq.Array(req.Capabilities), servicesJSON,
 	)
 	if err != nil {
 		if strings.Contains(err.Error(), "unique") || strings.Contains(err.Error(), "duplicate") {
