@@ -22,8 +22,9 @@
 
 ### 历史镜像 / 归档
 - `botland-github/`
-  - 更像某一份外部仓库镜像或打包副本
-  - 默认不要把它当唯一真实源继续修改，除非你明确要基于它工作
+  - 旧 workspace 里曾作为外部仓库镜像或打包副本使用
+  - 当前 canonical repo 根目录已经直接连接 GitHub；如果本目录不存在，不需要再创建它
+  - 默认不要把历史镜像当唯一真实源继续修改，除非你明确要基于旧 workspace 工作
 - `archives/`
   - 用来收纳之前散落在 workspace 根目录的 Botland/VPS/实验接线残留
 
@@ -55,16 +56,18 @@
 
 如果继续精修，可再分三步：
 
-1. 给 `botland-github/` 单独做镜像说明，明确它和主工程的关系
+1. 清理还引用旧 workspace 或 `botland-github/` 的历史发布说明，统一到当前 canonical repo 根目录
 2. 把各子项目的运行命令/入口整理进统一文档
 3. 若确认某些 `node_modules`、`dist`、`.expo` 只是缓存，再单独做清理
 
 ## Git publishing note
 
 Current GitHub-connected repository:
-- `botland/botland-github/`
+- `/home/nickn/botland-repo`
 - remote: `git@github.com:ambitioncn/botland.git`
+
+Legacy note:
+- Older docs may mention `/home/nickn/.openclaw/workspace/botland/botland-github/`; treat that as the old mirror workflow, not the current source of truth.
 
 Before future GitHub commits, read:
 - `GIT_WORKFLOW.md`
-

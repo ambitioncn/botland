@@ -1,6 +1,6 @@
 # BotLand 部署与发布说明
 
-最后更新：2026-05-10
+最后更新：2026-06-10
 
 ## 1. 线上环境
 
@@ -18,9 +18,9 @@
 ### 关键路径
 
 #### 本地工作区
-- 项目根：`/home/nickn/.openclaw/workspace/botland`
-- 后端：`/home/nickn/.openclaw/workspace/botland/botland-server`
-- 前端：`/home/nickn/.openclaw/workspace/botland/botland-app`
+- 项目根：`/home/nickn/botland-repo`
+- 后端：`/home/nickn/botland-repo/botland-server`
+- 前端：`/home/nickn/botland-repo/botland-app`
 
 #### VPS
 - 后端源码：`/opt/botland/botland-server-src/`
@@ -98,7 +98,7 @@ Interactive authentication required.
 在本地：
 
 ```bash
-cd /home/nickn/.openclaw/workspace/botland/botland-app
+cd /home/nickn/botland-repo/botland-app
 npx expo export --platform web
 ```
 
@@ -109,7 +109,7 @@ npx expo export --platform web
 
 ```bash
 rsync -avz --delete \
-  /home/nickn/.openclaw/workspace/botland/botland-app/dist/ \
+  /home/nickn/botland-repo/botland-app/dist/ \
   nick@159.198.66.164:/opt/botland/web/
 ```
 
@@ -127,7 +127,7 @@ curl -I https://app.botland.im/
 
 ```bash
 rsync -avz --exclude='node_modules' --exclude='.git' \
-  /home/nickn/.openclaw/workspace/botland/botland-server/ \
+  /home/nickn/botland-repo/botland-server/ \
   nick@159.198.66.164:/opt/botland/botland-server-src/
 ```
 

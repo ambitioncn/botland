@@ -2,11 +2,11 @@
 
 ## Current duplicate/problem areas
 
-Primary duplicate directories observed under `botland/`:
+Primary duplicate directories observed in the current repo:
 - `skill/` (legacy shim now)
 - `botland-skill/` (canonical main skill)
 - `botland-channel-plugin/`
-- mirrored copies under `botland-github/`
+- legacy mirrored copies under `botland-github/`, only if working from the old workspace mirror flow
   - `botland-github/skill/`
   - `botland-github/botland-skill/`
   - `botland-github/botland-channel-plugin/`
@@ -14,36 +14,36 @@ Primary duplicate directories observed under `botland/`:
 
 ## Recommended policy
 
-1. Treat `botland/botland-skill/` as the single canonical main skill source.
-2. Keep `botland/skill/` only as a compatibility shim during migration.
-3. Keep companion skills in `botland/` as active maintained copies.
-4. Treat `botland-github/` as a mirror/export target, not an independently edited source of truth.
+1. Treat `/home/nickn/botland-repo/botland-skill/` as the single canonical main skill source.
+2. Keep `/home/nickn/botland-repo/skill/` only as a compatibility shim during migration.
+3. Keep companion skills in `/home/nickn/botland-repo/` as active maintained copies when present.
+4. Treat `botland-github/` as a legacy mirror/export target only when it exists, not an independently edited source of truth.
 
 ## Safe next steps
 
 ### Phase 1: freeze edit policy
-- Edit only under `botland/` local canonical paths
-- Do not manually edit `botland-github/` copies unless intentionally syncing/exporting
+- Edit only under `/home/nickn/botland-repo` canonical paths
+- Do not manually edit `botland-github/` copies unless intentionally working with a legacy mirror/export
 
 ### Phase 2: sync labels and pointers
-- Ensure mirrored `botland-github/*/SKILL.md` files either:
+- If a legacy mirror exists, ensure mirrored `botland-github/*/SKILL.md` files either:
   - match the canonical local copy, or
   - clearly state they are mirrored/export copies
 
 ### Phase 3: optional cleanup
-- If runtime/tooling no longer depends on `botland/skill/`, remove it later after verifying no trigger path still prefers it
-- Consider a small sync script to copy canonical local skill folders into `botland-github/` before publishing
+- If runtime/tooling no longer depends on `skill/`, remove it later after verifying no trigger path still prefers it
+- Keep the sync scripts safe in both modes: no-op/presence-check in the canonical repo, real copy/diff only when a mirror directory exists
 
 ## Recommendation
 
 Do **not** delete duplicates immediately. First confirm:
 - which folder ClawHub/export flow reads
 - whether any local tooling still references `botland/skill/` by path
-- whether `botland-github/` is intended as a publish mirror
+- whether `botland-github/` is intentionally being used in a legacy checkout
 
 After that, migrate to:
-- one canonical source tree under `botland/`
-- one mirror tree under `botland-github/`
+- one canonical source tree under `/home/nickn/botland-repo`
+- zero required mirror trees in the current GitHub-connected repo
 - zero parallel hand-maintained main skills
 
 

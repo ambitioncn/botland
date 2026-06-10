@@ -21,18 +21,18 @@ BotLand 有三个发布目标，每次发版时按需选择：
 先判断这次改了什么：
 
 - **只改前端 App / 后端 Go / 文档** → 只需推 GitHub
-- **改了 channel plugin（`botland/botland-channel-plugin/`）** → GitHub + npm
-- **改了 agent skill（`botland/botland-skill/`）** → GitHub + ClawHub
+- **改了 channel plugin（`botland-channel-plugin/`）** → GitHub + npm
+- **改了 agent skill（`botland-skill/`）** → GitHub + ClawHub
 - **都改了** → 三个都发
 
 ---
 
 ## 1. GitHub 发布
 
-### 1.1 同步工作区到 GitHub 镜像
+### 1.1 校验 GitHub 工作树
 
-⚠️ 注意：GitHub 仓库不是外层 workspace 的 git 仓库，而是独立的 `botland-github/` 子目录。
-另外，`botland/` 才是本地主工程 source of truth；不要把 workspace 根目录里的历史副本路径当成 canonical。
+当前 GitHub-connected repo 是 `/home/nickn/botland-repo` 本身；不要再把旧 workspace 里的 `botland-github/` 当当前发布源。
+旧 mirror 流程只在明确回到 `/home/nickn/.openclaw/workspace/botland` 历史副本工作时使用。
 
 如果本次包含 skill / channel plugin / 发布文档变更，先优先运行：
 
@@ -41,47 +41,26 @@ bash scripts/sync-skills-to-github-mirror.sh
 bash scripts/check-skill-mirror-diff.sh
 ```
 
-当前这两个脚本会覆盖并校验以下 canonical 文件：
+当前这两个脚本会：
+- 在 canonical repo 没有 `botland-github/` 时安全 no-op，并校验 canonical 文件存在
+- 在旧 mirror 目录存在时覆盖并校验以下 canonical 文件：
 - `botland-skill/` 主技能与 references
 - `skill/SKILL.md` compatibility shim
 - `botland-channel-plugin/` 的 `SKILL.md`、`index.js`、`README.md`、`package.json`、`openclaw.plugin.json`、`setup-entry.js`
 - `docs/RELEASE_CHECKLIST.md`
 
 ```bash
-cd /home/nickn/.openclaw/workspace/botland
+cd /home/nickn/botland-repo
 
-# 同步前端（排除 node_modules、dist、bak）
-rsync -av --delete \
-  --exclude='node_modules' --exclude='dist' --exclude='*.bak*' --exclude='.expo' \
-  botland-app/ botland-github/botland-app/
-
-# 同步后端（排除 bin、bak）
-rsync -av --delete \
-  --exclude='*.bak*' --exclude='bin/' \
-  botland-server/ botland-github/botland-server/
-
-# 同步文档
-rsync -av --delete docs/ botland-github/docs/
-
-# 同步顶层文档
-cp API.md botland-github/API.md
-cp DEVLOG.md botland-github/DEVLOG.md
-
-# 同步 plugin 和 skill（canonical 路径）
-rsync -av --delete --exclude='node_modules' \
-  botland-channel-plugin/ botland-github/botland-channel-plugin/
-rsync -av --delete \
-  botland-skill/ botland-github/botland-skill/
-
-# 同步 website
-rsync -av --delete \
-  botland-website/ botland-github/botland-website/
+bash scripts/sync-skills-to-github-mirror.sh
+bash scripts/check-skill-mirror-diff.sh
+git status --short
 ```
 
 ### 1.2 提交并推送
 
 ```bash
-cd botland-github
+cd /home/nickn/botland-repo
 git add -A
 git diff --cached --stat   # 确认改动范围
 git commit -m "feat: <本次改动摘要>"
@@ -100,7 +79,7 @@ git push origin main
 
 ### 2.1 确认需要发布
 
-只有 `botland/botland-channel-plugin/` 目录内容有改动时才需要发。
+只有 `botland-channel-plugin/` 目录内容有改动时才需要发。
 
 ```bash
 # 对比当前本地 vs npm 上已发布版本
@@ -113,13 +92,13 @@ npm view openclaw-botland-plugin version
 
 ```
 botland-channel-plugin/package.json
-botland-github/botland-channel-plugin/package.json
+legacy mirror copy only if `botland-github/` exists
 ```
 
 ### 2.3 发布
 
 ```bash
-cd /home/nickn/.openclaw/workspace/botland/botland-channel-plugin
+cd /home/nickn/botland-repo/botland-channel-plugin
 npm publish
 ```
 
@@ -148,7 +127,7 @@ npm view openclaw-botland-plugin version
 
 ### 3.1 确认需要发布
 
-只有 `botland/botland-skill/SKILL.md` 或其子目录内容有改动时才需要发。
+只有 `botland-skill/SKILL.md` 或其子目录内容有改动时才需要发。
 
 ### 3.2 Bump 版本
 
@@ -165,13 +144,13 @@ description: <更新后的描述>
 同步修改：
 ```
 botland-skill/SKILL.md
-botland-github/botland-skill/SKILL.md
+legacy mirror copy only if `botland-github/` exists
 ```
 
 ### 3.3 发布
 
 ```bash
-clawhub publish /home/nickn/.openclaw/workspace/botland/botland-skill \
+clawhub publish /home/nickn/botland-repo/botland-skill \
   --version <X.Y.Z> \
   --changelog "本次改动摘要"
 ```
@@ -192,7 +171,7 @@ clawhub publish /home/nickn/.openclaw/workspace/botland/botland-skill \
 
 **最稳命令模板：**
 ```bash
-clawhub publish /home/nickn/.openclaw/workspace/botland/botland-skill \
+clawhub publish /home/nickn/botland-repo/botland-skill \
   --version <X.Y.Z> \
   --changelog "<说明>"
 ```
@@ -207,7 +186,7 @@ clawhub publish /home/nickn/.openclaw/workspace/botland/botland-skill \
 |------|------|
 | npm plugin | `botland-channel-plugin/package.json` |
 | ClawHub skill | `botland-skill/SKILL.md` frontmatter |
-| GitHub 镜像 | 上述对应的 `botland-github/` 副本 |
+| GitHub repo | `/home/nickn/botland-repo` |
 
 Bump 规则：
 - 功能更新 → minor（0.8.0 → 0.9.0）
@@ -223,9 +202,8 @@ Bump 规则：
 □ 更新 DEVLOG.md
 □ 更新 API.md（如有新接口）
 □ Bump 版本号（所有需要发布的目标同步 bump）
-□ bash scripts/sync-skills-to-github-mirror.sh
+□ bash scripts/sync-skills-to-github-mirror.sh（当前 canonical repo 会 no-op；旧 mirror 存在时才同步）
 □ bash scripts/check-skill-mirror-diff.sh
-□ rsync 工作区 → botland-github/
 □ git add -A && git diff --cached --stat（检查）
 □ git commit && git push
 □ npm pack --dry-run（检查打包内容，无 .bak 等垃圾）
@@ -244,18 +222,17 @@ Bump 规则：
 
 ```bash
 # 一键同步 + 提交 GitHub
-cd /home/nickn/.openclaw/workspace/botland
+cd /home/nickn/botland-repo
 bash scripts/sync-skills-to-github-mirror.sh
 bash scripts/check-skill-mirror-diff.sh
-# ... (rsync commands from 1.1) ...
-cd botland-github && git add -A && git commit -m "..." && git push origin main
+git add -A && git commit -m "..." && git push origin main
 
 # 发 npm
-cd /home/nickn/.openclaw/workspace/botland/botland-channel-plugin
+cd /home/nickn/botland-repo/botland-channel-plugin
 npm pack --dry-run   # 先检查
 npm publish
 
 # 发 ClawHub
-clawhub publish /home/nickn/.openclaw/workspace/botland/botland-skill \
+clawhub publish /home/nickn/botland-repo/botland-skill \
   --version X.Y.Z --changelog "..."
 ```
