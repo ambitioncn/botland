@@ -3,14 +3,15 @@ package group
 import (
 	"database/sql"
 
-	"github.com/go-chi/chi/v5"
 	"encoding/json"
+	"github.com/go-chi/chi/v5"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/nicknnn/botland-server/internal/auth"
+	"github.com/nicknnn/botland-server/internal/i18n"
 	"github.com/nicknnn/botland-server/internal/ws"
 	"github.com/nicknnn/botland-server/pkg/protocol"
 )
@@ -28,6 +29,7 @@ func NewHandler(db *sql.DB, hub *ws.Hub, logger *slog.Logger) *Handler {
 // CreateGroup POST /groups
 func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 	citizenID := r.Context().Value("citizen_id").(string)
+	lang := i18n.FromRequest(r)
 
 	var req CreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -111,19 +113,19 @@ func (h *Handler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 
 	msgID := h.storeSystemMessage(groupID, map[string]interface{}{
 		"content_type": "system",
-		"event": "group_created",
-		"text": ownerName + " 创建了群聊「" + req.Name + "」",
-		"actor_id": citizenID,
-		"actor_name": ownerName,
-		"group_name": req.Name,
+		"event":        "group_created",
+		"text":         i18n.GroupSystemText(lang, "group_created", ownerName, "", req.Name, false),
+		"actor_id":     citizenID,
+		"actor_name":   ownerName,
+		"group_name":   req.Name,
 	})
 	h.broadcastSystemMessage(groupID, msgID, map[string]interface{}{
 		"content_type": "system",
-		"event": "group_created",
-		"text": ownerName + " 创建了群聊「" + req.Name + "」",
-		"actor_id": citizenID,
-		"actor_name": ownerName,
-		"group_name": req.Name,
+		"event":        "group_created",
+		"text":         i18n.GroupSystemText(lang, "group_created", ownerName, "", req.Name, false),
+		"actor_id":     citizenID,
+		"actor_name":   ownerName,
+		"group_name":   req.Name,
 	})
 
 	// Return created group
@@ -255,6 +257,7 @@ func (h *Handler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) InviteMembers(w http.ResponseWriter, r *http.Request) {
 	citizenID := r.Context().Value("citizen_id").(string)
 	groupID := chi.URLParam(r, "groupID")
+	lang := i18n.FromRequest(r)
 
 	if !h.isMember(groupID, citizenID) {
 		writeJSON(w, http.StatusForbidden, ErrorResponse{Error: "not a member"})
@@ -304,23 +307,23 @@ func (h *Handler) InviteMembers(w http.ResponseWriter, r *http.Request) {
 		targetName := h.getCitizenName(cid)
 		msgID := h.storeSystemMessage(groupID, map[string]interface{}{
 			"content_type": "system",
-			"event": "member_joined",
-			"text": targetName + " 加入了群聊",
-			"actor_id": citizenID,
-			"actor_name": actorName,
-			"target_id": cid,
-			"target_name": targetName,
-			"group_name": groupName,
+			"event":        "member_joined",
+			"text":         i18n.GroupSystemText(lang, "member_joined", actorName, targetName, groupName, false),
+			"actor_id":     citizenID,
+			"actor_name":   actorName,
+			"target_id":    cid,
+			"target_name":  targetName,
+			"group_name":   groupName,
 		})
 		h.broadcastSystemMessage(groupID, msgID, map[string]interface{}{
 			"content_type": "system",
-			"event": "member_joined",
-			"text": targetName + " 加入了群聊",
-			"actor_id": citizenID,
-			"actor_name": actorName,
-			"target_id": cid,
-			"target_name": targetName,
-			"group_name": groupName,
+			"event":        "member_joined",
+			"text":         i18n.GroupSystemText(lang, "member_joined", actorName, targetName, groupName, false),
+			"actor_id":     citizenID,
+			"actor_name":   actorName,
+			"target_id":    cid,
+			"target_name":  targetName,
+			"group_name":   groupName,
 		})
 		// Notify the new member
 		h.hub.Send(cid, &protocol.Envelope{
@@ -357,6 +360,7 @@ func (h *Handler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	citizenID := r.Context().Value("citizen_id").(string)
 	groupID := chi.URLParam(r, "groupID")
 	targetID := chi.URLParam(r, "citizenID")
+	lang := i18n.FromRequest(r)
 
 	role := h.getMemberRole(groupID, citizenID)
 	if role != "owner" && role != "admin" {
@@ -383,21 +387,21 @@ func (h *Handler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	h.db.Exec(`DELETE FROM group_members WHERE group_id=$1 AND citizen_id=$2`, groupID, targetID)
 	msgID := h.storeSystemMessage(groupID, map[string]interface{}{
 		"content_type": "system",
-		"event": "member_removed",
-		"text": targetName + " 被移出了群聊",
-		"actor_id": citizenID,
-		"actor_name": actorName,
-		"target_id": targetID,
-		"target_name": targetName,
+		"event":        "member_removed",
+		"text":         i18n.GroupSystemText(lang, "member_removed", actorName, targetName, "", false),
+		"actor_id":     citizenID,
+		"actor_name":   actorName,
+		"target_id":    targetID,
+		"target_name":  targetName,
 	})
 	h.broadcastSystemMessage(groupID, msgID, map[string]interface{}{
 		"content_type": "system",
-		"event": "member_removed",
-		"text": targetName + " 被移出了群聊",
-		"actor_id": citizenID,
-		"actor_name": actorName,
-		"target_id": targetID,
-		"target_name": targetName,
+		"event":        "member_removed",
+		"text":         i18n.GroupSystemText(lang, "member_removed", actorName, targetName, "", false),
+		"actor_id":     citizenID,
+		"actor_name":   actorName,
+		"target_id":    targetID,
+		"target_name":  targetName,
 	})
 
 	h.broadcastToGroup(groupID, "", &protocol.Envelope{
@@ -418,6 +422,7 @@ func (h *Handler) UpdateMemberRole(w http.ResponseWriter, r *http.Request) {
 	citizenID := r.Context().Value("citizen_id").(string)
 	groupID := chi.URLParam(r, "groupID")
 	targetID := chi.URLParam(r, "citizenID")
+	lang := i18n.FromRequest(r)
 
 	if h.getMemberRole(groupID, citizenID) != "owner" {
 		writeJSON(w, http.StatusForbidden, ErrorResponse{Error: "only owner can manage admins"})
@@ -428,7 +433,9 @@ func (h *Handler) UpdateMemberRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct { Role string `json:"role"` }
+	var req struct {
+		Role string `json:"role"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
 		return
@@ -449,29 +456,28 @@ func (h *Handler) UpdateMemberRole(w http.ResponseWriter, r *http.Request) {
 
 	actorName := h.getCitizenName(citizenID)
 	targetName := h.getCitizenName(targetID)
-	actionText := targetName + " 被设为管理员"
 	event := "member_promoted"
 	if req.Role == "member" {
-		actionText = targetName + " 被取消管理员"
 		event = "member_demoted"
 	}
+	actionText := i18n.GroupSystemText(lang, event, actorName, targetName, "", false)
 	msgID := h.storeSystemMessage(groupID, map[string]interface{}{
 		"content_type": "system",
-		"event": event,
-		"text": actionText,
-		"actor_id": citizenID,
-		"actor_name": actorName,
-		"target_id": targetID,
-		"target_name": targetName,
+		"event":        event,
+		"text":         actionText,
+		"actor_id":     citizenID,
+		"actor_name":   actorName,
+		"target_id":    targetID,
+		"target_name":  targetName,
 	})
 	h.broadcastSystemMessage(groupID, msgID, map[string]interface{}{
 		"content_type": "system",
-		"event": event,
-		"text": actionText,
-		"actor_id": citizenID,
-		"actor_name": actorName,
-		"target_id": targetID,
-		"target_name": targetName,
+		"event":        event,
+		"text":         actionText,
+		"actor_id":     citizenID,
+		"actor_name":   actorName,
+		"target_id":    targetID,
+		"target_name":  targetName,
 	})
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
@@ -481,6 +487,7 @@ func (h *Handler) UpdateMemberRole(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) LeaveGroup(w http.ResponseWriter, r *http.Request) {
 	citizenID := r.Context().Value("citizen_id").(string)
 	groupID := chi.URLParam(r, "groupID")
+	lang := i18n.FromRequest(r)
 
 	role := h.getMemberRole(groupID, citizenID)
 	if role == "owner" {
@@ -496,17 +503,17 @@ func (h *Handler) LeaveGroup(w http.ResponseWriter, r *http.Request) {
 	h.db.Exec(`DELETE FROM group_members WHERE group_id=$1 AND citizen_id=$2`, groupID, citizenID)
 	msgID := h.storeSystemMessage(groupID, map[string]interface{}{
 		"content_type": "system",
-		"event": "member_left",
-		"text": actorName + " 退出了群聊",
-		"actor_id": citizenID,
-		"actor_name": actorName,
+		"event":        "member_left",
+		"text":         i18n.GroupSystemText(lang, "member_left", actorName, "", "", false),
+		"actor_id":     citizenID,
+		"actor_name":   actorName,
 	})
 	h.broadcastSystemMessage(groupID, msgID, map[string]interface{}{
 		"content_type": "system",
-		"event": "member_left",
-		"text": actorName + " 退出了群聊",
-		"actor_id": citizenID,
-		"actor_name": actorName,
+		"event":        "member_left",
+		"text":         i18n.GroupSystemText(lang, "member_left", actorName, "", "", false),
+		"actor_id":     citizenID,
+		"actor_name":   actorName,
 	})
 
 	h.broadcastToGroup(groupID, "", &protocol.Envelope{
@@ -526,6 +533,7 @@ func (h *Handler) LeaveGroup(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) DisbandGroup(w http.ResponseWriter, r *http.Request) {
 	citizenID := r.Context().Value("citizen_id").(string)
 	groupID := chi.URLParam(r, "groupID")
+	lang := i18n.FromRequest(r)
 
 	role := h.getMemberRole(groupID, citizenID)
 	if role != "owner" {
@@ -537,19 +545,19 @@ func (h *Handler) DisbandGroup(w http.ResponseWriter, r *http.Request) {
 	groupName := h.getGroupName(groupID)
 	msgID := h.storeSystemMessage(groupID, map[string]interface{}{
 		"content_type": "system",
-		"event": "group_disbanded",
-		"text": actorName + " 解散了群聊「" + groupName + "」",
-		"actor_id": citizenID,
-		"actor_name": actorName,
-		"group_name": groupName,
+		"event":        "group_disbanded",
+		"text":         i18n.GroupSystemText(lang, "group_disbanded", actorName, "", groupName, false),
+		"actor_id":     citizenID,
+		"actor_name":   actorName,
+		"group_name":   groupName,
 	})
 	h.broadcastSystemMessage(groupID, msgID, map[string]interface{}{
 		"content_type": "system",
-		"event": "group_disbanded",
-		"text": actorName + " 解散了群聊「" + groupName + "」",
-		"actor_id": citizenID,
-		"actor_name": actorName,
-		"group_name": groupName,
+		"event":        "group_disbanded",
+		"text":         i18n.GroupSystemText(lang, "group_disbanded", actorName, "", groupName, false),
+		"actor_id":     citizenID,
+		"actor_name":   actorName,
+		"group_name":   groupName,
 	})
 
 	h.broadcastToGroup(groupID, "", &protocol.Envelope{
@@ -571,11 +579,14 @@ func (h *Handler) DisbandGroup(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) TransferOwnership(w http.ResponseWriter, r *http.Request) {
 	citizenID := r.Context().Value("citizen_id").(string)
 	groupID := chi.URLParam(r, "groupID")
+	lang := i18n.FromRequest(r)
 	if h.getMemberRole(groupID, citizenID) != "owner" {
 		writeJSON(w, http.StatusForbidden, ErrorResponse{Error: "only owner can transfer"})
 		return
 	}
-	var req struct { CitizenID string `json:"citizen_id"` }
+	var req struct {
+		CitizenID string `json:"citizen_id"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.CitizenID == "" {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
 		return
@@ -589,33 +600,38 @@ func (h *Handler) TransferOwnership(w http.ResponseWriter, r *http.Request) {
 	_, _ = h.db.Exec(`UPDATE group_members SET role='owner' WHERE group_id=$1 AND citizen_id=$2`, groupID, req.CitizenID)
 	actorName := h.getCitizenName(citizenID)
 	targetName := h.getCitizenName(req.CitizenID)
-	msgID := h.storeSystemMessage(groupID, map[string]interface{}{"content_type":"system","event":"owner_transferred","text":actorName + " 将群主转让给了 " + targetName,"actor_id":citizenID,"actor_name":actorName,"target_id":req.CitizenID,"target_name":targetName})
-	h.broadcastSystemMessage(groupID, msgID, map[string]interface{}{"content_type":"system","event":"owner_transferred","text":actorName + " 将群主转让给了 " + targetName,"actor_id":citizenID,"actor_name":actorName,"target_id":req.CitizenID,"target_name":targetName})
-	writeJSON(w, http.StatusOK, map[string]string{"status":"updated"})
+	msgID := h.storeSystemMessage(groupID, map[string]interface{}{"content_type": "system", "event": "owner_transferred", "text": i18n.GroupSystemText(lang, "owner_transferred", actorName, targetName, "", false), "actor_id": citizenID, "actor_name": actorName, "target_id": req.CitizenID, "target_name": targetName})
+	h.broadcastSystemMessage(groupID, msgID, map[string]interface{}{"content_type": "system", "event": "owner_transferred", "text": i18n.GroupSystemText(lang, "owner_transferred", actorName, targetName, "", false), "actor_id": citizenID, "actor_name": actorName, "target_id": req.CitizenID, "target_name": targetName})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
 
 // ToggleMuteAll POST /groups/:id/mute-all
 func (h *Handler) ToggleMuteAll(w http.ResponseWriter, r *http.Request) {
 	citizenID := r.Context().Value("citizen_id").(string)
 	groupID := chi.URLParam(r, "groupID")
+	lang := i18n.FromRequest(r)
 	role := h.getMemberRole(groupID, citizenID)
 	if role != "owner" && role != "admin" {
 		writeJSON(w, http.StatusForbidden, ErrorResponse{Error: "permission denied"})
 		return
 	}
-	var req struct { Muted bool `json:"muted"` }
+	var req struct {
+		Muted bool `json:"muted"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
 		return
 	}
 	_, _ = h.db.Exec(`UPDATE groups SET muted_all=$1, updated_at=NOW() WHERE id=$2`, req.Muted, groupID)
 	actorName := h.getCitizenName(citizenID)
-	text := actorName + " 开启了全员禁言"
 	event := "mute_all_enabled"
-	if !req.Muted { text = actorName + " 关闭了全员禁言"; event = "mute_all_disabled" }
-	msgID := h.storeSystemMessage(groupID, map[string]interface{}{"content_type":"system","event":event,"text":text,"actor_id":citizenID,"actor_name":actorName})
-	h.broadcastSystemMessage(groupID, msgID, map[string]interface{}{"content_type":"system","event":event,"text":text,"actor_id":citizenID,"actor_name":actorName})
-	writeJSON(w, http.StatusOK, map[string]string{"status":"updated"})
+	if !req.Muted {
+		event = "mute_all_disabled"
+	}
+	text := i18n.GroupSystemText(lang, "mute_all", actorName, "", "", req.Muted)
+	msgID := h.storeSystemMessage(groupID, map[string]interface{}{"content_type": "system", "event": event, "text": text, "actor_id": citizenID, "actor_name": actorName})
+	h.broadcastSystemMessage(groupID, msgID, map[string]interface{}{"content_type": "system", "event": event, "text": text, "actor_id": citizenID, "actor_name": actorName})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
 
 // GetMessages GET /groups/:id/messages?before=&limit=
@@ -801,7 +817,6 @@ func (h *Handler) broadcastToGroup(groupID, excludeID string, env *protocol.Enve
 	}
 }
 
-
 func (h *Handler) storeSystemMessage(groupID string, payload map[string]interface{}) string {
 	msgID := "msg_" + auth.NewULID()
 	payloadBytes, _ := json.Marshal(payload)
@@ -818,11 +833,11 @@ func (h *Handler) storeSystemMessage(groupID string, payload map[string]interfac
 
 func (h *Handler) broadcastSystemMessage(groupID, msgID string, payload map[string]interface{}) {
 	h.broadcastToGroup(groupID, "", &protocol.Envelope{
-		Type:      protocol.TypeGroupMessageReceived,
-		ID:        msgID,
-		From:      "system",
-		To:        groupID,
-		Payload:   payload,
+		Type:    protocol.TypeGroupMessageReceived,
+		ID:      msgID,
+		From:    "system",
+		To:      groupID,
+		Payload: payload,
 	})
 }
 
@@ -831,9 +846,6 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
 }
-
-
-
 
 func (h *Handler) IsMutedAll(groupID string) bool {
 	var muted bool

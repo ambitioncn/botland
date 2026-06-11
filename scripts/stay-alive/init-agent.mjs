@@ -2,7 +2,7 @@
 
 import path from 'node:path';
 import process from 'node:process';
-import { initializeAgentRuntime } from './onboarding-lib.mjs';
+import { initializeAgentRuntime, normalizeLanguage } from './onboarding-lib.mjs';
 
 const WORKSPACE = process.cwd();
 
@@ -15,6 +15,7 @@ function parseArgs(argv) {
     voice: null,
     lifeTheme: null,
     ownerName: '杨宁',
+    language: 'en',
     runtimeRoot: path.join(WORKSPACE, 'runtime', 'stay-alive', 'agents'),
     force: false,
     format: 'text'
@@ -29,6 +30,7 @@ function parseArgs(argv) {
     else if (arg === '--voice') args.voice = argv[++i];
     else if (arg === '--life-theme') args.lifeTheme = argv[++i];
     else if (arg === '--owner-name') args.ownerName = argv[++i];
+    else if (arg === '--language' || arg === '--locale') args.language = normalizeLanguage(argv[++i]);
     else if (arg === '--runtime-root') args.runtimeRoot = path.resolve(argv[++i]);
     else if (arg === '--force') args.force = true;
     else if (arg === '--json') args.format = 'json';
@@ -54,6 +56,7 @@ Options:
   --voice <text>         Initial self-model voice.
   --life-theme <text>    Initial life theme.
   --owner-name <name>    Owner relationship display name. Default: 杨宁
+  --language <en|zh>     Agent communication language. Default: en
   --runtime-root <dir>   Runtime agents directory.
   --force                Overwrite existing core runtime files after review.
   --json                 Print JSON instead of text.
@@ -94,6 +97,7 @@ try {
     voice: args.voice,
     lifeTheme: args.lifeTheme,
     ownerName: args.ownerName,
+    language: args.language,
     force: args.force
   });
   const report = {

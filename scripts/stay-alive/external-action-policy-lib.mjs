@@ -53,8 +53,7 @@ function containsSensitiveTopic(text) {
 
 function containsInternalDraftLeak(text) {
   const value = String(text ?? '');
-  return /\b(stay-alive|self-authored|read-only context|outward action|operator-reviewed|tool supervision|run-cycle|life_state|preflight)\b/i.test(value)
-    || /\b[A-Za-z]{4,}(?:\s+[A-Za-z]{3,}){3,}\b/.test(value);
+  return /\b(stay-alive|self-authored|read-only context|outward action|operator-reviewed|tool supervision|run-cycle|life_state|preflight)\b/i.test(value);
 }
 
 function parseTime(value) {

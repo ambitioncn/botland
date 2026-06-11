@@ -24,7 +24,7 @@ export type AuthOptions = {
 
 export async function runAuth(options: AuthOptions): Promise<void> {
   const runtime = await resolveRuntimeConfig();
-  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token: runtime.token });
+  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token: runtime.token, language: runtime.language });
   const subcommand = options.subcommand || 'challenge';
 
   if (subcommand === 'challenge' || subcommand === 'challenge-start') {

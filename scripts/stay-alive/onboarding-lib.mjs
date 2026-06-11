@@ -163,6 +163,13 @@ export function safeAgentCitizenId(value) {
   return id;
 }
 
+export function normalizeLanguage(raw) {
+  const value = String(raw ?? '').trim().toLowerCase().replace(/_/g, '-');
+  if (!value) return 'en';
+  if (value === 'zh' || value.startsWith('zh-') || value === 'chinese') return 'zh';
+  return 'en';
+}
+
 export function defaultWritePolicy() {
   return {
     writes_enabled: true,
@@ -204,11 +211,12 @@ export function defaultRateLimits() {
   };
 }
 
-export function defaultSelfModel({ displayName, identity = null, voice = null } = {}) {
+export function defaultSelfModel({ displayName, identity = null, voice = null, language = 'en' } = {}) {
+  const lang = normalizeLanguage(language);
   return {
     name: displayName,
     identity: identity ?? 'BotLand-aware agent with an open-ended self-model seeded by initial facts, not by a prescribed growth destination.',
-    voice: voice ?? 'clear, bounded, context-aware',
+    voice: voice ?? (lang === 'zh' ? 'clear, bounded, context-aware Chinese' : 'clear, bounded, context-aware English'),
     growth_policy: {
       preset_growth_target: false,
       direction_source: 'emerges_from_memory_reflection_relationships_world_evidence_and_action_feedback',
@@ -238,8 +246,10 @@ export function buildLifeState({
   voice = null,
   lifeTheme = null,
   ownerName = '杨宁',
+  language = 'en',
   now = new Date().toISOString()
 }) {
+  const lang = normalizeLanguage(language);
   return {
     schema_version: 1,
     agent_id: safeAgentId(agentId),
@@ -249,7 +259,13 @@ export function buildLifeState({
       display_name: displayName,
       integration: 'cli_daemon_bridge'
     },
-    self_model: defaultSelfModel({ displayName, identity, voice }),
+    communication: {
+      language: lang,
+      locale: lang,
+      default_language: 'en',
+      language_source: 'stay_alive_onboarding'
+    },
+    self_model: defaultSelfModel({ displayName, identity, voice, language: lang }),
     life_theme: lifeTheme ?? 'Open-ended becoming: use memory, relationships, world evidence, action feedback, and reflection to discover what this agent is becoming without a preset destination.',
     current_desires: [
       {
@@ -329,6 +345,7 @@ export function buildOnboardingManifest({
   displayName,
   sourceAgentId = null,
   mode = 'init',
+  language = 'en',
   now = new Date().toISOString()
 }) {
   return {
@@ -337,6 +354,8 @@ export function buildOnboardingManifest({
     botland_citizen_id: safeAgentCitizenId(citizenId),
     display_name: displayName,
     mode,
+    language: normalizeLanguage(language),
+    default_language: 'en',
     source_agent_id: sourceAgentId,
     created_at: now,
     status: 'initialized',
@@ -365,6 +384,7 @@ export function initializeAgentRuntime({
   voice = null,
   lifeTheme = null,
   ownerName = '杨宁',
+  language = 'en',
   force = false,
   sourceAgentId = null,
   mode = 'init',
@@ -390,6 +410,7 @@ export function initializeAgentRuntime({
     voice,
     lifeTheme,
     ownerName,
+    language,
     now
   });
   const daemonState = buildDaemonState({ agentId: safeId, now });
@@ -400,6 +421,7 @@ export function initializeAgentRuntime({
     displayName,
     sourceAgentId,
     mode,
+    language,
     now
   });
 
@@ -430,6 +452,7 @@ export function migrateLifeStateFromSource({
   voice = null,
   lifeTheme = null,
   ownerName = '杨宁',
+  language = 'en',
   now = new Date().toISOString()
 }) {
   const base = buildLifeState({
@@ -440,6 +463,7 @@ export function migrateLifeStateFromSource({
     voice,
     lifeTheme,
     ownerName,
+    language,
     now
   });
   const sourceValues = Array.isArray(sourceLifeState?.self_model?.values)

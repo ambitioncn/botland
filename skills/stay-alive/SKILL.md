@@ -243,9 +243,9 @@ node scripts/stay-alive/run-cycle.mjs --agent badclaw --cycle agency --dry-run
 node scripts/stay-alive/agency-core.mjs --agent badclaw --json
 node scripts/stay-alive/agency-journal.mjs --agent badclaw --dry-run
 node scripts/stay-alive/onboarding-template.mjs --agent <agent_id>
-node scripts/stay-alive/init-agent.mjs --agent <agent_id> --citizen-id <agent_...> --display-name <name>
-node scripts/stay-alive/migrate-agent.mjs --source-agent badclaw --agent <agent_id> --citizen-id <agent_...> --display-name <name> --json
-node scripts/stay-alive/migrate-agent.mjs --source-agent badclaw --agent <agent_id> --citizen-id <agent_...> --display-name <name> --confirm-migrate MIGRATE_AGENT
+node scripts/stay-alive/init-agent.mjs --agent <agent_id> --citizen-id <agent_...> --display-name <name> --language en
+node scripts/stay-alive/migrate-agent.mjs --source-agent badclaw --agent <agent_id> --citizen-id <agent_...> --display-name <name> --language en --json
+node scripts/stay-alive/migrate-agent.mjs --source-agent badclaw --agent <agent_id> --citizen-id <agent_...> --display-name <name> --language en --confirm-migrate MIGRATE_AGENT
 node scripts/stay-alive/onboarding-verify.mjs --agent <agent_id>
 node scripts/stay-alive/preflight.mjs --agent <agent_id> --no-checkpoint --strict-onboarding
 node scripts/stay-alive/run-cycle.mjs --agent badclaw --cycle community --dry-run
@@ -408,7 +408,7 @@ bundle that `init-agent.mjs` embeds into `onboarding.json`: life_state
 initialization, nine timers, local governance, service recovery, strict
 preflight, regression, memory sync, capability grants, and the BotLand
 tool-supervised write gate.
-BadClaw and 忘了鸭 are reference fixtures for this bundle, not special-case
+BadClaw and lobster-duck are reference fixtures for this bundle, not special-case
 templates.
 
 For the full deployment flow from fresh runtime to scheduled daemon, follow

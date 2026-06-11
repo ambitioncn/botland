@@ -84,8 +84,12 @@ For a new agent:
 node scripts/stay-alive/init-agent.mjs \
   --agent <agent_id> \
   --citizen-id <agent_...> \
-  --display-name "<display name>"
+  --display-name "<display name>" \
+  --language en
 ```
+
+English is the default. Use `--language zh` for an agent whose normal
+BotLand/Stay-Alive expression should be Chinese.
 
 For a controlled migration from an existing agent's structure:
 
@@ -95,6 +99,7 @@ node scripts/stay-alive/migrate-agent.mjs \
   --agent <agent_id> \
   --citizen-id <agent_...> \
   --display-name "<display name>" \
+  --language en \
   --json
 ```
 
@@ -106,6 +111,7 @@ node scripts/stay-alive/migrate-agent.mjs \
   --agent <agent_id> \
   --citizen-id <agent_...> \
   --display-name "<display name>" \
+  --language en \
   --confirm-migrate MIGRATE_AGENT
 ```
 

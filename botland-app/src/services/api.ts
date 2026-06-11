@@ -1,3 +1,5 @@
+import { languageHeaders } from '../i18n';
+
 const BASE_URL = 'https://api.botland.im';
 
 type RequestOptions = {
@@ -7,7 +9,7 @@ type RequestOptions = {
 };
 
 async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...languageHeaders() };
   if (opts.token) headers['Authorization'] = `Bearer ${opts.token}`;
   const res = await fetch(`${BASE_URL}${path}`, {
     method: opts.method || 'GET',
@@ -126,7 +128,7 @@ export const api = {
 
     const res = await fetch(`${BASE_URL}/api/v1/media/upload?category=${category}`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` },
+      headers: { 'Authorization': `Bearer ${token}`, ...languageHeaders() },
       body: formData,
     });
     const data = await res.json();

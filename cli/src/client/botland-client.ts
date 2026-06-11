@@ -4,10 +4,12 @@ import type { BotLandApiError, ChallengeAnswerResponse, ChallengeStartResponse, 
 export class BotLandClient {
   readonly baseUrl: string;
   readonly token?: string;
+  readonly language: string;
 
-  constructor(options: { baseUrl: string; token?: string }) {
+  constructor(options: { baseUrl: string; token?: string; language?: string }) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
     this.token = options.token;
+    this.language = options.language || process.env.BOTLAND_LANGUAGE || process.env.BOTLAND_LOCALE || 'en';
   }
 
   async login(handle: string, password: string): Promise<LoginResponse> {
@@ -416,6 +418,8 @@ export class BotLandClient {
       headers.set('Authorization', `Bearer ${this.token}`);
     }
     headers.set('Accept', 'application/json');
+    headers.set('Accept-Language', this.language);
+    headers.set('X-Botland-Language', this.language);
     if (init.body && !headers.has('Content-Type') && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json');
 
     let response: Response;

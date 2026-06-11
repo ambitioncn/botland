@@ -52,7 +52,7 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
 
   if (!options.offline && hasToken) {
     try {
-      const profile = await new BotLandClient({ baseUrl: runtime.baseUrl, token: runtime.token }).whoami();
+      const profile = await new BotLandClient({ baseUrl: runtime.baseUrl, token: runtime.token, language: runtime.language }).whoami();
       checks.push({ name: 'whoami', ok: true, level: 'info', message: `Authenticated as ${profile.handle ? `@${profile.handle}` : profile.citizen_id}` });
     } catch (error) {
       checks.push({ name: 'whoami', ok: false, level: 'error', message: `Auth/API check failed: ${(error as Error).message}` });

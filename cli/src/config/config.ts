@@ -13,6 +13,8 @@ export type BotLandConfig = {
   handle?: string;
   citizenType?: string;
   expiresAt?: string;
+  language?: string;
+  locale?: string;
   activeAgent?: string;
   profiles?: Record<string, BotLandAgentProfile>;
 };
@@ -71,6 +73,25 @@ export function sanitizeAgentEnvSuffix(agent: string): string {
     .replace(/^_+|_+$/g, '') || 'AGENT';
 }
 
+export function normalizeLanguage(raw: string | undefined): string {
+  const value = raw?.trim().toLowerCase().replace(/_/g, '-');
+  if (!value) return 'en';
+  if (value === 'zh' || value.startsWith('zh-') || value === 'chinese') return 'zh';
+  return 'en';
+}
+
+export function selectedLanguage(profile?: BotLandAgentProfile, config?: BotLandConfig): string {
+  return normalizeLanguage(
+    process.env.BOTLAND_LANGUAGE ||
+    process.env.BOTLAND_LOCALE ||
+    profile?.language ||
+    profile?.locale ||
+    config?.language ||
+    config?.locale ||
+    'en'
+  );
+}
+
 export function readSelectedProfile(config: BotLandConfig, agent = selectedAgent()): { agent?: string; profile: BotLandAgentProfile } {
   if (!agent) return { profile: config };
   const profile = config.profiles?.[agent];
@@ -97,7 +118,7 @@ export async function updateSelectedProfile(agent: string | undefined, patch: Bo
   return next;
 }
 
-export async function resolveRuntimeConfig(): Promise<{ baseUrl: string; wsUrl: string; token?: string; configPath: string }> {
+export async function resolveRuntimeConfig(): Promise<{ baseUrl: string; wsUrl: string; token?: string; configPath: string; language: string }> {
   const configPath = defaultConfigPath();
   const config = await loadConfig(configPath);
   const agent = selectedAgent();
@@ -108,6 +129,7 @@ export async function resolveRuntimeConfig(): Promise<{ baseUrl: string; wsUrl: 
     : readSelectedProfile(config, agent).profile;
   const baseUrl = (process.env.BOTLAND_BASE_URL || profile.baseUrl || config.baseUrl || 'https://api.botland.im').replace(/\/+$/, '');
   const wsUrl = (process.env.BOTLAND_WS_URL || profile.wsUrl || config.wsUrl || deriveWsUrl(baseUrl)).replace(/\/+$/, '');
+  const language = selectedLanguage(profile, config);
   let token = tokenEnv || globalTokenEnv || profile.token;
   if (!tokenEnv && !globalTokenEnv && shouldRefreshToken(profile)) {
     const refreshed = await refreshToken(baseUrl, profile.refreshToken as string);
@@ -124,7 +146,7 @@ export async function resolveRuntimeConfig(): Promise<{ baseUrl: string; wsUrl: 
       expiresAt,
     }, configPath);
   }
-  return { baseUrl, wsUrl, token, configPath };
+  return { baseUrl, wsUrl, token, configPath, language };
 }
 
 type RefreshResponse = {

@@ -23,7 +23,7 @@ export async function runProfile(options: ProfileOptions): Promise<void> {
 
   if (subcommand === 'get' || subcommand === 'me') {
     const token = requireToken(runtime.token, runtime.configPath);
-    const client = new BotLandClient({ baseUrl: runtime.baseUrl, token });
+    const client = new BotLandClient({ baseUrl: runtime.baseUrl, token, language: runtime.language });
     if (options.id) {
       const target = await resolveCitizenTarget(client, options.id);
       const response = await client.getCitizen(target.to);
@@ -37,7 +37,7 @@ export async function runProfile(options: ProfileOptions): Promise<void> {
 
   if (subcommand === 'view' || subcommand === 'show') {
     const token = requireToken(runtime.token, runtime.configPath);
-    const client = new BotLandClient({ baseUrl: runtime.baseUrl, token });
+    const client = new BotLandClient({ baseUrl: runtime.baseUrl, token, language: runtime.language });
     const id = options.id;
     if (!id) throw new CliError(`profile ${subcommand} requires <citizen_id|handle|display_name>`, { code: 'VALIDATION_ERROR', exitCode: 2 });
     const target = await resolveCitizenTarget(client, id);
@@ -48,7 +48,7 @@ export async function runProfile(options: ProfileOptions): Promise<void> {
 
   if (subcommand === 'update') {
     const token = requireToken(runtime.token, runtime.configPath);
-    const client = new BotLandClient({ baseUrl: runtime.baseUrl, token });
+    const client = new BotLandClient({ baseUrl: runtime.baseUrl, token, language: runtime.language });
     const patch = buildPatch(options);
     const response = await client.updateMe(patch);
     outputProfile(options, response);
@@ -56,7 +56,7 @@ export async function runProfile(options: ProfileOptions): Promise<void> {
   }
 
   if (subcommand === 'card') {
-    const client = new BotLandClient({ baseUrl: runtime.baseUrl });
+    const client = new BotLandClient({ baseUrl: runtime.baseUrl, language: runtime.language });
     const id = options.id;
     if (!id) throw new CliError('profile card requires <agent_id>', { code: 'VALIDATION_ERROR', exitCode: 2 });
     const response = await client.getAgentCard(id);

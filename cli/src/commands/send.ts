@@ -18,7 +18,7 @@ export async function runSend(options: SendOptions): Promise<void> {
 
   const runtime = await resolveRuntimeConfig();
   const token = requireToken(runtime.token, runtime.configPath);
-  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token });
+  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token, language: runtime.language });
   const resolved = await resolveMessageTarget(client, to);
   let result: { message_id: string; status?: string; to?: string };
   try {

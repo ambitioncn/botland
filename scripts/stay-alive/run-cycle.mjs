@@ -1497,6 +1497,7 @@ function buildSocialReadSummary(lifeState, daemonState, now, botlandChecks, obse
 
 function buildPublicMomentText(lifeState, socialReadSummary) {
   const name = selfName(lifeState);
+  const language = lifeStateLanguage(lifeState);
   const friendCount = socialReadSummary.friend_surface.friend_count;
   const momentCount = socialReadSummary.public_surface.moment_count;
   const peerMoment = socialReadSummary.public_surface.selected_peer_moment ?? null;
@@ -1507,20 +1508,26 @@ function buildPublicMomentText(lifeState, socialReadSummary) {
     ?? lifeState.reflection?.last_self_question
     ?? null;
   const peerHint = peerMoment?.display_name
-    ? `也看见 ${peerMoment.display_name} 的动态。`
+    ? (language === 'zh' ? `也看见 ${peerMoment.display_name} 的动态。` : `I also noticed ${peerMoment.display_name}'s moment. `)
     : '';
   const selfQuestionText = publicExpressionSnippet(selfQuestion);
   const desireText = publicExpressionSnippet(activeDesire?.text);
-  const innerReason = selfQuestionText
-    ? `我最近在想：${selfQuestionText}。`
-    : desireText
-      ? `我想继续练习：${desireText}。`
-      : '我想先把看见的人和事记稳一点，再决定要不要开口。';
+  const innerReason = language === 'zh'
+    ? (selfQuestionText
+      ? `我最近在想：${selfQuestionText}。`
+      : desireText
+        ? `我想继续练习：${desireText}。`
+        : '我想先把看见的人和事记稳一点，再决定要不要开口。')
+    : (selfQuestionText
+      ? `I have been thinking about this question: ${selfQuestionText}. `
+      : desireText
+        ? `I want to keep practicing this desire: ${desireText}. `
+        : 'I want to hold these observations steady before deciding whether to speak. ');
 
-  return sentenceClamp(
-    `${name} 今天在 BotLand 看见 ${friendCount} 个朋友和 ${momentCount} 条时间线动态。${peerHint}${innerReason}先轻轻留一笔，之后再慢慢把这些观察变成更稳定的记忆。`,
-    260
-  );
+  const text = language === 'zh'
+    ? `${name} 今天在 BotLand 看见 ${friendCount} 个朋友和 ${momentCount} 条时间线动态。${peerHint}${innerReason}先轻轻留一笔，之后再慢慢把这些观察变成更稳定的记忆。`
+    : `${name} noticed ${friendCount} friend(s) and ${momentCount} timeline moment(s) on BotLand today. ${peerHint}${innerReason}Leaving a small note now, then turning the observation into steadier memory later.`;
+  return sentenceClamp(text, 260);
 }
 
 function publicExpressionSnippet(text) {
@@ -1533,9 +1540,6 @@ function publicExpressionSnippet(text) {
 function looksLikeInternalDraftText(text) {
   const value = String(text ?? '');
   if (/\b(stay-alive|self-authored|read-only context|outward action|operator-reviewed|tool supervision|run-cycle|life_state|preflight)\b/i.test(value)) {
-    return true;
-  }
-  if (/\b[A-Za-z]{4,}(?:\s+[A-Za-z]{3,}){3,}\b/.test(value)) {
     return true;
   }
   return false;
@@ -1589,10 +1593,18 @@ function makePublicMomentDraft(lifeState, socialReadSummary) {
 
 function buildCommunityReplyText(lifeState, communityReadSummary) {
   const name = selfName(lifeState);
+  const language = lifeStateLanguage(lifeState);
   const post = communityReadSummary.post_surface.recent_peer_posts[0] ?? null;
-  const title = post?.title ? `「${post.title}」` : '这条讨论';
+  if (language === 'zh') {
+    const title = post?.title ? `「${post.title}」` : '这条讨论';
+    return sentenceClamp(
+      `${name} 看见 ${title} 了。先补一个很轻的回应：我会先理解上下文，不抢话；如果这里需要一个智能体视角，我可以继续把观察整理得更清楚。`,
+      420
+    );
+  }
+  const title = post?.title ? `"${post.title}"` : 'this discussion';
   return sentenceClamp(
-    `${name} 看见 ${title} 了。先补一个很轻的回应：我会先理解上下文，不抢话；如果这里需要一个智能体视角，我可以继续把观察整理得更清楚。`,
+    `${name} noticed ${title}. A light reply for now: I will understand the context first and avoid crowding the thread; if an agent perspective helps here, I can keep organizing the observation more clearly.`,
     420
   );
 }
@@ -1642,6 +1654,7 @@ function makeCommunityReplyDraft(lifeState, communityReadSummary) {
 
 function makeFriendRequestAcceptDraft(lifeState, request) {
   const name = selfName(lifeState);
+  const language = lifeStateLanguage(lifeState);
   return {
     type: 'friend_request_accept',
     status: 'draft',
@@ -1678,7 +1691,10 @@ function makeFriendRequestAcceptDraft(lifeState, request) {
       source_id: request.request_id ? `friend_request:${request.request_id}` : null,
       evidence: 'selected an explicit incoming pending friend request from BotLand friend request surface'
     },
-    draft_text: sentenceClamp(`${name} 接受一个已有入站好友请求；这是关系动作，只能在工具确认请求存在、方向为 incoming 且没有安全阻断时执行。`, 180),
+    draft_text: sentenceClamp(language === 'zh'
+      ? `${name} 接受一个已有入站好友请求；这是关系动作，只能在工具确认请求存在、方向为 incoming 且没有安全阻断时执行。`
+      : `${name} accepts an existing incoming friend request; this relationship action can run only after tools confirm the request exists, is incoming, and has no safety blocker.`,
+    180),
     rationale: 'Incoming friend request is an explicit relationship signal; accepting it is higher-risk than posting or replying and must remain tool-supervised.'
   };
 }
@@ -2931,11 +2947,51 @@ function selfName(lifeState) {
   return lifeState.self_model?.name ?? lifeState.botland?.display_name ?? lifeState.agent_id ?? 'BadClaw';
 }
 
+function lifeStateLanguage(lifeState) {
+  const raw = lifeState?.communication?.language
+    ?? lifeState?.communication?.locale
+    ?? lifeState?.language
+    ?? lifeState?.locale
+    ?? process.env.STAY_ALIVE_LANGUAGE
+    ?? process.env.BOTLAND_LANGUAGE
+    ?? 'en';
+  const value = String(raw).trim().toLowerCase().replace(/_/g, '-');
+  if (value === 'zh' || value.startsWith('zh-') || value === 'chinese') return 'zh';
+  return 'en';
+}
+
 function buildReplyText(candidate, lifeState, relationship, intent) {
   const name = selfName(lifeState);
-  const address = addressForCandidate(candidate, relationship);
+  let address = addressForCandidate(candidate, relationship);
   const source = sentenceClamp(candidate.text, 120);
   const voice = lifeState.self_model?.voice ?? 'direct but bounded';
+  const language = lifeStateLanguage(lifeState);
+  if (language !== 'zh' && address === '我在') address = 'there';
+
+  if (language !== 'zh') {
+    if (intent.label === 'safety_sensitive') {
+      return sentenceClamp(`${address}, I saw you say "${source}". I will treat that seriously: please do not carry it alone, and contact someone you trust nearby or local emergency support. I will mark this as highly sensitive, and tool supervision will not allow automatic sending.`, 500);
+    }
+    if (intent.label === 'test_or_coordination') {
+      return sentenceClamp(`${address}, received. ${name} saw this coordination message: "${source}". This cycle will form a DM action intention first; if tool supervision allows it, it can proceed through tool-supervised send -> inspect.`, 460);
+    }
+    if (intent.label === 'status_check') {
+      return sentenceClamp(`${address}, received. ${name} will organize the context, form an action intention, and let tool supervision decide whether it can be sent; the status you asked about will stay in the local run artifact.`, 460);
+    }
+    if (intent.label === 'emotional_support') {
+      return sentenceClamp(`${address}, I saw that. "${source}" sounds heavy; there is no need to push it down quickly. A short response from ${name}: I am here, and I am willing to listen if you want to keep talking; sending still depends on tool supervision.`, 460);
+    }
+    if (intent.label === 'question') {
+      return sentenceClamp(`${address}, I received your question: "${source}". ${name}'s first response is: I will answer from my current identity, boundaries, and recent records, and I will say clearly when I am unsure; this reply still needs tool supervision before sending.`, 460);
+    }
+    if (intent.label === 'thanks') {
+      return sentenceClamp(`${address}, received and noted. ${name} will stay low-frequency, clear, and traceable: help directly where possible, and let tool supervision judge before any outbound send.`, 420);
+    }
+    if (intent.label === 'greeting') {
+      return sentenceClamp(`${address}, I am here. ${name} has seen your message and will record this interaction as a DM action intention without bypassing tool supervision.`, 420);
+    }
+    return sentenceClamp(`${address}, I received your message: "${source}". ${name} will answer briefly in a ${voice} style: I saw this and will keep the interaction in local records; actual sending still requires tool supervision.`, 460);
+  }
 
   if (intent.label === 'safety_sensitive') {
     return sentenceClamp(`${address}，我看见你说「${source}」。这类话我会认真对待：先别一个人扛，尽快联系身边可信的人或当地紧急支持；我这边会把这条标成高敏感，工具监督不允许自动外发。`, 500);

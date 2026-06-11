@@ -18,7 +18,7 @@ export async function runMedia(options: MediaOptions): Promise<void> {
 
   const runtime = await resolveRuntimeConfig();
   const token = requireToken(runtime.token, runtime.configPath);
-  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token });
+  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token, language: runtime.language });
   const bytes = await readFile(options.file);
   const result = await client.uploadMedia({
     file: new Blob([bytes]),

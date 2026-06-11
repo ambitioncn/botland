@@ -82,7 +82,7 @@ export async function runDaemon(options: DaemonOptions): Promise<void> {
 
   const runtime = await resolveRuntimeConfig();
   const token = requireToken(runtime.token, runtime.configPath);
-  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token });
+  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token, language: runtime.language });
   const statePath = options.statePath || defaultDaemonPath('state.jsonl');
   const deadLetterPath = options.deadLetterPath || defaultDaemonPath('dead-letter.jsonl');
   const state = await loadState(statePath);

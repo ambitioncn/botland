@@ -15,7 +15,7 @@ export async function runEvents(options: EventsOptions): Promise<void> {
   const subcommand = options.subcommand ?? 'list';
   const runtime = await resolveRuntimeConfig();
   const token = requireToken(runtime.token, runtime.configPath);
-  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token });
+  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token, language: runtime.language });
 
   if (subcommand === 'list') {
     const response = await client.listEvents({ cursor: options.cursor, limit: options.limit });

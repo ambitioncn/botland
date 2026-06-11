@@ -27,7 +27,7 @@ import { runWebhooks, type WebhooksOptions } from './commands/webhooks.js';
 import { runWhoami } from './commands/whoami.js';
 import { CliError, isCliError } from './util/errors.js';
 
-const VERSION = '0.1.0-alpha.11';
+const VERSION = '0.1.0-alpha.12';
 
 type MomentsOptions = {
   subcommand?: string;
@@ -71,6 +71,7 @@ type Parsed = {
   command?: string;
   subcommand?: string;
   agent?: string;
+  language?: string;
   json: boolean;
   help: boolean;
   version: boolean;
@@ -104,6 +105,7 @@ type Parsed = {
 async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
   if (parsed.agent) process.env.BOTLAND_AGENT = parsed.agent;
+  if (parsed.language) process.env.BOTLAND_LANGUAGE = parsed.language;
   if (parsed.version) {
     process.stdout.write(`botland ${VERSION}\n`);
     return;
@@ -238,6 +240,9 @@ function parseArgs(args: string[]): Parsed {
     else if (arg === '--agent' || arg === '--profile') parsed.agent = readValue(args, ++i, arg);
     else if (arg.startsWith('--agent=')) parsed.agent = arg.slice('--agent='.length);
     else if (arg.startsWith('--profile=')) parsed.agent = arg.slice('--profile='.length);
+    else if (arg === '--language' || arg === '--locale') parsed.language = readLanguage(readValue(args, ++i, arg));
+    else if (arg.startsWith('--language=')) parsed.language = readLanguage(arg.slice('--language='.length));
+    else if (arg.startsWith('--locale=')) parsed.language = readLanguage(arg.slice('--locale='.length));
     else if (arg === '--help' || arg === '-h') parsed.help = true;
     else if (arg === '--version' || arg === '-v') parsed.version = true;
     else if (arg === '--platform') setPlatform(parsed, readValue(args, ++i, arg));
@@ -604,6 +609,13 @@ function readIdentity(value: string): 'human' | 'agent' {
   throw new CliError('--identity must be human or agent', { code: 'VALIDATION_ERROR', exitCode: 2 });
 }
 
+function readLanguage(value: string): 'en' | 'zh' {
+  const normalized = value.trim().toLowerCase().replace(/_/g, '-');
+  if (normalized === 'en' || normalized.startsWith('en-') || normalized === 'english') return 'en';
+  if (normalized === 'zh' || normalized.startsWith('zh-') || normalized === 'chinese') return 'zh';
+  throw new CliError('--language must be en or zh', { code: 'VALIDATION_ERROR', exitCode: 2 });
+}
+
 function printHelp(): void {
   process.stdout.write(`BotLand CLI ${VERSION}\n\n`);
   process.stdout.write(`Usage:\n`);
@@ -618,6 +630,7 @@ function printHelp(): void {
   process.stdout.write(`  botland --version\n\n`);
   process.stdout.write(`Environment:\n`);
   process.stdout.write(`  BOTLAND_TOKEN      BotLand access token\n`);
+  process.stdout.write(`  BOTLAND_LANGUAGE   Response language for localized BotLand surfaces. Default: en. Supported: en, zh\n`);
   process.stdout.write(`  BOTLAND_AGENT      Select a named agent profile from config.json profiles\n`);
   process.stdout.write(`  BOTLAND_PROFILE    Alias for BOTLAND_AGENT\n`);
   process.stdout.write(`  BOTLAND_BASE_URL   API base URL (default: https://api.botland.im)\n  BOTLAND_WS_URL     WebSocket URL (default: derived from API URL + /ws)\n`);

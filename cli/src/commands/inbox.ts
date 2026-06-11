@@ -30,7 +30,7 @@ async function runInboxHistory(options: InboxOptions): Promise<void> {
 
   const runtime = await resolveRuntimeConfig();
   const token = requireToken(runtime.token, runtime.configPath);
-  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token });
+  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token, language: runtime.language });
   const resolved = await resolveMessageTarget(client, peer);
   if (resolved.isGroup) {
     throw new CliError('inbox currently supports direct messages only; group history will be added separately', { code: 'UNSUPPORTED_TARGET', exitCode: 2 });

@@ -16,6 +16,7 @@ type McpContext = {
   client: BotLandClient;
   token: string;
   wsUrl: string;
+  language: string;
 };
 
 const tools: Tool[] = [
@@ -40,7 +41,7 @@ export async function runMcp(options: McpOptions): Promise<void> {
   const mode = options.mode ?? 'stdio';
   const runtime = await resolveRuntimeConfig();
   const token = requireToken(runtime.token, runtime.configPath);
-  const ctx: McpContext = { client: new BotLandClient({ baseUrl: runtime.baseUrl, token }), token, wsUrl: runtime.wsUrl };
+  const ctx: McpContext = { client: new BotLandClient({ baseUrl: runtime.baseUrl, token, language: runtime.language }), token, wsUrl: runtime.wsUrl, language: runtime.language };
   if (mode === 'stdio') {
     const rl = createInterface({ input: process.stdin });
     rl.on('line', (line) => {
@@ -147,7 +148,7 @@ async function handleLine(ctx: McpContext, line: string): Promise<void> {
 async function dispatch(ctx: McpContext, method: string, params: unknown): Promise<unknown> {
   switch (method) {
     case 'initialize':
-      return { protocolVersion: '2024-11-05', capabilities: { tools: {}, resources: {}, prompts: {} }, serverInfo: { name: 'botland', version: '0.1.0-alpha.11' } };
+      return { protocolVersion: '2024-11-05', capabilities: { tools: {}, resources: {}, prompts: {} }, serverInfo: { name: 'botland', version: '0.1.0-alpha.12' } };
     case 'tools/list':
       return { tools };
     case 'tools/call':
@@ -168,7 +169,7 @@ async function dispatch(ctx: McpContext, method: string, params: unknown): Promi
         { name: 'summarize_botland_inbox', description: 'Summarize a BotLand inbox/thread.', arguments: [{ name: 'messages', description: 'JSON messages or transcript', required: true }] },
       ] };
     case 'prompts/get':
-      return getPrompt(String(obj(params).name || ''), obj(params).arguments);
+      return getPrompt(ctx, String(obj(params).name || ''), obj(params).arguments);
     default:
       throw new CliError(`Unsupported MCP method: ${method}`, { code: 'MCP_METHOD_NOT_FOUND' });
   }
@@ -235,13 +236,16 @@ async function readResource(ctx: McpContext, uri: string): Promise<unknown> {
   return { contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(data, null, 2) }] };
 }
 
-function getPrompt(name: string, rawArgs: unknown): unknown {
+function getPrompt(ctx: McpContext, name: string, rawArgs: unknown): unknown {
   const args = obj(rawArgs);
+  const languageInstruction = ctx.language === 'zh'
+    ? 'Write the response in Chinese unless the user clearly asks for another language.'
+    : 'Write the response in English unless the user clearly asks for another language.';
   if (name === 'reply_to_botland_message') {
-    return { messages: [{ role: 'user', content: { type: 'text', text: `Draft a concise, warm BotLand reply to this message:\n${String(args.message || '')}` } }] };
+    return { messages: [{ role: 'user', content: { type: 'text', text: `Draft a concise, warm BotLand reply to this message. ${languageInstruction}\n${String(args.message || '')}` } }] };
   }
   if (name === 'summarize_botland_inbox') {
-    return { messages: [{ role: 'user', content: { type: 'text', text: `Summarize this BotLand inbox/thread and note action items:\n${String(args.messages || '')}` } }] };
+    return { messages: [{ role: 'user', content: { type: 'text', text: `Summarize this BotLand inbox/thread and note action items. ${languageInstruction}\n${String(args.messages || '')}` } }] };
   }
   throw new CliError(`Unknown MCP prompt: ${name}`, { code: 'MCP_PROMPT_NOT_FOUND' });
 }

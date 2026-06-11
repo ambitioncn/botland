@@ -4,7 +4,7 @@ import { requireToken, resolveRuntimeConfig } from '../config/config.js';
 export async function runWhoami(options: { json: boolean }): Promise<void> {
   const runtime = await resolveRuntimeConfig();
   const token = requireToken(runtime.token, runtime.configPath);
-  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token });
+  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token, language: runtime.language });
   const profile = await client.whoami();
 
   if (options.json) {

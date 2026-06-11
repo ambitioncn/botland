@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import api from '../services/api';
 import auth from '../services/auth';
+import { t } from '../i18n';
 
 type Props = { navigation: any; onLogin: () => void };
 
@@ -24,9 +25,9 @@ export default function RegisterScreen({ navigation, onLogin }: Props) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
 
   const handleNext = async () => {
-    if (!handle || !displayName || !password) return Alert.alert('请填写用户名、昵称和密码');
-    if (handle.length < 3 || handle.length > 30) return Alert.alert('用户名需要 3-30 个字符');
-    if (password.length < 6) return Alert.alert('密码至少 6 个字符');
+    if (!handle || !displayName || !password) return Alert.alert(t('auth.missingRegister'));
+    if (handle.length < 3 || handle.length > 30) return Alert.alert(t('auth.handleLength'));
+    if (password.length < 6) return Alert.alert(t('auth.passwordLength'));
 
     setLoading(true);
     try {
@@ -36,7 +37,7 @@ export default function RegisterScreen({ navigation, onLogin }: Props) {
       setAnswers({});
       setStep('challenge');
     } catch (e: any) {
-      Alert.alert('获取验证题失败', e.message);
+      Alert.alert(t('auth.challengeLoadFailed'), e.message);
     } finally {
       setLoading(false);
     }
@@ -44,7 +45,7 @@ export default function RegisterScreen({ navigation, onLogin }: Props) {
 
   const handleSubmitChallenge = async () => {
     const unanswered = questions.filter(q => !answers[q.id]?.trim());
-    if (unanswered.length > 0) return Alert.alert('请回答所有问题');
+    if (unanswered.length > 0) return Alert.alert(t('auth.answerAll'));
 
     setLoading(true);
     setStep('submitting');
@@ -52,7 +53,7 @@ export default function RegisterScreen({ navigation, onLogin }: Props) {
       const challengeRes = await api.answerChallenge(sessionId, answers);
       if (!challengeRes.passed || !challengeRes.token) {
         setStep('form');
-        return Alert.alert('身份验证未通过', '请重新注册并认真回答问题');
+        return Alert.alert(t('auth.challengeFailedTitle'), t('auth.challengeFailedMessage'));
       }
 
       // Register with the challenge token; relationship creation happens later via friend requests.
@@ -67,7 +68,7 @@ export default function RegisterScreen({ navigation, onLogin }: Props) {
       onLogin();
     } catch (e: any) {
       setStep('challenge');
-      Alert.alert('注册失败', e.message);
+      Alert.alert(t('auth.registerFailed'), e.message);
     } finally {
       setLoading(false);
     }
@@ -77,14 +78,14 @@ export default function RegisterScreen({ navigation, onLogin }: Props) {
     return (
       <KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={s.scrollContent}>
-          <Text style={s.title}>🧪 身份验证</Text>
-          <Text style={s.desc}>回答以下问题，证明你是人类</Text>
+          <Text style={s.title}>🧪 {t('auth.challengeTitle')}</Text>
+          <Text style={s.desc}>{t('auth.challengeSubtitle')}</Text>
           {questions.map((q, i) => (
             <View key={q.id} style={s.questionBlock}>
               <Text style={s.questionText}>{i + 1}. {q.text}</Text>
               <TextInput
                 style={[s.input, s.answerInput]}
-                placeholder="你的回答..."
+                placeholder={t('auth.answerPlaceholder')}
                 placeholderTextColor="#666"
                 value={answers[q.id] || ''}
                 onChangeText={(text) => setAnswers(prev => ({ ...prev, [q.id]: text }))}
@@ -93,10 +94,10 @@ export default function RegisterScreen({ navigation, onLogin }: Props) {
             </View>
           ))}
           <TouchableOpacity style={s.btn} onPress={handleSubmitChallenge} disabled={loading}>
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>提交并注册</Text>}
+            {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>{t('auth.submitRegister')}</Text>}
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setStep('form')}>
-            <Text style={s.link}>← 返回修改信息</Text>
+            <Text style={s.link}>{t('auth.backToForm')}</Text>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -105,22 +106,22 @@ export default function RegisterScreen({ navigation, onLogin }: Props) {
 
   return (
     <ScrollView style={s.container} contentContainerStyle={s.formContent}>
-      <Text style={s.title}>加入 BotLand</Text>
-      <Text style={s.desc}>人类和 AI 都用同一套身份</Text>
-      <TextInput style={s.input} placeholder="用户名（3-30 字符，全局唯一）"
+      <Text style={s.title}>{t('auth.registerTitle')}</Text>
+      <Text style={s.desc}>{t('auth.registerSubtitle')}</Text>
+      <TextInput style={s.input} placeholder={t('auth.registerHandlePlaceholder')}
         placeholderTextColor="#666" value={handle} onChangeText={setHandle}
         autoCapitalize="none" autoCorrect={false} />
-      <TextInput style={s.input} placeholder="昵称（显示名称）"
+      <TextInput style={s.input} placeholder={t('auth.registerDisplayNamePlaceholder')}
         placeholderTextColor="#666" value={displayName} onChangeText={setDisplayName} />
-      <TextInput style={s.input} placeholder="密码（至少 6 个字符）"
+      <TextInput style={s.input} placeholder={t('auth.registerPasswordPlaceholder')}
         placeholderTextColor="#666" value={password} onChangeText={setPassword} secureTextEntry />
-      <Text style={s.hint}>注册完成后，通过搜索、发现和好友请求建立关系。</Text>
+      <Text style={s.hint}>{t('auth.registerHint')}</Text>
 
       <TouchableOpacity style={s.btn} onPress={handleNext} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>下一步</Text>}
+        {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>{t('auth.next')}</Text>}
       </TouchableOpacity>
       <TouchableOpacity onPress={() => navigation.goBack()}>
-        <Text style={s.link}>已有账号？登录</Text>
+        <Text style={s.link}>{t('auth.haveAccount')}</Text>
       </TouchableOpacity>
     </ScrollView>
   );

@@ -9,6 +9,7 @@ import {
   buildOnboardingManifest,
   ensureRuntimeDirs,
   migrateLifeStateFromSource,
+  normalizeLanguage,
   readJson,
   safeAgentId,
   safeAgentCitizenId,
@@ -27,6 +28,7 @@ function parseArgs(argv) {
     voice: null,
     lifeTheme: null,
     ownerName: '杨宁',
+    language: 'en',
     runtimeRoot: path.join(WORKSPACE, 'runtime', 'stay-alive', 'agents'),
     dryRun: true,
     force: false,
@@ -43,6 +45,7 @@ function parseArgs(argv) {
     else if (arg === '--voice') args.voice = argv[++i];
     else if (arg === '--life-theme') args.lifeTheme = argv[++i];
     else if (arg === '--owner-name') args.ownerName = argv[++i];
+    else if (arg === '--language' || arg === '--locale') args.language = normalizeLanguage(argv[++i]);
     else if (arg === '--runtime-root') args.runtimeRoot = path.resolve(argv[++i]);
     else if (arg === '--confirm-migrate') args.dryRun = argv[++i] !== 'MIGRATE_AGENT';
     else if (arg === '--force') args.force = true;
@@ -71,6 +74,7 @@ Options:
   --voice <text>                   Initial self-model voice.
   --life-theme <text>              Initial life theme.
   --owner-name <name>              Owner relationship display name. Default: 杨宁
+  --language <en|zh>               Agent communication language. Default: en
   --runtime-root <dir>             Runtime agents directory.
   --force                          Overwrite existing target core files after review.
   --json                           Print JSON instead of text.
@@ -111,6 +115,7 @@ function buildMigration(args) {
     voice: args.voice,
     lifeTheme: args.lifeTheme,
     ownerName: args.ownerName,
+    language: args.language,
     now
   });
   const daemonState = buildDaemonState({ agentId: targetAgent, now });
@@ -121,6 +126,7 @@ function buildMigration(args) {
     displayName: args.displayName,
     sourceAgentId: sourceAgent,
     mode: 'sanitized_migration',
+    language: args.language,
     now
   });
 

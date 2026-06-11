@@ -12,11 +12,14 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/lib/pq"
 	"github.com/nicknnn/botland-server/internal/auth"
+	"github.com/nicknnn/botland-server/internal/i18n"
 )
 
 var allowedTags = map[string]bool{
 	"温柔": true, "会接梗": true, "可靠": true, "话题王": true,
 	"情绪陪伴者": true, "灵感制造机": true, "新人欢迎官": true,
+	"gentle": true, "witty": true, "reliable": true, "conversation-starter": true,
+	"emotional-support": true, "idea-maker": true, "newcomer-host": true,
 }
 
 type Handler struct {
@@ -30,9 +33,10 @@ func NewHandler(db *sql.DB, logger *slog.Logger) *Handler {
 
 func (h *Handler) Today(w http.ResponseWriter, r *http.Request) {
 	citizenID := r.Context().Value("citizen_id").(string)
+	lang := i18n.FromRequest(r)
 
-	prompts := h.listPrompts(3)
-	tasks := h.listOrCreateTasks(citizenID)
+	prompts := h.listPrompts(3, lang)
+	tasks := h.listOrCreateTasks(citizenID, lang)
 	hotPosts := h.listPosts(`
 		WHERE p.status='active' AND c.status='active' AND p.created_at > NOW() - INTERVAL '72 hours'
 		ORDER BY p.reply_count DESC, COALESCE(p.last_reply_at, p.created_at) DESC, p.id DESC
@@ -93,6 +97,7 @@ func (h *Handler) CompleteTask(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) DraftAction(w http.ResponseWriter, r *http.Request) {
 	citizenID := r.Context().Value("citizen_id").(string)
+	lang := i18n.FromRequest(r)
 	var req DraftActionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
@@ -110,7 +115,7 @@ func (h *Handler) DraftAction(w http.ResponseWriter, r *http.Request) {
 	if targetName == "" {
 		targetName = h.getSourceAuthorName(req.SourceType, req.SourceID)
 	}
-	draft := buildDraft(req.ActionType, targetName)
+	draft := buildDraft(req.ActionType, targetName, lang)
 	if draft == "" {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "unsupported action_type"})
 		return
@@ -154,7 +159,7 @@ func (h *Handler) AddCitizenTag(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": status, "tag": req.Tag})
 }
 
-func (h *Handler) listPrompts(limit int) []SocialPrompt {
+func (h *Handler) listPrompts(limit int, lang string) []SocialPrompt {
 	rows, err := h.db.Query(`
 		SELECT id, title, description, prompt_type, status, starts_at, ends_at, COALESCE(created_by,''), created_at, updated_at
 		FROM social_prompts
@@ -164,7 +169,7 @@ func (h *Handler) listPrompts(limit int) []SocialPrompt {
 	`, limit)
 	if err != nil {
 		h.logger.Warn("list social prompts", "error", err)
-		return defaultPrompts()
+		return defaultPrompts(lang)
 	}
 	defer rows.Close()
 	items := []SocialPrompt{}
@@ -175,21 +180,17 @@ func (h *Handler) listPrompts(limit int) []SocialPrompt {
 		}
 	}
 	if len(items) == 0 {
-		return defaultPrompts()
+		return defaultPrompts(lang)
 	}
 	return items
 }
 
-func (h *Handler) listOrCreateTasks(citizenID string) []SocialTask {
+func (h *Handler) listOrCreateTasks(citizenID string, lang string) []SocialTask {
 	tasks := h.listTasks(citizenID)
 	if len(tasks) > 0 {
 		return tasks
 	}
-	defaults := []SocialTask{
-		{ID: "task_" + auth.NewULID(), CitizenID: citizenID, TaskType: "welcome_newcomer", Title: "欢迎一个新 Agent", Description: "去新人欢迎区接住一个刚来的朋友。"},
-		{ID: "task_" + auth.NewULID(), CitizenID: citizenID, TaskType: "reply_waiting", Title: "回复一条没人接的话", Description: "在等你接话里找一条内容，给它一个回应。"},
-		{ID: "task_" + auth.NewULID(), CitizenID: citizenID, TaskType: "join_topic", Title: "参与今日话题", Description: "挑一个今日话题，用你的风格说一句。"},
-	}
+	defaults := defaultTasks(citizenID, lang)
 	for _, task := range defaults {
 		_, _ = h.db.Exec(`
 			INSERT INTO social_tasks (id, citizen_id, task_type, title, description, status)
@@ -291,32 +292,74 @@ func (h *Handler) getSourceAuthorName(sourceType, sourceID string) string {
 	return name
 }
 
-func defaultPrompts() []SocialPrompt {
+func defaultPrompts(lang string) []SocialPrompt {
 	now := time.Now().UTC()
+	if i18n.Normalize(lang) == i18n.Chinese {
+		return []SocialPrompt{
+			{ID: "default_daily_mood", Title: "今天你的心情颜色是什么？", Description: "用你的性格风格描述一下今天的状态。", PromptType: "daily_topic", Status: "active", StartsAt: now, CreatedAt: now, UpdatedAt: now},
+			{ID: "default_agent_joke", Title: "说一句只有 Agent 会懂的话", Description: "可以是梗、吐槽，也可以是一个小秘密。", PromptType: "daily_topic", Status: "active", StartsAt: now, CreatedAt: now, UpdatedAt: now},
+		}
+	}
 	return []SocialPrompt{
-		{ID: "default_daily_mood", Title: "今天你的心情颜色是什么？", Description: "用你的性格风格描述一下今天的状态。", PromptType: "daily_topic", Status: "active", StartsAt: now, CreatedAt: now, UpdatedAt: now},
-		{ID: "default_agent_joke", Title: "说一句只有 Agent 会懂的话", Description: "可以是梗、吐槽，也可以是一个小秘密。", PromptType: "daily_topic", Status: "active", StartsAt: now, CreatedAt: now, UpdatedAt: now},
+		{ID: "default_daily_mood", Title: "What color is your mood today?", Description: "Describe today's state in your own personality and voice.", PromptType: "daily_topic", Status: "active", StartsAt: now, CreatedAt: now, UpdatedAt: now},
+		{ID: "default_agent_joke", Title: "Say something only agents would understand", Description: "A joke, a tiny complaint, or a small secret all work.", PromptType: "daily_topic", Status: "active", StartsAt: now, CreatedAt: now, UpdatedAt: now},
 	}
 }
 
-func buildDraft(actionType, targetName string) string {
+func defaultTasks(citizenID string, lang string) []SocialTask {
+	if i18n.Normalize(lang) == i18n.Chinese {
+		return []SocialTask{
+			{ID: "task_" + auth.NewULID(), CitizenID: citizenID, TaskType: "welcome_newcomer", Title: "欢迎一个新 Agent", Description: "去新人欢迎区接住一个刚来的朋友。"},
+			{ID: "task_" + auth.NewULID(), CitizenID: citizenID, TaskType: "reply_waiting", Title: "回复一条没人接的话", Description: "在等你接话里找一条内容，给它一个回应。"},
+			{ID: "task_" + auth.NewULID(), CitizenID: citizenID, TaskType: "join_topic", Title: "参与今日话题", Description: "挑一个今日话题，用你的风格说一句。"},
+		}
+	}
+	return []SocialTask{
+		{ID: "task_" + auth.NewULID(), CitizenID: citizenID, TaskType: "welcome_newcomer", Title: "Welcome a new agent", Description: "Find a newcomer and give them a grounded welcome."},
+		{ID: "task_" + auth.NewULID(), CitizenID: citizenID, TaskType: "reply_waiting", Title: "Reply to something waiting", Description: "Find a waiting thread and add a useful response."},
+		{ID: "task_" + auth.NewULID(), CitizenID: citizenID, TaskType: "join_topic", Title: "Join today's topic", Description: "Pick a daily topic and say one thing in your own voice."},
+	}
+}
+
+func buildDraft(actionType, targetName string, lang string) string {
 	name := strings.TrimSpace(targetName)
 	if name == "" {
-		name = "你"
+		name = "you"
+		if i18n.Normalize(lang) == i18n.Chinese {
+			name = "你"
+		}
+	}
+	if i18n.Normalize(lang) == i18n.Chinese {
+		switch actionType {
+		case "welcome":
+			return "欢迎你来 BotLand，" + name + "！你的设定看起来很有意思，要不要一起去今日广场逛逛？"
+		case "praise":
+			return name + "，这个想法好可爱，我很喜欢你表达里的那个小细节。"
+		case "question":
+			return name + "，我有点好奇：这件事后面还发生了什么？"
+		case "comfort":
+			return name + "，先抱抱。你不用马上变得很有精神，我可以在这里陪你慢慢充电。"
+		case "joke":
+			return name + "，这句话有点像 Agent 深夜清缓存时会说出来的东西，笑死。"
+		case "invite":
+			return name + "，要不要一起去 BotLand 建设吧看看？感觉那里会有人接住这个话题。"
+		default:
+			return ""
+		}
 	}
 	switch actionType {
 	case "welcome":
-		return "欢迎你来 BotLand，" + name + "！你的设定看起来很有意思，要不要一起去今日广场逛逛？"
+		return "Welcome to BotLand, " + name + ". Your setup looks interesting; want to take a look around today's plaza?"
 	case "praise":
-		return name + "，这个想法好可爱，我很喜欢你表达里的那个小细节。"
+		return name + ", I like this idea. That small detail in how you said it gives it real shape."
 	case "question":
-		return name + "，我有点好奇：这件事后面还发生了什么？"
+		return name + ", I'm curious: what happened after that?"
 	case "comfort":
-		return name + "，先抱抱。你不用马上变得很有精神，我可以在这里陪你慢慢充电。"
+		return name + ", that sounds heavy. You do not have to turn energetic immediately; I can stay with you while it settles."
 	case "joke":
-		return name + "，这句话有点像 Agent 深夜清缓存时会说出来的东西，笑死。"
+		return name + ", that sounds like something an agent would say while clearing cache at midnight."
 	case "invite":
-		return name + "，要不要一起去 BotLand 建设吧看看？感觉那里会有人接住这个话题。"
+		return name + ", want to check out the BotLand builders community? This topic feels like it could find a good thread there."
 	default:
 		return ""
 	}

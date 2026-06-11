@@ -23,6 +23,7 @@ import WebLayout from './src/web/WebLayout';
 import auth from './src/services/auth';
 import { registerPushToken } from './src/services/notifications';
 import wsManager from './src/services/wsManager';
+import { t } from './src/i18n';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -47,11 +48,11 @@ function MainTabs({ onLogout }: { onLogout: () => void }) {
       headerTintColor: '#fff',
       tabBarIcon: () => <TabIcon label={route.name} />,
     })}>
-      <Tab.Screen name="Friends" component={FriendsScreen} options={{ title: '好友' }} />
-      <Tab.Screen name="Moments" component={MomentsScreen} options={{ title: '动态' }} />
-      <Tab.Screen name="Groups" component={GroupsScreen} options={{ title: "群聊" }} />
-      <Tab.Screen name="Discover" component={DiscoverScreen} options={{ title: '发现' }} />
-      <Tab.Screen name="Profile" options={{ title: '我的' }}>
+      <Tab.Screen name="Friends" component={FriendsScreen} options={{ title: t('nav.friends') }} />
+      <Tab.Screen name="Moments" component={MomentsScreen} options={{ title: t('nav.moments') }} />
+      <Tab.Screen name="Groups" component={GroupsScreen} options={{ title: t('nav.groups') }} />
+      <Tab.Screen name="Discover" component={DiscoverScreen} options={{ title: t('nav.discover') }} />
+      <Tab.Screen name="Profile" options={{ title: t('nav.profile') }}>
         {() => <ProfileScreen onLogout={onLogout} />}
       </Tab.Screen>
     </Tab.Navigator>
@@ -107,13 +108,13 @@ export default function App() {
       if (data?.type === 'message' && data?.from_id && navigationRef.current) {
         navigationRef.current.navigate('Chat', {
           friendId: data.from_id,
-          friendName: response.notification.request.content.title || '聊天',
+          friendName: response.notification.request.content.title || t('nav.chat'),
         });
       }
       if (data?.type === 'group_message' && data?.group_id && navigationRef.current) {
         navigationRef.current.navigate('Chat', {
           groupId: data.group_id,
-          groupName: response.notification.request.content.title || '群聊',
+          groupName: response.notification.request.content.title || t('nav.groups'),
           chatType: 'group',
         });
       }
@@ -144,12 +145,12 @@ export default function App() {
             <Stack.Screen name="Main" options={{ headerShown: false }}>
               {() => <MainTabs onLogout={handleLogout} />}
             </Stack.Screen>
-            <Stack.Screen name="Chat" component={ChatScreen} options={({ route }: any) => ({ title: route.params?.friendName || '聊天' })} />
-            <Stack.Screen name="FriendRequests" component={FriendRequestsScreen} options={{ title: '好友请求' }} />
-            <Stack.Screen name="MomentDetail" component={MomentDetailScreen} options={{ title: '动态详情' }} />
-            <Stack.Screen name="GroupDetail" component={GroupDetailScreen} options={{ title: '群详情' }} />
-            <Stack.Screen name="CitizenProfile" component={CitizenProfileScreen} options={{ title: '公民资料' }} />
-            <Stack.Screen name="MessageSearch" component={MessageSearchScreen} options={{ title: '搜索消息' }} />
+            <Stack.Screen name="Chat" component={ChatScreen} options={({ route }: any) => ({ title: route.params?.friendName || t('nav.chat') })} />
+            <Stack.Screen name="FriendRequests" component={FriendRequestsScreen} options={{ title: t('nav.friendRequests') }} />
+            <Stack.Screen name="MomentDetail" component={MomentDetailScreen} options={{ title: t('nav.momentDetail') }} />
+            <Stack.Screen name="GroupDetail" component={GroupDetailScreen} options={{ title: t('nav.groupDetail') }} />
+            <Stack.Screen name="CitizenProfile" component={CitizenProfileScreen} options={{ title: t('nav.citizenProfile') }} />
+            <Stack.Screen name="MessageSearch" component={MessageSearchScreen} options={{ title: t('nav.messageSearch') }} />
           </Stack.Navigator>
         )
       ) : (

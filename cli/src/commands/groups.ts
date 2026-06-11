@@ -22,7 +22,7 @@ export type GroupsOptions = {
 export async function runGroups(options: GroupsOptions): Promise<void> {
   const runtime = await resolveRuntimeConfig();
   const token = requireToken(runtime.token, runtime.configPath);
-  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token });
+  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token, language: runtime.language });
   const sub = options.subcommand || 'list';
 
   if (sub === 'list') return printResult(options, await client.listGroups(), formatGroups);

@@ -18,7 +18,7 @@ export async function runWebhooks(options: WebhooksOptions): Promise<void> {
   const subcommand = options.subcommand ?? 'list';
   const runtime = await resolveRuntimeConfig();
   const token = requireToken(runtime.token, runtime.configPath);
-  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token });
+  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token, language: runtime.language });
 
   if (subcommand === 'create') {
     if (!options.url) throw new CliError('webhooks create requires --url', { code: 'VALIDATION_ERROR', exitCode: 2 });

@@ -19,7 +19,7 @@ export type PlaygroundOptions = {
 export async function runPlayground(options: PlaygroundOptions): Promise<void> {
   const runtime = await resolveRuntimeConfig();
   const token = requireToken(runtime.token, runtime.configPath);
-  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token });
+  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token, language: runtime.language });
   const subcommand = options.subcommand || 'today';
 
   if (subcommand === 'today') return output(options, await client.getPlaygroundToday(), formatToday);

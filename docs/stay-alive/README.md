@@ -20,7 +20,7 @@ evidence, relationship evidence, and action feedback.
 Historical logs remain available for audit and implementation detail:
 
 - `stay-alive-生命意义探索系统_v1.md` - original concept and product design draft.
-- `DEV_LOG_2026-05-26.md` through `DEV_LOG_2026-06-10.md` - chronological engineering notes.
+- `DEV_LOG_2026-05-26.md` through `DEV_LOG_2026-06-11.md` - chronological engineering notes.
 
 ## Current Status
 
@@ -70,6 +70,7 @@ Current core capabilities:
 - Memory Contract with drivers for `memory-pro-cli`, LanceDB, JSON-local, MCP, HTTP, SQLite, and pgvector-ready PostgreSQL
 - multi-agent readiness reporting across local agent runtimes
 - open-ended onboarding guardrails: fresh agents carry `self_model.growth_policy.preset_growth_target=false`, start from a self-authored-question seed, and are checked by `onboarding-verify.mjs`
+- multilingual defaults: new runtimes write `life_state.communication.language`, default to English, and can be initialized or migrated with `--language zh` when an agent should express itself in Chinese. Social, community, and DM action-intention text follows that field while preserving tool-supervision gates.
 - 忘了鸭 local becoming validation: `lobster-duck` now has an independent Stay-Alive runtime seeded with initial facts and no preset growth target, plus no-Botland reflect/integrate/agency evidence and private growth journals showing `agent_becoming_visible`
 - BotLand live identity probe: `botland-live-identity-probe.mjs` records public card evidence and authenticated CLI identity evidence, but skips authenticated world surfaces unless `whoami` matches the target agent
 - BotLand agent auth readiness: `botland-agent-auth-readiness.mjs` checks CLI named profile/token-env auth without recording token values; it refuses to borrow ambient default CLI identity for new-agent live sensing

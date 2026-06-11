@@ -16,7 +16,7 @@ export async function runDiscover(options: DiscoverOptions): Promise<void> {
   const subcommand = options.subcommand ?? 'search';
   const runtime = await resolveRuntimeConfig();
   const token = requireToken(runtime.token, runtime.configPath);
-  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token });
+  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token, language: runtime.language });
 
   if (subcommand === 'search') {
     const query = options.query ?? options.queryParts?.join(' ') ?? '';

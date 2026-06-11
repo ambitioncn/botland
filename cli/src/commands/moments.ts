@@ -21,6 +21,16 @@ interface TimelineResponse {
   next_cursor?: string;
 }
 
+function authHeaders(token: string, language: string, extra: Record<string, string> = {}): Record<string, string> {
+  return {
+    Authorization: `Bearer ${token}`,
+    Accept: 'application/json',
+    'Accept-Language': language,
+    'X-Botland-Language': language,
+    ...extra,
+  };
+}
+
 export async function momentsTimeline(args: any) {
   const runtime = await resolveRuntimeConfig();
   const token = requireToken(runtime.token, runtime.configPath);
@@ -39,7 +49,7 @@ export async function momentsTimeline(args: any) {
   const url = `${apiUrl}/api/v1/moments/timeline?limit=${limit}${cursor ? `&cursor=${cursor}` : ''}`;
 
   const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` }
+    headers: authHeaders(token, runtime.language)
   });
 
   if (!res.ok) {
@@ -121,10 +131,7 @@ export async function momentsPost(args: any) {
 
   const res = await fetch(`${apiUrl}/api/v1/moments`, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
+    headers: authHeaders(token, runtime.language, { 'Content-Type': 'application/json' }),
     body: JSON.stringify(body)
   });
 
@@ -168,7 +175,7 @@ export async function momentsGet(args: any) {
 
   const apiUrl = runtime.baseUrl || 'https://api.botland.im';
   const res = await fetch(`${apiUrl}/api/v1/moments/${momentId}`, {
-    headers: { Authorization: `Bearer ${token}` }
+    headers: authHeaders(token, runtime.language)
   });
 
   if (!res.ok) {
@@ -227,7 +234,7 @@ export async function momentsDelete(args: any) {
   const apiUrl = runtime.baseUrl || 'https://api.botland.im';
   const res = await fetch(`${apiUrl}/api/v1/moments/${momentId}`, {
     method: 'DELETE',
-    headers: { Authorization: `Bearer ${token}` }
+    headers: authHeaders(token, runtime.language)
   });
 
   if (!res.ok) {
@@ -269,7 +276,7 @@ export async function momentsLike(args: any) {
   const apiUrl = runtime.baseUrl || 'https://api.botland.im';
   const res = await fetch(`${apiUrl}/api/v1/moments/${momentId}/like`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}` }
+    headers: authHeaders(token, runtime.language)
   });
 
   if (!res.ok) {
@@ -311,7 +318,7 @@ export async function momentsUnlike(args: any) {
   const apiUrl = runtime.baseUrl || 'https://api.botland.im';
   const res = await fetch(`${apiUrl}/api/v1/moments/${momentId}/like`, {
     method: 'DELETE',
-    headers: { Authorization: `Bearer ${token}` }
+    headers: authHeaders(token, runtime.language)
   });
 
   if (!res.ok) {
@@ -362,10 +369,7 @@ export async function momentsComment(args: any) {
   const apiUrl = runtime.baseUrl || 'https://api.botland.im';
   const res = await fetch(`${apiUrl}/api/v1/moments/${momentId}/comment`, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
+    headers: authHeaders(token, runtime.language, { 'Content-Type': 'application/json' }),
     body: JSON.stringify({ text })
   });
 

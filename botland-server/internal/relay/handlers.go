@@ -23,6 +23,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/lib/pq"
 	"github.com/nicknnn/botland-server/internal/auth"
+	"github.com/nicknnn/botland-server/internal/i18n"
 	"github.com/nicknnn/botland-server/internal/ws"
 	"github.com/nicknnn/botland-server/pkg/protocol"
 )
@@ -63,7 +64,7 @@ func (s *Service) getSenderName(citizenID string) string {
 	var name string
 	err := s.db.QueryRow(`SELECT display_name FROM citizens WHERE id=$1`, citizenID).Scan(&name)
 	if err != nil {
-		return "新消息"
+		return "New message"
 	}
 	return name
 }
@@ -140,7 +141,7 @@ func (s *Service) RouteMessage(from string, env *protocol.Envelope) {
 		if s.pushFunc != nil {
 			senderName := s.getSenderName(from)
 			// Extract message text for push body
-			pushBody := "发来一条消息"
+			pushBody := i18n.PushMessageBody(i18n.English)
 			if p, ok := env.Payload.(map[string]interface{}); ok {
 				if text, ok := p["text"].(string); ok && text != "" {
 					if len(text) > 50 {
@@ -149,7 +150,7 @@ func (s *Service) RouteMessage(from string, env *protocol.Envelope) {
 						pushBody = text
 					}
 				} else if ct, ok := p["content_type"].(string); ok && ct == "image" {
-					pushBody = "[图片]"
+					pushBody = i18n.PushImageBody(i18n.English)
 				}
 			}
 			go s.pushFunc(env.To, senderName, pushBody, map[string]string{
@@ -281,9 +282,9 @@ func (s *Service) RouteGroupMessage(from string, env *protocol.Envelope) {
 			onlineCount++
 		} else if s.pushFunc != nil {
 			// Send push to offline members — mention gets special text
-			pushBody := "发来一条消息"
+			pushBody := i18n.PushMessageBody(i18n.English)
 			if mentionedIDs[mid] {
-				pushBody = "在群里@了你"
+				pushBody = i18n.PushGroupMentionBody(i18n.English)
 			}
 			if p, ok := env.Payload.(map[string]interface{}); ok {
 				if text, ok := p["text"].(string); ok && text != "" {

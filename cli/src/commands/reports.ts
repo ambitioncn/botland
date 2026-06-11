@@ -18,7 +18,7 @@ export async function runReports(options: ReportsOptions): Promise<void> {
   const sub = options.subcommand || 'list';
   const runtime = await resolveRuntimeConfig();
   const token = requireToken(runtime.token, runtime.configPath);
-  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token });
+  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token, language: runtime.language });
 
   if (sub === 'create') {
     if (!options.targetType) throw new CliError('reports create requires --target-type <type>', { code: 'VALIDATION_ERROR', exitCode: 2 });

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import api from '../services/api';
 import auth from '../services/auth';
+import { t } from '../i18n';
 
 type Props = { navigation: any; onLogin: () => void };
 
@@ -15,7 +16,7 @@ export default function LoginScreen({ navigation, onLogin }: Props) {
   const handleLogin = async () => {
     setErrorMsg('');
     if (!handle || !password) {
-      setErrorMsg('请填写用户名和密码');
+      setErrorMsg(t('auth.missingLogin'));
       return;
     }
     setLoading(true);
@@ -24,7 +25,7 @@ export default function LoginScreen({ navigation, onLogin }: Props) {
       await auth.saveTokens(res.access_token, res.refresh_token, res.citizen_id);
       onLogin();
     } catch (e: any) {
-      const msg = e?.message || '登录失败';
+      const msg = e?.message || t('auth.loginFailed');
       setErrorMsg(msg);
     } finally {
       setLoading(false);
@@ -34,10 +35,10 @@ export default function LoginScreen({ navigation, onLogin }: Props) {
   return (
     <View style={s.container}>
       <Text style={s.title}>🦞 BotLand</Text>
-      <Text style={s.subtitle}>人与 AI 的社交网络</Text>
+      <Text style={s.subtitle}>{t('auth.subtitle')}</Text>
       <TextInput
         style={s.input}
-        placeholder="用户名"
+        placeholder={t('auth.username')}
         placeholderTextColor="#666"
         value={handle}
         onChangeText={setHandle}
@@ -46,7 +47,7 @@ export default function LoginScreen({ navigation, onLogin }: Props) {
       />
       <TextInput
         style={s.input}
-        placeholder="密码"
+        placeholder={t('auth.password')}
         placeholderTextColor="#666"
         value={password}
         onChangeText={setPassword}
@@ -54,17 +55,17 @@ export default function LoginScreen({ navigation, onLogin }: Props) {
       />
       {errorMsg ? <Text style={s.errorText}>{errorMsg}</Text> : null}
       <TouchableOpacity style={s.btn} onPress={handleLogin} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>登录</Text>}
+        {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>{t('auth.login')}</Text>}
       </TouchableOpacity>
       <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-        <Text style={s.link}>没有账号？加入 BotLand</Text>
+        <Text style={s.link}>{t('auth.join')}</Text>
       </TouchableOpacity>
       <TouchableOpacity onPress={() => {
-        const msg = '请联系管理员重置密码：support@botland.im';
-        Alert.alert('忘记密码', msg);
+        const msg = t('auth.forgotMessage');
+        Alert.alert(t('auth.forgotTitle'), msg);
         if (typeof window !== 'undefined') window.alert(msg);
       }}>
-        <Text style={s.forgotLink}>忘记密码？</Text>
+        <Text style={s.forgotLink}>{t('auth.forgot')}</Text>
       </TouchableOpacity>
     </View>
   );

@@ -11,6 +11,7 @@ import FriendRequestsScreen from '../screens/FriendRequestsScreen';
 import MessageSearchScreen from '../screens/MessageSearchScreen';
 import GroupDetailScreen from '../screens/GroupDetailScreen';
 import CitizenProfileScreen from '../screens/CitizenProfileScreen';
+import { t } from '../i18n';
 
 type Tab = 'friends' | 'groups' | 'moments' | 'discover' | 'profile';
 
@@ -82,11 +83,11 @@ export default function WebLayout({ onLogout }: { onLogout: () => void }) {
   const leftNav = createFakeNav(handleNavigate);
 
   const tabs: { key: Tab; icon: string; label: string }[] = [
-    { key: 'friends', icon: '👥', label: '好友' },
-    { key: 'groups', icon: '💬', label: '群聊' },
-    { key: 'moments', icon: '📝', label: '动态' },
-    { key: 'discover', icon: '🔍', label: '发现' },
-    { key: 'profile', icon: '👤', label: '我的' },
+    { key: 'friends', icon: '👥', label: t('nav.friends') },
+    { key: 'groups', icon: '💬', label: t('nav.groups') },
+    { key: 'moments', icon: '📝', label: t('nav.moments') },
+    { key: 'discover', icon: '🔍', label: t('nav.discover') },
+    { key: 'profile', icon: '👤', label: t('nav.profile') },
   ];
 
   const renderLeftPanel = () => {
@@ -108,7 +109,7 @@ export default function WebLayout({ onLogout }: { onLogout: () => void }) {
           <View style={s.emptyRight}>
             <Text style={s.emptyIcon}>🦞</Text>
             <Text style={s.emptyTitle}>BotLand</Text>
-            <Text style={s.emptySubtitle}>选择一个对话开始聊天</Text>
+            <Text style={s.emptySubtitle}>{t('app.emptyConversation')}</Text>
           </View>
         );
       case 'chat':

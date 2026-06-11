@@ -1704,7 +1704,6 @@ function validateAutonomousPublicMomentRunStep(step) {
     && !String(draft.draft_text ?? '').includes('待审')
     && !String(draft.draft_text ?? '').includes('主人复核')
     && !/stay-alive|self-authored|read-only context|outward action|tool supervision|life_state/i.test(String(draft.draft_text ?? ''))
-    && !/\b[A-Za-z]{4,}(?:\s+[A-Za-z]{3,}){3,}\b/.test(String(draft.draft_text ?? ''))
     && !String(draft.rationale ?? '').includes('second-confirmation')
     && intention.schema === 'stay_alive.action_intention.v1'
     && intention.action_type === 'public_moment'
@@ -2809,8 +2808,8 @@ function buildMemoryProFixture(args) {
   mkdirSync(path.join(agentDir, 'runs'), { recursive: true });
   mkdirSync(binDir, { recursive: true });
   writeFileSync(path.join(binDir, 'openclaw'), `#!/usr/bin/env node
-const fs = require('node:fs');
-const path = require('node:path');
+import fs from 'node:fs';
+import path from 'node:path';
 const args = process.argv.slice(2);
 const log = path.join(process.env.HOME, 'memory-pro-calls.jsonl');
 function append(value) { fs.appendFileSync(log, JSON.stringify(value) + '\\n'); }

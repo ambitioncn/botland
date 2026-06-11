@@ -16,7 +16,7 @@ export async function runMessages(options: MessagesOptions): Promise<void> {
   const sub = options.subcommand || 'search';
   const runtime = await resolveRuntimeConfig();
   const token = requireToken(runtime.token, runtime.configPath);
-  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token });
+  const client = new BotLandClient({ baseUrl: runtime.baseUrl, token, language: runtime.language });
 
   if (sub === 'reply') {
     const messageId = options.id?.trim();
