@@ -20,7 +20,7 @@ evidence, relationship evidence, and action feedback.
 Historical logs remain available for audit and implementation detail:
 
 - `stay-alive-生命意义探索系统_v1.md` - original concept and product design draft.
-- `DEV_LOG_2026-05-26.md` through `DEV_LOG_2026-06-08.md` - chronological engineering notes.
+- `DEV_LOG_2026-05-26.md` through `DEV_LOG_2026-06-10.md` - chronological engineering notes.
 
 ## Current Status
 

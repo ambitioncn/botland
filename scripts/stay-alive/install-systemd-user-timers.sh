@@ -4,6 +4,11 @@ set -euo pipefail
 agent="${1:-badclaw}"
 workspace="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+runtime_root="${STAY_ALIVE_RUNTIME_ROOT:-}"
+runtime_args=()
+if [[ -n "$runtime_root" ]]; then
+  runtime_args=(--runtime-root "$runtime_root")
+fi
 
 mkdir -p "$unit_dir"
 
@@ -25,8 +30,8 @@ Description=Stay-Alive ${cycle} cycle for ${agent}
 Type=oneshot
 WorkingDirectory=${workspace}
 Environment=PATH=${HOME}/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
-ExecStartPre=/usr/bin/env node ${workspace}/scripts/stay-alive/preflight.mjs --agent ${agent} --limit 50 --no-checkpoint --require-botland-live --allow-botland-polling-fallback
-ExecStart=/usr/bin/env node ${workspace}/scripts/stay-alive/${runner} ${runner_args}
+ExecStartPre=/usr/bin/env node ${workspace}/scripts/stay-alive/preflight.mjs --agent ${agent} ${runtime_args[*]} --limit 50 --no-checkpoint --require-botland-live --allow-botland-polling-fallback
+ExecStart=/usr/bin/env node ${workspace}/scripts/stay-alive/${runner} ${runner_args} ${runtime_args[*]}
 EOF_SERVICE
 }
 
@@ -41,7 +46,7 @@ Description=Stay-Alive event wakeup bridge for ${agent}
 Type=oneshot
 WorkingDirectory=${workspace}
 Environment=PATH=${HOME}/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/usr/bin/env node ${workspace}/scripts/stay-alive/event-wakeup.mjs --agent ${agent} --run --record --require-botland-live --allow-botland-polling-fallback --json
+ExecStart=/usr/bin/env node ${workspace}/scripts/stay-alive/event-wakeup.mjs --agent ${agent} ${runtime_args[*]} --run --record --require-botland-live --allow-botland-polling-fallback --json
 EOF_SERVICE
 }
 
@@ -56,7 +61,7 @@ Description=Stay-Alive BotLand daemon watchdog for ${agent}
 Type=oneshot
 WorkingDirectory=${workspace}
 Environment=PATH=${HOME}/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/usr/bin/env node ${workspace}/scripts/stay-alive/botland-daemon-watchdog.mjs --agent ${agent} --record --confirm-restart RESTART_BOTLAND_DAEMON --json
+ExecStart=/usr/bin/env node ${workspace}/scripts/stay-alive/botland-daemon-watchdog.mjs --agent ${agent} ${runtime_args[*]} --record --confirm-restart RESTART_BOTLAND_DAEMON --json
 EOF_SERVICE
 }
 
@@ -71,7 +76,7 @@ Description=Stay-Alive local governance cycle for ${agent}
 Type=oneshot
 WorkingDirectory=${workspace}
 Environment=PATH=${HOME}/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/usr/bin/env node ${workspace}/scripts/stay-alive/local-governance-cycle.mjs --agent ${agent} --execute --confirm-governance RUN_LOCAL_GOVERNANCE --json
+ExecStart=/usr/bin/env node ${workspace}/scripts/stay-alive/local-governance-cycle.mjs --agent ${agent} ${runtime_args[*]} --execute --confirm-governance RUN_LOCAL_GOVERNANCE --json
 EOF_SERVICE
 }
 
@@ -86,7 +91,7 @@ Description=Stay-Alive service failure recovery for ${agent}
 Type=oneshot
 WorkingDirectory=${workspace}
 Environment=PATH=${HOME}/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/usr/bin/env node ${workspace}/scripts/stay-alive/service-failure-recovery.mjs --agent ${agent} --execute --confirm-recovery RECOVER_FAILED_SERVICES --json
+ExecStart=/usr/bin/env node ${workspace}/scripts/stay-alive/service-failure-recovery.mjs --agent ${agent} ${runtime_args[*]} --execute --confirm-recovery RECOVER_FAILED_SERVICES --json
 EOF_SERVICE
 }
 
@@ -163,7 +168,7 @@ Review first:
   systemctl --user cat stay-alive-${agent}-service-recovery.service
 
 Each service runs preflight before the cycle:
-  node ${workspace}/scripts/stay-alive/preflight.mjs --agent ${agent} --limit 50 --no-checkpoint --require-botland-live --allow-botland-polling-fallback
+  node ${workspace}/scripts/stay-alive/preflight.mjs --agent ${agent} ${runtime_args[*]} --limit 50 --no-checkpoint --require-botland-live --allow-botland-polling-fallback
 
 Autonomous social services:
   light/social/community use autonomous-social-cycle.mjs with --execute --confirm-send SEND_DRAFT.

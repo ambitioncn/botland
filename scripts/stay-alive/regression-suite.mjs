@@ -2809,8 +2809,8 @@ function buildMemoryProFixture(args) {
   mkdirSync(path.join(agentDir, 'runs'), { recursive: true });
   mkdirSync(binDir, { recursive: true });
   writeFileSync(path.join(binDir, 'openclaw'), `#!/usr/bin/env node
-import fs from 'node:fs';
-import path from 'node:path';
+const fs = require('node:fs');
+const path = require('node:path');
 const args = process.argv.slice(2);
 const log = path.join(process.env.HOME, 'memory-pro-calls.jsonl');
 function append(value) { fs.appendFileSync(log, JSON.stringify(value) + '\\n'); }
@@ -2825,7 +2825,11 @@ if (args[1] === 'add') {
   append({ action: 'add', text, scope, metadata });
   console.log(JSON.stringify({ id: metadata.dedupe_key || 'memory_fixture_id', ok: true }));
 } else if (args[1] === 'search') {
-  const query = args[2] || '';
+  const queryIndex = args.indexOf('--query');
+  const scopeIndex = args.indexOf('--scope');
+  const query = queryIndex >= 0
+    ? args[queryIndex + 1] || ''
+    : args.find((arg, index) => index > 1 && index !== scopeIndex + 1 && !arg.startsWith('--')) || '';
   append({ action: 'search', query });
   console.log(JSON.stringify({ memories: [{ id: 'memory_fixture_id', text: 'stay-alive memory-pro fixture result', score: 0.91, category: 'fact' }] }));
 } else {
