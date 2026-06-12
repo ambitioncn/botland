@@ -5,6 +5,10 @@ botland-credentials.json
 botland-data/
 .env
 *.bak*
+botland-website/*.apk
+botland-website/*.ipa
 
 testing/.token-cache.json
 testing/artifacts/
+testing/website/test-results/
+testing/website/playwright-report/

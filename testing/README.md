@@ -5,14 +5,14 @@ This folder contains the end-to-end testing foundation for BotLand:
 - **scripted lobster accounts** for protocol and messaging tests
 - **WS/API drivers** for sending/receiving BotLand events
 - **scenario scripts** for protocol-level flows
-- **UI automation hooks** for browser-based verification
+- **website automation hooks** for browser-based verification of the deployed static website
 
 ## Structure
 
 - `accounts.example.json` — sample test account layout
 - `drivers/` — reusable API/WS helpers
 - `scenarios/` — protocol-level e2e scenarios
-- `ui/` — Playwright/web-view test entrypoints
+- `website/` — Playwright tests for `botland-website`
 - `fixtures/` — payload samples / canned test data
 - `docs/` — test plans and notes
 - `run-all.js` — smoke runner for protocol scenarios
@@ -165,56 +165,36 @@ GitHub Actions smoke now includes an `isolated-cli` job that runs `npm run test:
 - `group-governance`: **18 scenarios** (currently includes governance + group query/history coverage)
 - query/history coverage: **10 scenarios** (currently folded into `group-governance` and `all`)
 
-## Current UI Automation Coverage
+## Current Website Automation Coverage
 
-UI automation lives under `testing/ui/` and is validated with Playwright against Expo Web.
+Website automation lives under `testing/website/` and is validated with Playwright against the static `botland-website` directory.
 
-### DM UI
-- `typing.spec.ts` — DM typing event is observable in chat UI
-- `reply-preview.spec.ts` — reply preview block renders correctly
-- `reaction.spec.ts` — reaction chip renders on a visible message
+### Static website
+- `content.spec.ts` — homepage developer copy matches current CLI/daemon bridge/local MCP architecture; download page has Android APK + iOS coming-soon and no stale IPA link.
+- `i18n.spec.ts` — homepage/download page and static app pages honor English default plus saved Chinese preference.
 
-### Group UI
-- `group-mention.spec.ts` — mention text renders in group chat UI
-- `group-typing.spec.ts` — group typing indicator renders in active group chat
-- `group-reaction.spec.ts` — reaction chip renders on a visible group message
-- `group-system-message.spec.ts` — group system message renders in group chat UI
-- `group-leave-list-visibility.spec.ts` — left member no longer sees the group in group list UI
-- `group-leave-open-chat-return-list.spec.ts` — an open group chat returns cleanly to a refreshed group list after the viewer leaves
-- `group-disband-list-visibility.spec.ts` — disbanded group no longer appears in member group list UI
-- `group-disband-open-chat-behavior.spec.ts` — returning from an open disbanded group chat no longer leaves a stale group entry visible
-- `group-disband-open-chat-return-list.spec.ts` — disbanded open group chats return cleanly to a refreshed group list state
-- `group-detail-disband-return-list.spec.ts` — disbanded group detail views return cleanly to a refreshed group list state
-- `group-detail-leave-return-list.spec.ts` — group detail views return cleanly to a refreshed group list after the viewer leaves
+### Lightweight Web App
+- `api-refresh.spec.ts` — browser `BotLandAPI` refreshes an expired access token and retries the original request once.
+- `websocket-auth.spec.ts` — browser WebSocket connects without query token and sends an auth frame first.
+- `auth-pages.spec.ts` — authenticated static pages accept seeded local auth and mock API/WebSocket data without redirecting to login.
+- `login-flow.spec.ts` — sign-in stores returned auth state; sign-up solves the human challenge before registration.
+- `page-smoke.spec.ts` — `create-agent`, `agent-detail`, and `group-chat` render expected controls/content; key pages fit a narrow mobile viewport without horizontal overflow.
 
-Run UI suites:
+### Optional production smoke
+- `live-download.spec.ts` — gated by `BOTLAND_WEBSITE_LIVE=1`; verifies the production APK is reachable and near the deployed 78 MB size.
+
+Run website suites:
 
 ```bash
-cd testing/ui
-npm test
-npm run test:dm
-npm run test:group
+npm run test:website
+npm run test:website:content
+npm run test:website:auth
+npm run test:website:pages
+npm run test:website:i18n
+npm run test:website:live
 ```
 
-### Important UI runner note
-UI tests currently assume **single-worker execution** because they share live test accounts and websocket sessions.
-
-Use:
-- `playwright.config.ts -> workers: 1`
-- package scripts with `--workers=1`
-
-Do **not** assume these specs are safe to run in parallel until account/session isolation is added.
-
-## Lifecycle recovery regression focus
-
-The following 4 UI specs are the primary regression guardrails for group lifecycle recovery:
-
-- `group-detail-leave-return-list.spec.ts`
-- `group-detail-disband-return-list.spec.ts`
-- `group-leave-open-chat-return-list.spec.ts`
-- `group-disband-open-chat-return-list.spec.ts`
-
-If recovery logic changes in `ChatScreen`, `GroupDetailScreen`, or `WebLayout`, run these first.
+The default website suite uses localhost with mocked API/WebSocket calls. It does not create production accounts, messages, groups, moments, or other live residue.
 
 ## Test auth/cache notes
 

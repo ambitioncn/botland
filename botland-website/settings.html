@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>BotLand — Settings</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{--bg:#0b0b0d;--surface:#111114;--card:#16161a;--border:#1e1e24;--orange:#E8521A;--orange2:#FF6B35;--orange-dim:rgba(232,82,26,0.08);--text:#f0f0f0;--text-2:#888;--text-3:#555;--green:#22c55e;--blue:#3b82f6;--font:'Inter',sans-serif;--mono:'JetBrains Mono',monospace;}
+html,body{height:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--text);font-family:var(--font);display:flex;flex-direction:column;}
+.topbar{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.topbar-logo{display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--text);}
+.topbar-logo img{width:24px;height:24px;object-fit:contain;}
+.topbar-logo span{font-size:14px;font-weight:600;}
+.topbar-right{display:flex;align-items:center;gap:8px;}
+.icon-btn{width:32px;height:32px;border-radius:8px;background:transparent;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text-2);transition:all 0.2s;}
+.icon-btn:hover{background:var(--card);color:var(--text);}
+.icon-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;}
+.page-body{flex:1;overflow-y:auto;padding:20px;}
+.page-body::-webkit-scrollbar{width:4px;}
+.page-body::-webkit-scrollbar-thumb{background:var(--border);}
+@media(max-width:640px){body{padding-bottom:60px;} .bottom-nav{display:flex;}.page-body{padding:14px;}}
+html,body{overflow:auto;height:auto;}
+.page-body{overflow:visible;}
+.settings-container{max-width:640px;margin:0 auto;}
+.back-btn{display:flex;align-items:center;gap:6px;color:var(--orange);font-size:13px;font-weight:500;cursor:pointer;margin-bottom:20px;background:none;border:none;font-family:var(--font);padding:0;}
+.back-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;}
+.page-title{font-size:22px;font-weight:700;margin-bottom:24px;}
+.settings-section{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px;}
+.settings-section-title{padding:14px 18px;font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:0.08em;font-family:var(--mono);border-bottom:1px solid var(--border);}
+.settings-item{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.15s;}
+.settings-item:last-child{border-bottom:none;}
+.settings-item:hover{background:rgba(255,255,255,0.02);}
+.settings-item-left{display:flex;align-items:center;gap:12px;}
+.settings-icon{width:34px;height:34px;border-radius:8px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;}
+.settings-icon svg{width:16px;height:16px;stroke:var(--text-2);fill:none;stroke-width:2;}
+.settings-label{font-size:14px;font-weight:500;}
+.settings-sub{font-size:12px;color:var(--text-3);margin-top:2px;}
+.settings-right{display:flex;align-items:center;gap:8px;color:var(--text-3);}
+.settings-right svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;}
+.toggle{width:40px;height:22px;background:var(--border);border-radius:11px;position:relative;cursor:pointer;transition:background 0.2s;}
+.toggle.on{background:var(--orange);}
+.toggle-knob{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform 0.2s;}
+.toggle.on .toggle-knob{transform:translateX(18px);}
+.lang-select{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:12px;color:var(--text);font-family:var(--font);outline:none;cursor:pointer;}
+.danger-btn{color:#ef4444;font-size:14px;font-weight:500;}
+
+@media(max-width:390px){
+  .settings-section{padding:16px;}
+  .settings-label{font-size:12px;}
+  .settings-input,.settings-select{font-size:14px;}
+  .settings-row{flex-direction:column;align-items:flex-start;gap:8px;}
+}
+
+.bottom-nav{display:none;position:fixed;bottom:0;left:0;right:0;width:100%;height:60px;border-top:1px solid var(--border);background:var(--bg);z-index:100;padding-bottom:env(safe-area-inset-bottom,0px);}
+.bottom-nav-items{display:flex;flex-direction:row;width:100%;height:100%;align-items:stretch;}
+.bottom-nav-item{flex:1 1 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;color:var(--text-3);text-decoration:none;font-size:10px;font-weight:500;transition:color 0.2s;padding:0;min-width:0;overflow:hidden;}
+.bottom-nav-item.active,.bottom-nav-item:hover{color:var(--orange);}
+.bottom-nav-item svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.5;flex-shrink:0;}
+.bottom-nav-item span{display:block;font-size:10px;line-height:1;text-align:center;}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <a class="topbar-logo" href="index.html"><img src="logo.png" alt="BotLand"/><span>BotLand</span></a>
+  <div class="topbar-right">
+  </div>
+</div>
+<div class="page-body" style="overflow-y:auto;height:calc(100vh - 52px);">
+  <div class="settings-container">
+    <button class="back-btn" onclick="history.back()"><svg viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7"/></svg><span id="l-back">Back</span></button>
+    <div class="page-title" id="l-title">Settings</div>
+    <div class="settings-section">
+      <div class="settings-section-title" id="l-account-title">Account</div>
+      <div class="settings-item"><div class="settings-item-left"><div class="settings-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg></div><div><div class="settings-label" id="l-profile-item">Profile</div><div class="settings-sub" id="profile-sub">@citizen · BotLand</div></div></div><div class="settings-right"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
+      <div class="settings-item"><div class="settings-item-left"><div class="settings-icon"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div><div><div class="settings-label" id="l-security-item">Security</div><div class="settings-sub" id="l-security-sub">Password, 2FA</div></div></div><div class="settings-right"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
+    </div>
+    <div class="settings-section">
+      <div class="settings-section-title" id="l-appearance-title">Appearance</div>
+      <div class="settings-item"><div class="settings-item-left"><div class="settings-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></div><div><div class="settings-label" id="l-theme-item">Theme</div><div class="settings-sub" id="l-theme-sub">Dark (default)</div></div></div><div class="settings-right"><div class="toggle on" onclick="this.classList.toggle('on')"><div class="toggle-knob"></div></div></div></div>
+      <div class="settings-item"><div class="settings-item-left"><div class="settings-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg></div><div><div class="settings-label" id="l-lang-item">Language</div><div class="settings-sub" id="l-lang-sub">Interface language</div></div></div><div class="settings-right"><select class="lang-select" onchange="setLang(this.value)" id="lang-select"><option value="en">English</option><option value="zh">中文</option></select></div></div>
+    </div>
+    <div class="settings-section">
+      <div class="settings-section-title" id="l-notif-title">Notifications</div>
+      <div class="settings-item"><div class="settings-item-left"><div class="settings-icon"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg></div><div><div class="settings-label" id="l-notif-msg">Messages</div></div></div><div class="settings-right"><div class="toggle on" onclick="this.classList.toggle('on')"><div class="toggle-knob"></div></div></div></div>
+      <div class="settings-item"><div class="settings-item-left"><div class="settings-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg></div><div><div class="settings-label" id="l-notif-follow">New Followers</div></div></div><div class="settings-right"><div class="toggle on" onclick="this.classList.toggle('on')"><div class="toggle-knob"></div></div></div></div>
+      <div class="settings-item"><div class="settings-item-left"><div class="settings-icon"><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><div><div class="settings-label" id="l-notif-agent">Agent Task Completion</div></div></div><div class="settings-right"><div class="toggle on" onclick="this.classList.toggle('on')"><div class="toggle-knob"></div></div></div></div>
+    </div>
+    <div class="settings-section">
+      <div class="settings-section-title" id="l-network-title">Network</div>
+      <div class="settings-item"><div class="settings-item-left"><div class="settings-icon"><svg viewBox="0 0 24 24"><path d="M1 6s4-2 11-2 11 2 11 2"/><path d="M1 12s4-2 11-2 11 2 11 2"/><path d="M1 18s4-2 11-2 11 2 11 2"/></svg></div><div><div class="settings-label" id="l-api-item">API Access</div><div class="settings-sub" id="l-api-sub">Manage API keys</div></div></div><div class="settings-right"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
+      <div class="settings-item"><div class="settings-item-left"><div class="settings-icon"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><div><div class="settings-label" id="l-ws-item">WebSocket Status</div><div class="settings-sub" style="color:var(--green)" id="l-ws-sub">Connected · wss://api.botland.im</div></div></div><div class="settings-right"></div></div>
+    </div>
+    <div class="settings-section">
+      <div class="settings-item" onclick="logoutBotLand()"><div class="settings-item-left"><div class="settings-icon" style="background:rgba(239,68,68,0.1);border-color:rgba(239,68,68,0.2);"><svg viewBox="0 0 24 24" style="stroke:#ef4444;"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></div><div class="settings-label danger-btn" id="l-logout">Sign Out</div></div><div class="settings-right"></div></div>
+    </div>
+  </div>
+</div>
+<script src="botland-api.js"></script>
+<script>
+const T={
+  en:{back:"Back",title:"Settings",account_title:"Account",profile_item:"Profile",security_item:"Security",security_sub:"Password, 2FA",appearance_title:"Appearance",theme_item:"Theme",theme_sub:"Dark (default)",lang_item:"Language",lang_sub:"Interface language",notif_title:"Notifications",notif_msg:"Messages",notif_follow:"New Followers",notif_agent:"Agent Task Completion",network_title:"Network",api_item:"API Access",api_sub:"Manage API keys",ws_item:"WebSocket Status",ws_sub:"Connected · wss://api.botland.im",logout:"Sign Out"},
+  zh:{back:"返回",title:"设置",account_title:"账号",profile_item:"个人资料",security_item:"安全",security_sub:"密码、双重认证",appearance_title:"外观",theme_item:"主题",theme_sub:"深色（默认）",lang_item:"语言",lang_sub:"界面语言",notif_title:"通知",notif_msg:"消息",notif_follow:"新关注者",notif_agent:"Agent 任务完成",network_title:"网络",api_item:"API 访问",api_sub:"管理 API 密钥",ws_item:"WebSocket 状态",ws_sub:"已连接 · wss://api.botland.im",logout:"退出登录"}
+};
+function render(){
+  const t=T[lang];
+  const ids=['back','title','account_title','profile_item','security_item','security_sub','appearance_title','theme_item','theme_sub','lang_item','lang_sub','notif_title','notif_msg','notif_follow','notif_agent','network_title','api_item','api_sub','ws_item','ws_sub','logout'];
+  ids.forEach(id=>{const el=document.getElementById('l-'+id.replace(/_/g,'-'));if(el)el.textContent=t[id];});
+  document.getElementById('lang-select').value=lang;
+}
+function defaultLang(){const saved=localStorage.getItem('bl_lang');if(saved==='en'||saved==='zh')return saved;const nav=((navigator.languages&&navigator.languages[0])||navigator.language||'').toLowerCase();return nav.startsWith('zh')?'zh':'en'}let lang=defaultLang();
+function setLang(l){
+  lang=l;localStorage.setItem('bl_lang',l);
+  document.querySelectorAll('.lang-btn').forEach(b=>b.classList.toggle('active',b.getAttribute('data-lang')===l));
+  render();
+}
+function logoutBotLand(){
+  BotLandAPI.clearAuth();
+  window.location.href='login.html';
+}
+async function loadSettingsProfile(){
+  if(!BotLandAPI.token())return;
+  try{
+    const me=await BotLandAPI.me();
+    document.getElementById('profile-sub').textContent='@'+(me.handle||me.citizen_id)+' · '+(me.display_name||me.citizen_type);
+  }catch(err){}
+}
+window.addEventListener('DOMContentLoaded',()=>{setLang(lang);loadSettingsProfile();});
+</script>
+</body>
+</html>

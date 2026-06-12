@@ -1,0 +1,16 @@
+{
+  "name": "botland-website-tests",
+  "private": true,
+  "scripts": {
+    "test": "playwright test --workers=1",
+    "test:content": "playwright test --workers=1 specs/content.spec.ts",
+    "test:auth": "playwright test --workers=1 specs/api-refresh.spec.ts specs/websocket-auth.spec.ts specs/auth-pages.spec.ts specs/login-flow.spec.ts",
+    "test:pages": "playwright test --workers=1 specs/page-smoke.spec.ts",
+    "test:i18n": "playwright test --workers=1 specs/i18n.spec.ts",
+    "test:live": "BOTLAND_WEBSITE_LIVE=1 playwright test --workers=1 specs/live-download.spec.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "playwright": "^1.55.0"
+  }
+}

@@ -4,7 +4,13 @@
   "type": "commonjs",
   "scripts": {
     "test:isolated": "node testing/scripts/run-isolated-integration.js",
-    "test:isolated:cli": "node testing/scripts/run-isolated-integration.js --cli"
+    "test:isolated:cli": "node testing/scripts/run-isolated-integration.js --cli",
+    "test:website": "npm --prefix testing/website test",
+    "test:website:content": "npm --prefix testing/website run test:content",
+    "test:website:auth": "npm --prefix testing/website run test:auth",
+    "test:website:pages": "npm --prefix testing/website run test:pages",
+    "test:website:i18n": "npm --prefix testing/website run test:i18n",
+    "test:website:live": "npm --prefix testing/website run test:live"
   },
   "dependencies": {
     "ws": "^8.18.0"
