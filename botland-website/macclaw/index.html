@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MacClaw Installer</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #10131a;
+        --panel: #181d27;
+        --panel-2: #202633;
+        --text: #eef2f7;
+        --muted: #aab3c2;
+        --line: #313849;
+        --accent: #55c7a5;
+        --accent-2: #7fb4ff;
+        --danger: #ffbd7a;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at 20% 0%, rgba(85, 199, 165, 0.18), transparent 32rem),
+          radial-gradient(circle at 90% 10%, rgba(127, 180, 255, 0.16), transparent 28rem),
+          var(--bg);
+        color: var(--text);
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      main {
+        width: min(1120px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 42px 0 56px;
+      }
+
+      header {
+        display: grid;
+        gap: 14px;
+        margin-bottom: 24px;
+      }
+
+      .eyebrow {
+        color: var(--accent);
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(32px, 5vw, 56px);
+        line-height: 1.05;
+        letter-spacing: 0;
+      }
+
+      .lead {
+        max-width: 760px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1.6;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 340px;
+        gap: 20px;
+        align-items: start;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(24, 29, 39, 0.92);
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.26);
+        overflow: hidden;
+      }
+
+      .toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--line);
+        background: var(--panel-2);
+      }
+
+      .toolbar span {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      button {
+        border: 0;
+        border-radius: 6px;
+        background: var(--accent);
+        color: #07120f;
+        font: inherit;
+        font-size: 14px;
+        font-weight: 800;
+        padding: 9px 12px;
+        cursor: pointer;
+      }
+
+      button:active {
+        transform: translateY(1px);
+      }
+
+      pre {
+        margin: 0;
+        padding: 18px;
+        overflow: auto;
+        max-height: 68vh;
+        line-height: 1.5;
+        font-size: 13px;
+        tab-size: 2;
+      }
+
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      }
+
+      aside {
+        display: grid;
+        gap: 12px;
+      }
+
+      .note {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(24, 29, 39, 0.86);
+        padding: 16px;
+      }
+
+      .note h2 {
+        margin: 0 0 10px;
+        font-size: 16px;
+        letter-spacing: 0;
+      }
+
+      .note p,
+      .note li {
+        color: var(--muted);
+        line-height: 1.55;
+        font-size: 14px;
+      }
+
+      .note p {
+        margin: 0;
+      }
+
+      .note ul {
+        margin: 0;
+        padding-left: 18px;
+      }
+
+      .warn {
+        color: var(--danger);
+      }
+
+      @media (max-width: 860px) {
+        main {
+          width: min(100vw - 20px, 720px);
+          padding-top: 26px;
+        }
+
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        pre {
+          max-height: none;
+          font-size: 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="eyebrow">MacClaw setup</div>
+        <h1>Mac 上部署 sshd + tailscaled</h1>
+        <p class="lead">这份脚本面向中国网络环境：不依赖 Homebrew，使用国内 Go 镜像和 Go module 代理，启用 macOS SSH，并把 tailscaled 安装为系统 daemon，重启后不登录桌面也会启动。</p>
+      </header>
+
+      <div class="grid">
+        <section class="panel">
+          <div class="toolbar">
+            <span>复制后粘贴到 macOS Terminal 执行</span>
+            <button id="copy">Copy</button>
+          </div>
+          <pre><code id="script">#!/usr/bin/env bash
+set -euo pipefail
+
+# ===== 可选：如果这台 Mac 有代理，填这里；没有就保持注释 =====
+# export http_proxy=http://127.0.0.1:7890
+# export https_proxy=http://127.0.0.1:7890
+# export all_proxy=socks5://127.0.0.1:7890
+
+GO_VER="1.25.11"
+
+log() { printf '\n==&gt; %s\n' "$*"; }
+
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "This script is for macOS only."
+  exit 1
+fi
+
+ARCH="$(uname -m)"
+case "$ARCH" in
+  arm64) GOARCH="arm64" ;;
+  x86_64) GOARCH="amd64" ;;
+  *) echo "Unsupported Mac arch: $ARCH"; exit 1 ;;
+esac
+
+GO_PKG="go${GO_VER}.darwin-${GOARCH}.pkg"
+
+log "Enable macOS SSH server"
+sudo systemsetup -setremotelogin on
+sudo launchctl enable system/com.openssh.sshd 2&gt;/dev/null || true
+sudo launchctl kickstart -k system/com.openssh.sshd 2&gt;/dev/null || true
+systemsetup -getremotelogin || true
+
+log "Install Go ${GO_VER} from China mirrors if missing"
+if ! command -v go &gt;/dev/null 2&gt;&amp;1; then
+  OK=0
+  for MIRROR in \
+    "https://mirrors.aliyun.com/golang" \
+    "https://mirrors.ustc.edu.cn/golang" \
+    "https://mirrors.nju.edu.cn/golang" \
+    "https://mirrors.hust.edu.cn/golang"
+  do
+    URL="${MIRROR}/${GO_PKG}"
+    echo "Trying: $URL"
+    if curl -fL --retry 3 --connect-timeout 15 -o "/tmp/${GO_PKG}" "$URL"; then
+      OK=1
+      break
+    fi
+  done
+
+  if [[ "$OK" != "1" ]]; then
+    echo "Failed to download ${GO_PKG} from China mirrors."
+    exit 1
+  fi
+
+  sudo installer -pkg "/tmp/${GO_PKG}" -target /
+fi
+
+export PATH="/usr/local/go/bin:$HOME/go/bin:/usr/local/bin:$PATH"
+
+log "Go version"
+go version
+
+log "Set China-friendly Go module proxy"
+go env -w GOPROXY=https://goproxy.cn,https://goproxy.io,direct
+
+log "Build tailscale and tailscaled"
+if ! CGO_ENABLED=0 go install tailscale.com/cmd/tailscale@latest tailscale.com/cmd/tailscaled@latest; then
+  echo "First go install failed. Retrying with GOSUMDB=off for China network fallback..."
+  go env -w GOSUMDB=off
+  CGO_ENABLED=0 go install tailscale.com/cmd/tailscale@latest tailscale.com/cmd/tailscaled@latest
+fi
+
+log "Install binaries to /usr/local/bin"
+sudo mkdir -p /usr/local/bin
+sudo install -m 0755 "$HOME/go/bin/tailscale" /usr/local/bin/tailscale
+sudo install -m 0755 "$HOME/go/bin/tailscaled" /usr/local/bin/tailscaled
+
+log "Install tailscaled as macOS system daemon"
+sudo /usr/local/bin/tailscaled install-system-daemon || true
+
+log "Start / restart tailscaled daemon"
+sudo launchctl kickstart -k system/com.tailscale.tailscaled 2&gt;/dev/null || true
+sleep 2
+
+log "Tailscale login / bring up"
+echo "If a login URL appears below, open it in browser and finish login."
+sudo /usr/local/bin/tailscale up
+
+log "Tailscale status"
+sudo /usr/local/bin/tailscale status || true
+
+log "Tailscale IPv4"
+sudo /usr/local/bin/tailscale ip -4 || true
+
+log "Verify SSH"
+systemsetup -getremotelogin || true
+
+cat &lt;&lt;'DONE'
+
+DONE.
+- macOS sshd has been enabled.
+- tailscaled has been installed as a system daemon.
+- After reboot, tailscaled should start before user login.
+
+Useful checks:
+  sudo launchctl print system/com.tailscale.tailscaled
+  sudo tailscale status
+  sudo tailscale ip -4
+  sudo systemsetup -getremotelogin
+
+DONE</code></pre>
+        </section>
+
+        <aside>
+          <div class="note">
+            <h2>执行方式</h2>
+            <p>点 Copy，把脚本粘贴到 Terminal。中途会要 Mac 密码；如果出现 Tailscale 登录链接，打开后完成登录。</p>
+          </div>
+          <div class="note">
+            <h2>网络说明</h2>
+            <ul>
+              <li>Go 安装包优先走阿里云、中科大、南大、华科镜像。</li>
+              <li>Go module 走 goproxy.cn 和 goproxy.io。</li>
+              <li class="warn">Tailscale 登录和中继仍可能受当前网络影响。</li>
+            </ul>
+          </div>
+          <div class="note">
+            <h2>重启行为</h2>
+            <p>这里安装的是 CLI-only tailscaled system daemon，不是菜单栏 App。Mac 重启后，它应在用户登录前由 launchd 拉起。</p>
+          </div>
+        </aside>
+      </div>
+    </main>
+
+    <script>
+      const button = document.getElementById('copy');
+      const script = document.getElementById('script');
+
+      button.addEventListener('click', async () => {
+        const text = script.textContent;
+        await navigator.clipboard.writeText(text);
+        button.textContent = 'Copied';
+        setTimeout(() => {
+          button.textContent = 'Copy';
+        }, 1600);
+      });
+    </script>
+  </body>
+</html>
