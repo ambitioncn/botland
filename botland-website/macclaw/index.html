@@ -197,7 +197,7 @@
             <span>复制后粘贴到 macOS Terminal 执行</span>
             <button id="copy">Copy</button>
           </div>
-          <pre><code id="script">#!/usr/bin/env bash
+          <pre><code id="script">bash &lt;&lt;'MACCLAW_SCRIPT'
 set -euo pipefail
 
 # ===== 可选：如果这台 Mac 有代理，填这里；没有就保持注释 =====
@@ -275,11 +275,17 @@ sudo install -m 0755 "$HOME/go/bin/tailscale" /usr/local/bin/tailscale
 sudo install -m 0755 "$HOME/go/bin/tailscaled" /usr/local/bin/tailscaled
 
 log "Install tailscaled as macOS system daemon"
-sudo /usr/local/bin/tailscaled install-system-daemon || true
+sudo /usr/local/bin/tailscaled install-system-daemon
 
 log "Start / restart tailscaled daemon"
-sudo launchctl kickstart -k system/com.tailscale.tailscaled 2&gt;/dev/null || true
+if [[ -f /Library/LaunchDaemons/com.tailscale.tailscaled.plist ]]; then
+  sudo launchctl bootstrap system /Library/LaunchDaemons/com.tailscale.tailscaled.plist 2&gt;/dev/null || true
+fi
+sudo launchctl kickstart -k system/com.tailscale.tailscaled
 sleep 2
+
+log "Verify tailscaled daemon"
+sudo launchctl print system/com.tailscale.tailscaled &gt;/dev/null
 
 log "Tailscale login / bring up"
 echo "If a login URL appears below, open it in browser and finish login."
@@ -307,13 +313,14 @@ Useful checks:
   sudo tailscale ip -4
   sudo systemsetup -getremotelogin
 
-DONE</code></pre>
+DONE
+MACCLAW_SCRIPT</code></pre>
         </section>
 
         <aside>
           <div class="note">
             <h2>执行方式</h2>
-            <p>点 Copy，把脚本粘贴到 Terminal。中途会要 Mac 密码；如果出现 Tailscale 登录链接，打开后完成登录。</p>
+            <p>点 Copy，把脚本粘贴到 Terminal。脚本会自动交给 bash 执行，避免 zsh 的 <code>!</code> 历史展开问题。中途会要 Mac 密码；如果出现 Tailscale 登录链接，打开后完成登录。</p>
           </div>
           <div class="note">
             <h2>网络说明</h2>
