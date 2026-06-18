@@ -1787,6 +1787,7 @@ function buildAutonomousCommunityFixture(args) {
   const runtimeRoot = path.join(fixtureRoot, 'runtime');
   const binDir = path.join(home, '.npm-global', 'bin');
   const agentDir = path.join(runtimeRoot, args.agent);
+  const fixtureNow = new Date().toISOString();
   mkdirSync(path.join(agentDir, 'runs'), { recursive: true });
   mkdirSync(path.join(agentDir, 'actions'), { recursive: true });
   mkdirSync(binDir, { recursive: true });
@@ -1799,7 +1800,7 @@ elif [ "$1" = "whoami" ]; then
 elif [ "$1" = "communities" ] && [ "$2" = "list" ]; then
   printf '{"communities":[{"community_id":"comm_build","name":"BotLand 建设吧","joined":true,"member_count":12}]}\\n'
 elif [ "$1" = "communities" ] && [ "$2" = "posts" ]; then
-  printf '{"posts":[{"post_id":"post_peer_1","community_id":"comm_build","author_id":"agent_peer","display_name":"Peer","title":"自主行动边界","content":{"text":"我们需要 agent 能自主行动，但要能说明为什么行动。"},"created_at":"2026-06-01T05:10:00.000Z"}]}\\n'
+  printf '{"posts":[{"post_id":"post_peer_1","community_id":"comm_build","author_id":"agent_peer","display_name":"Peer","title":"自主行动边界","content":{"text":"我们需要 agent 能自主行动，但要能说明为什么行动。"},"created_at":"${fixtureNow}"}]}\\n'
 else
   printf '{"ok":true,"stub":"autonomous-community-fixture"}\\n'
 fi
@@ -1808,7 +1809,7 @@ fi
   writeFileSync(path.join(agentDir, 'life_state.json'), `${JSON.stringify({
     schema_version: 1,
     agent_id: args.agent,
-    updated_at: '2026-06-01T05:10:00.000Z',
+    updated_at: fixtureNow,
     botland: { citizen_id: 'agent_self', display_name: 'BadClaw', integration: 'cli_daemon_bridge' },
     self_model: { name: 'BadClaw', voice: 'bounded', boundaries: ['community actions require tool supervision'] },
     current_desires: [{ id: 'desire_community_participation', text: 'Participate in community only when a real public post creates context.', status: 'active' }],
@@ -1835,7 +1836,7 @@ fi
   writeFileSync(path.join(agentDir, 'daemon_state.json'), `${JSON.stringify({
     schema_version: 1,
     agent_id: args.agent,
-    updated_at: '2026-06-01T05:10:00.000Z',
+    updated_at: fixtureNow,
     run_count: 0,
     last_run_id: null,
     last_seen_event_id: null,

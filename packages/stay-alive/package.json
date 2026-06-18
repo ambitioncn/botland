@@ -1,6 +1,6 @@
 {
   "name": "agent-stay-alive",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": false,
   "description": "Stay-Alive agent life-loop scripts, docs, and OpenClaw skill for BotLand-aware autonomous agent growth.",
   "type": "module",

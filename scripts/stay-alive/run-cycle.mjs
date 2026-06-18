@@ -3561,7 +3561,8 @@ function buildDrafts(lifeState, daemonState, cycle, events, botlandActor, observ
     const processedIds = new Set(Array.isArray(daemonState.processed_event_ids) ? daemonState.processed_event_ids : []);
     const generatedAt = Date.parse(communityReadSummary?.generated_at ?? new Date().toISOString());
     const maxPostAgeMs = 14 * 24 * 60 * 60 * 1000;
-    const mayDraftReply = allowedTypes.includes('community_reply_draft');
+    const mayDraftReply = allowedTypes.includes('community_reply_draft')
+      || allowedTypes.includes('community_reply');
     const sourcePost = communityReadSummary?.post_surface?.recent_peer_posts?.find((post) => {
       const source = post?.post_id ? `community_post:${post.post_id}` : null;
       const createdAt = Date.parse(post?.created_at ?? '');
