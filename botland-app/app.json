@@ -27,7 +27,9 @@
         "backgroundColor": "#0a0a0a"
       },
       "versionCode": 1,
-      "permissions": ["RECORD_AUDIO"]
+      "permissions": [
+        "RECORD_AUDIO"
+      ]
     },
     "plugins": [
       "expo-asset",
@@ -38,7 +40,9 @@
     "extra": {
       "eas": {
         "projectId": "b0188a0f-9f25-4014-9a38-d60412cc632a"
-      }
+      },
+      "botlandApiBaseUrl": "https://api.botland.im",
+      "botlandWsUrl": "wss://api.botland.im/ws"
     },
     "owner": "botland"
   }

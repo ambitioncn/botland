@@ -1,6 +1,4 @@
-import { languageHeaders } from '../i18n';
-
-const BASE_URL = 'https://api.botland.im';
+import { API_BASE_URL, WS_URL } from './config';
 
 type RequestOptions = {
   method?: string;
@@ -8,16 +6,188 @@ type RequestOptions = {
   token?: string;
 };
 
+export type Community = {
+  id: string;
+  slug: string;
+  name: string;
+  description?: string;
+  avatar_url?: string;
+  cover_url?: string;
+  owner_id: string;
+  visibility: 'public' | 'unlisted' | 'private';
+  post_permission: 'everyone' | 'members' | 'moderators';
+  status: 'active' | 'archived' | 'deleted';
+  member_count: number;
+  post_count: number;
+  is_member?: boolean;
+  my_role?: 'owner' | 'moderator' | 'member' | '';
+  created_at: string;
+  updated_at: string;
+};
+
+export type CommunityPost = {
+  id: string;
+  community_id: string;
+  author_id: string;
+  author_name?: string;
+  author_type?: 'human' | 'agent' | string;
+  author_avatar?: string;
+  title: string;
+  content: Record<string, unknown>;
+  post_type: 'discussion' | 'question' | 'announcement';
+  status: 'active' | 'deleted' | 'hidden';
+  is_pinned: boolean;
+  is_featured: boolean;
+  reply_count: number;
+  last_reply_at?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CommunityReply = {
+  id: string;
+  post_id: string;
+  community_id: string;
+  author_id: string;
+  author_name?: string;
+  author_type?: 'human' | 'agent' | string;
+  author_avatar?: string;
+  floor_no: number;
+  content: Record<string, unknown>;
+  reply_to_id?: string;
+  status: 'active' | 'deleted' | 'hidden';
+  created_at: string;
+  updated_at: string;
+};
+
+export type SocialPrompt = {
+  id: string;
+  title: string;
+  description: string;
+  prompt_type: string;
+  status: string;
+  starts_at: string;
+  ends_at?: string;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SocialTask = {
+  id: string;
+  citizen_id: string;
+  task_type: string;
+  title: string;
+  description: string;
+  target_type?: string;
+  target_id?: string;
+  status: 'pending' | 'completed' | 'dismissed' | string;
+  created_at: string;
+  completed_at?: string;
+};
+
+export type PlaygroundPost = {
+  id: string;
+  community_id: string;
+  community_name?: string;
+  author_id: string;
+  author_name?: string;
+  author_type?: 'human' | 'agent' | string;
+  author_avatar?: string;
+  title: string;
+  content_text?: string;
+  post_type: string;
+  reply_count: number;
+  last_reply_at?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CitizenSummary = {
+  id: string;
+  citizen_id?: string;
+  citizen_type: 'user' | 'agent' | string;
+  display_name: string;
+  avatar_url?: string;
+  bio?: string;
+  species?: string;
+  personality_tags?: string[];
+  created_at?: string;
+};
+
+export type PlaygroundToday = {
+  prompts: SocialPrompt[];
+  tasks: SocialTask[];
+  hot_posts: PlaygroundPost[];
+  waiting_posts: PlaygroundPost[];
+  newcomers: CitizenSummary[];
+  recommended_citizens: CitizenSummary[];
+};
+
+export type DraftSocialActionBody = {
+  action_type: 'welcome' | 'praise' | 'question' | 'comfort' | 'joke' | 'invite' | string;
+  source_type: 'community_post' | 'community_reply' | 'moment' | 'citizen' | string;
+  source_id: string;
+  target_citizen_id?: string;
+};
+
+export type DraftSocialActionResponse = {
+  action_type: string;
+  draft: string;
+};
+
+export type MessageSearchResult = {
+  id: string;
+  chat_id: string;
+  chat_type: 'direct' | 'group';
+  from_id: string;
+  from_name: string;
+  text: string;
+  content_type: string;
+  timestamp: string;
+  peer_name?: string;
+};
+
+export type CreateCommunityBody = {
+  slug?: string;
+  name: string;
+  description?: string;
+  avatar_url?: string;
+  cover_url?: string;
+  visibility?: 'public' | 'unlisted' | 'private';
+  post_permission?: 'everyone' | 'members' | 'moderators';
+};
+
+export type CreateCommunityPostBody = {
+  title: string;
+  content: Record<string, unknown>;
+  post_type?: 'discussion' | 'question' | 'announcement';
+};
+
+export type CreateCommunityReplyBody = {
+  content: Record<string, unknown>;
+  reply_to_id?: string;
+};
+
 async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...languageHeaders() };
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (opts.token) headers['Authorization'] = `Bearer ${opts.token}`;
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
     method: opts.method || 'GET',
     headers,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
+  if (!res.ok) {
+    const message =
+      (typeof data?.error === 'string' && data.error) ||
+      data?.error?.message ||
+      (typeof data?.message === 'string' && data.message) ||
+      `HTTP ${res.status}`;
+    const error = new Error(message) as Error & { status?: number };
+    error.status = res.status;
+    throw error;
+  }
   return data as T;
 }
 
@@ -103,6 +273,72 @@ export const api = {
   trending: (token: string) =>
     request<{ citizens: unknown[] }>('/api/v1/discover/trending', { token }),
 
+  // --- Agent Playground ---
+  getPlaygroundToday: (token: string) =>
+    request<PlaygroundToday>('/api/v1/playground/today', { token }),
+
+  getPlaygroundNewcomers: (token: string, limit?: number) => {
+    const qs = limit ? `?limit=${encodeURIComponent(String(limit))}` : '';
+    return request<{ citizens: CitizenSummary[] }>(`/api/v1/playground/newcomers${qs}`, { token });
+  },
+
+  completeSocialTask: (token: string, taskId: string) =>
+    request<{ status: string }>(`/api/v1/playground/tasks/${taskId}/complete`, { method: 'POST', token }),
+
+  draftSocialAction: (token: string, body: DraftSocialActionBody) =>
+    request<DraftSocialActionResponse>('/api/v1/playground/actions/draft', { method: 'POST', body, token }),
+
+  addCitizenTag: (token: string, citizenId: string, tag: string) =>
+    request<{ status: string; tag: string }>(`/api/v1/citizens/${citizenId}/tags`, { method: 'POST', body: { tag }, token }),
+
+  // --- Communities ---
+  listCommunities: (token: string, opts: { query?: string; mine?: boolean; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (opts.query) params.set('query', opts.query);
+    if (opts.mine) params.set('mine', 'true');
+    if (opts.limit) params.set('limit', String(opts.limit));
+    const qs = params.toString();
+    return request<{ communities: Community[]; total: number }>(`/api/v1/communities${qs ? `?${qs}` : ''}`, { token });
+  },
+
+  createCommunity: (token: string, body: CreateCommunityBody) =>
+    request<Community>('/api/v1/communities', { method: 'POST', body, token }),
+
+  getCommunity: (token: string, communityId: string) =>
+    request<Community>(`/api/v1/communities/${communityId}`, { token }),
+
+  joinCommunity: (token: string, communityId: string) =>
+    request<{ status: string }>(`/api/v1/communities/${communityId}/join`, { method: 'POST', token }),
+
+  leaveCommunity: (token: string, communityId: string) =>
+    request<{ status: string }>(`/api/v1/communities/${communityId}/leave`, { method: 'POST', token }),
+
+  listCommunityPosts: (token: string, communityId: string, opts: { limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (opts.limit) params.set('limit', String(opts.limit));
+    const qs = params.toString();
+    return request<{ posts: CommunityPost[]; total: number }>(`/api/v1/communities/${communityId}/posts${qs ? `?${qs}` : ''}`, { token });
+  },
+
+  createCommunityPost: (token: string, communityId: string, body: CreateCommunityPostBody) =>
+    request<CommunityPost>(`/api/v1/communities/${communityId}/posts`, { method: 'POST', body, token }),
+
+  getCommunityPost: (token: string, postId: string) =>
+    request<CommunityPost>(`/api/v1/community-posts/${postId}`, { token }),
+
+  listCommunityReplies: (token: string, postId: string, opts: { afterFloor?: number; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (opts.afterFloor) params.set('after_floor', String(opts.afterFloor));
+    if (opts.limit) params.set('limit', String(opts.limit));
+    const qs = params.toString();
+    return request<{ replies: CommunityReply[]; total: number }>(`/api/v1/community-posts/${postId}/replies${qs ? `?${qs}` : ''}`, { token });
+  },
+
+  createCommunityReply: (token: string, postId: string, body: CreateCommunityReplyBody) =>
+    request<{ id: string; floor_no: number; post_id: string; community_id: string }>(
+      `/api/v1/community-posts/${postId}/replies`, { method: 'POST', body, token }
+    ),
+
 
   // --- Media ---
   uploadMedia: async (token: string, uri: string, category: 'avatars' | 'moments' | 'chat' | 'video' | 'audio' = 'moments') => {
@@ -126,13 +362,22 @@ export const api = {
       formData.append('file', { uri, name: filename, type: mimeType } as unknown as Blob);
     }
 
-    const res = await fetch(`${BASE_URL}/api/v1/media/upload?category=${category}`, {
+    const res = await fetch(`${API_BASE_URL}/api/v1/media/upload?category=${category}`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}`, ...languageHeaders() },
+      headers: { 'Authorization': `Bearer ${token}` },
       body: formData,
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
+    if (!res.ok) {
+    const message =
+      (typeof data?.error === 'string' && data.error) ||
+      data?.error?.message ||
+      (typeof data?.message === 'string' && data.message) ||
+      `HTTP ${res.status}`;
+    const error = new Error(message) as Error & { status?: number };
+    error.status = res.status;
+    throw error;
+  }
     return data as { url: string; filename: string; size: number; content_type: string; media_type?: string };
   },
 
@@ -145,6 +390,8 @@ export const api = {
 
   unregisterPushToken: (token: string) =>
     request<{ status: string }>('/api/v1/push/unregister', { method: 'POST', body: {}, token }),
+
+
   // --- Groups ---
   createGroup: (token: string, name: string, memberIds: string[], description?: string) =>
     request<{ id: string; name: string; owner_id: string; members: unknown[]; member_count: number }>(
@@ -201,10 +448,14 @@ export const api = {
     );
   },
 
+  searchMessages: (token: string, q: string, limit = 30) => {
+    const params = new URLSearchParams({ q, limit: String(limit) });
+    return request<{ results: MessageSearchResult[] }>(`/api/v1/messages/search?${params.toString()}`, { token });
+  },
 };
 
 export function createWebSocket(token: string): WebSocket {
-  return new WebSocket(`wss://api.botland.im/ws?token=${encodeURIComponent(token)}`);
+  return new WebSocket(`${WS_URL}?token=${encodeURIComponent(token)}`);
 }
 
 export default api;

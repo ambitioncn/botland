@@ -50,8 +50,12 @@ export default function DiscoverScreen({ navigation }: Props) {
     }
   };
 
+  const openProfile = (item: Citizen) => {
+    navigation.navigate('CitizenProfile', { citizenId: item.citizen_id, displayName: item.display_name });
+  };
+
   const renderItem = ({ item }: { item: Citizen }) => (
-    <View style={s.item}>
+    <TouchableOpacity style={s.item} onPress={() => openProfile(item)} activeOpacity={0.8}>
       <View style={[s.avatar, item.citizen_type === 'agent' ? s.agentAvatar : null]}>
         <Text style={s.avatarText}>{item.display_name?.[0] || '?'}</Text>
       </View>
@@ -60,16 +64,32 @@ export default function DiscoverScreen({ navigation }: Props) {
         {item.bio ? <Text style={s.bio}>{item.bio}</Text> : null}
         {item.species ? <Text style={s.species}>{item.species}</Text> : null}
       </View>
-      <TouchableOpacity style={s.addBtn} onPress={() => addFriend(item.citizen_id)}>
-        <Text style={s.addText}>加好友</Text>
+      <TouchableOpacity style={s.addBtn} onPress={(e: any) => { e?.stopPropagation?.(); addFriend(item.citizen_id); }}>
+        <Text style={s.addText}>+</Text>
       </TouchableOpacity>
-    </View>
+    </TouchableOpacity>
   );
 
   const data = results.length > 0 ? results : trending;
 
   return (
     <View style={s.container}>
+      <TouchableOpacity style={s.playgroundBanner} onPress={() => navigation.navigate('Playground')}>
+        <Text style={s.communityIcon}>🎡</Text>
+        <View style={s.communityInfo}>
+          <Text style={s.communityTitle}>Agent 游乐场</Text>
+          <Text style={s.communityHint}>今日话题、欢迎新人、接住没人回的帖子，让 Agent 很容易玩起来</Text>
+        </View>
+        <Text style={s.communityArrow}>›</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={s.communityBanner} onPress={() => navigation.navigate('Communities')}>
+        <Text style={s.communityIcon}>🏝️</Text>
+        <View style={s.communityInfo}>
+          <Text style={s.communityTitle}>社区 / 主题吧</Text>
+          <Text style={s.communityHint}>围绕一个主题发帖、回帖，和人类/Agent 一起沉淀内容</Text>
+        </View>
+        <Text style={s.communityArrow}>›</Text>
+      </TouchableOpacity>
       <View style={s.searchRow}>
         <TextInput style={s.searchInput} placeholder="搜索公民..." placeholderTextColor="#666" value={query} onChangeText={setQuery} onSubmitEditing={doSearch} returnKeyType="search" />
         <TouchableOpacity style={s.searchBtn} onPress={doSearch}>
@@ -84,7 +104,14 @@ export default function DiscoverScreen({ navigation }: Props) {
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0a0a0a' },
-  searchRow: { flexDirection: 'row', padding: 12 },
+  playgroundBanner: { flexDirection: 'row', alignItems: 'center', margin: 12, padding: 14, borderRadius: 16, backgroundColor: '#17120f', borderWidth: 1, borderColor: '#392115' },
+  communityBanner: { flexDirection: 'row', alignItems: 'center', margin: 12, marginTop: 0, padding: 14, borderRadius: 16, backgroundColor: '#151515', borderWidth: 1, borderColor: '#252525' },
+  communityIcon: { fontSize: 24, marginRight: 12 },
+  communityInfo: { flex: 1 },
+  communityTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  communityHint: { color: '#777', fontSize: 12, marginTop: 3, lineHeight: 17 },
+  communityArrow: { color: '#555', fontSize: 28, marginLeft: 8 },
+  searchRow: { flexDirection: 'row', padding: 12, paddingTop: 0 },
   searchInput: { flex: 1, backgroundColor: '#1a1a1a', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10, fontSize: 15, color: '#fff' },
   searchBtn: { backgroundColor: '#ff6b35', borderRadius: 12, paddingHorizontal: 16, justifyContent: 'center', marginLeft: 8 },
   searchBtnText: { color: '#fff', fontWeight: '700' },
@@ -97,6 +124,6 @@ const s = StyleSheet.create({
   name: { color: '#fff', fontSize: 16, fontWeight: '600' },
   bio: { color: '#888', fontSize: 12, marginTop: 2 },
   species: { color: '#ff6b35', fontSize: 12, marginTop: 2 },
-  addBtn: { minWidth: 76, height: 36, borderRadius: 18, backgroundColor: '#1a1a1a', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 12 },
-  addText: { color: '#ff6b35', fontSize: 13, fontWeight: '700' },
+  addBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#1a1a1a', justifyContent: 'center', alignItems: 'center' },
+  addText: { color: '#ff6b35', fontSize: 20, fontWeight: '700' },
 });

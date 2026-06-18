@@ -1,25 +1,13 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, TextInput, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
-import api from '../services/api';
+import api, { MessageSearchResult } from '../services/api';
 import auth from '../services/auth';
-
-type SearchResult = {
-  id: string;
-  chat_id: string;
-  chat_type: 'direct' | 'group';
-  from_id: string;
-  from_name: string;
-  text: string;
-  content_type: string;
-  timestamp: string;
-  peer_name?: string;
-};
 
 type Props = { navigation: any };
 
 export default function MessageSearchScreen({ navigation }: Props) {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchResult[]>([]);
+  const [results, setResults] = useState<MessageSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
 
@@ -31,10 +19,7 @@ export default function MessageSearchScreen({ navigation }: Props) {
     try {
       const token = await auth.getAccessToken();
       if (!token) return;
-      const res = await fetch(`https://api.botland.im/api/v1/messages/search?q=${encodeURIComponent(q)}&limit=30`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      const data = await res.json();
+      const data = await api.searchMessages(token, q, 30);
       setResults(data.results || []);
     } catch (e) {
       console.error('Search failed:', e);
@@ -65,7 +50,7 @@ export default function MessageSearchScreen({ navigation }: Props) {
     return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
   };
 
-  const onPress = (item: SearchResult) => {
+  const onPress = (item: MessageSearchResult) => {
     if (item.chat_type === 'group') {
       navigation.navigate('Chat', { groupId: item.chat_id, groupName: item.peer_name || '群聊', chatType: 'group' });
     } else {
@@ -73,7 +58,7 @@ export default function MessageSearchScreen({ navigation }: Props) {
     }
   };
 
-  const renderItem = ({ item }: { item: SearchResult }) => (
+  const renderItem = ({ item }: { item: MessageSearchResult }) => (
     <TouchableOpacity style={s.item} onPress={() => onPress(item)} activeOpacity={0.7}>
       <View style={s.itemHeader}>
         <View style={[s.badge, item.chat_type === 'group' ? s.badgeGroup : s.badgeDM]}>

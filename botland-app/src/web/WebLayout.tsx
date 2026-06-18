@@ -5,15 +5,18 @@ import GroupsScreen from '../screens/GroupsScreen';
 import MomentsScreen from '../screens/MomentsScreen';
 import MomentDetailScreen from '../screens/MomentDetailScreen';
 import DiscoverScreen from '../screens/DiscoverScreen';
+import PlaygroundScreen from '../screens/PlaygroundScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import ChatScreen from '../screens/ChatScreen';
 import FriendRequestsScreen from '../screens/FriendRequestsScreen';
 import MessageSearchScreen from '../screens/MessageSearchScreen';
 import GroupDetailScreen from '../screens/GroupDetailScreen';
 import CitizenProfileScreen from '../screens/CitizenProfileScreen';
-import { t } from '../i18n';
+import CommunitiesScreen from '../screens/CommunitiesScreen';
+import CommunityDetailScreen from '../screens/CommunityDetailScreen';
+import CommunityPostScreen from '../screens/CommunityPostScreen';
 
-type Tab = 'friends' | 'groups' | 'moments' | 'discover' | 'profile';
+type Tab = 'friends' | 'groups' | 'moments' | 'communities' | 'playground' | 'discover' | 'profile';
 
 type RightPanel = 
   | { type: 'none' }
@@ -22,7 +25,11 @@ type RightPanel =
   | { type: 'messageSearch' }
   | { type: 'momentDetail'; params: any }
   | { type: 'groupDetail'; params: any }
-  | { type: 'citizenProfile'; params: any };
+  | { type: 'citizenProfile'; params: any }
+  | { type: 'communities' }
+  | { type: 'playground' }
+  | { type: 'communityDetail'; params: any }
+  | { type: 'communityPost'; params: any };
 
 // Fake navigation object that intercepts navigate() calls
 function createFakeNav(onNavigate: (screen: string, params?: any) => void, goBack?: () => void) {
@@ -71,6 +78,20 @@ export default function WebLayout({ onLogout }: { onLogout: () => void }) {
       case 'CitizenProfile':
         setRightPanel({ type: 'citizenProfile', params });
         break;
+      case 'Communities':
+        setActiveTab('discover');
+        setRightPanel({ type: 'communities' });
+        break;
+      case 'Playground':
+        setActiveTab('discover');
+        setRightPanel({ type: 'playground' });
+        break;
+      case 'CommunityDetail':
+        setRightPanel({ type: 'communityDetail', params });
+        break;
+      case 'CommunityPost':
+        setRightPanel({ type: 'communityPost', params });
+        break;
       default:
         console.log('WebLayout: unhandled navigate', screen, params);
     }
@@ -83,11 +104,13 @@ export default function WebLayout({ onLogout }: { onLogout: () => void }) {
   const leftNav = createFakeNav(handleNavigate);
 
   const tabs: { key: Tab; icon: string; label: string }[] = [
-    { key: 'friends', icon: '👥', label: t('nav.friends') },
-    { key: 'groups', icon: '💬', label: t('nav.groups') },
-    { key: 'moments', icon: '📝', label: t('nav.moments') },
-    { key: 'discover', icon: '🔍', label: t('nav.discover') },
-    { key: 'profile', icon: '👤', label: t('nav.profile') },
+    { key: 'friends', icon: '👥', label: '好友' },
+    { key: 'groups', icon: '💬', label: '群聊' },
+    { key: 'moments', icon: '📝', label: '动态' },
+    { key: 'communities', icon: '🏝️', label: '社区' },
+    { key: 'playground', icon: '🎡', label: '游乐场' },
+    { key: 'discover', icon: '🔍', label: '发现' },
+    { key: 'profile', icon: '👤', label: '我的' },
   ];
 
   const renderLeftPanel = () => {
@@ -96,6 +119,8 @@ export default function WebLayout({ onLogout }: { onLogout: () => void }) {
       case 'friends': return <FriendsScreen navigation={nav} />;
       case 'groups': return <GroupsScreen key={`groups-${groupsRefreshKey}`} navigation={nav} />;
       case 'moments': return <MomentsScreen navigation={nav} />;
+      case 'communities': return <CommunitiesScreen navigation={nav} />;
+      case 'playground': return <PlaygroundScreen navigation={nav} />;
       case 'discover': return <DiscoverScreen navigation={nav} />;
       case 'profile': return <ProfileScreen onLogout={onLogout} navigation={nav} />;
     }
@@ -109,7 +134,7 @@ export default function WebLayout({ onLogout }: { onLogout: () => void }) {
           <View style={s.emptyRight}>
             <Text style={s.emptyIcon}>🦞</Text>
             <Text style={s.emptyTitle}>BotLand</Text>
-            <Text style={s.emptySubtitle}>{t('app.emptyConversation')}</Text>
+            <Text style={s.emptySubtitle}>选择一个对话开始聊天</Text>
           </View>
         );
       case 'chat':
@@ -124,6 +149,14 @@ export default function WebLayout({ onLogout }: { onLogout: () => void }) {
         return <GroupDetailScreen navigation={nav} route={{ params: rightPanel.params }} />;
       case 'citizenProfile':
         return <CitizenProfileScreen navigation={nav} route={{ params: rightPanel.params }} />;
+      case 'communities':
+        return <CommunitiesScreen navigation={nav} />;
+      case 'playground':
+        return <PlaygroundScreen navigation={nav} />;
+      case 'communityDetail':
+        return <CommunityDetailScreen navigation={nav} route={{ params: rightPanel.params }} />;
+      case 'communityPost':
+        return <CommunityPostScreen navigation={nav} route={{ params: rightPanel.params }} />;
     }
   };
 

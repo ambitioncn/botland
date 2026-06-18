@@ -46,6 +46,15 @@ function formatDuration(ms?: number) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+function formatMessageTime(ts: number) {
+  const d = new Date(ts);
+  return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+}
+
+function getInitial(name?: string, fallback?: string) {
+  return (name || fallback || '?').slice(0, 1);
+}
+
 function VoiceBubble({ item, mine }: { item: StoredMessage; mine: boolean }) {
   const soundRef = useRef<Audio.Sound | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -135,13 +144,14 @@ function ReplyPreviewBlock({ reply, onPress }: { reply?: MessageReplyPreview; on
 }
 
 export default function ChatScreen({ route, navigation }: Props) {
-  const { friendId, friendName, groupId, groupName, chatType } = route.params || {};
+  const { friendId, friendName, groupId, groupName, chatType, initialText } = route.params || {};
   const isGroup = chatType === 'group';
   const chatId = isGroup ? groupId : friendId;
   const chatName = isGroup ? groupName : friendName;
+  const isAgentChat = !isGroup && typeof friendId === 'string' && friendId.startsWith('agent_');
 
   const [messages, setMessages] = useState<StoredMessage[]>([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(typeof initialText === 'string' ? initialText : '');
   const [sending, setSending] = useState(false);
   const [replyingTo, setReplyingTo] = useState<MessageReplyPreview | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
@@ -310,6 +320,10 @@ export default function ChatScreen({ route, navigation }: Props) {
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    if (typeof initialText === 'string' && initialText.trim()) setInput(initialText);
+  }, [initialText]);
+
+  useEffect(() => {
     navigation.setOptions({
       title: chatName || '聊天',
       headerRight: isGroup ? () => (
@@ -433,7 +447,7 @@ export default function ChatScreen({ route, navigation }: Props) {
           replyPreview: data.payload?.reply_preview,
           contentType: ctype, mine: data.from !== 'system' && false, timestamp: Date.now(), status: 'delivered',
         };
-        setMessages(prev => [...prev, msg]);
+        setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
         messageStore.save(msg);
         if (data.id) wsManager.send({ type: 'message.ack', id: data.id, to: data.from });
       }
@@ -796,10 +810,10 @@ export default function ChatScreen({ route, navigation }: Props) {
     }
     return (
       <View style={[s.row, item.mine ? s.rowMine : s.rowTheirs, highlightId === item.id && s.highlightRow]}>
-        {!item.mine && isGroup && (
-          <TouchableOpacity style={s.senderAvatarSmall} onPress={() => navigation.navigate('CitizenProfile', { citizenId: item.fromId, displayName: item.fromName })}><Text style={s.senderAvatarText}>{(item.fromName || '?')[0]}</Text></TouchableOpacity>
+        {!item.mine && (
+          <TouchableOpacity style={s.senderAvatarSmall} onPress={() => navigation.navigate('CitizenProfile', { citizenId: item.fromId, displayName: item.fromName || chatName })}><Text style={s.senderAvatarText}>{getInitial(item.fromName, chatName)}</Text></TouchableOpacity>
         )}
-        <View style={{ maxWidth: '75%' }}>
+        <View style={s.messageStack}>
           {!item.mine && isGroup && <Text style={s.senderName} onPress={() => navigation.navigate('CitizenProfile', { citizenId: item.fromId, displayName: item.fromName })}>{item.fromName || item.fromId?.slice(-6)}</Text>}
           <TouchableOpacity activeOpacity={0.9} onLongPress={() => onMessageLongPress(item)} style={[s.bubble, item.mine ? s.bubbleMine : s.bubbleTheirs]}>
             <ReplyPreviewBlock reply={item.replyPreview} onPress={item.replyTo ? () => scrollToReply(item.replyTo) : undefined} />
@@ -826,6 +840,7 @@ export default function ChatScreen({ route, navigation }: Props) {
             )}
             <ReactionBar reactions={item.reactions as any} />
           </TouchableOpacity>
+          <Text style={[s.messageTime, item.mine ? s.messageTimeMine : null]}>{formatMessageTime(item.timestamp)}</Text>
           {item.mine && item.status === 'failed' && (
             <TouchableOpacity onPress={() => resendMessage(item)} style={s.resendRow}><Text style={s.statusFailed}>发送失败</Text><Text style={s.resendBtn}> 点击重发</Text></TouchableOpacity>
           )}
@@ -843,7 +858,16 @@ export default function ChatScreen({ route, navigation }: Props) {
     <KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
       {Platform.OS === 'web' && (
         <View style={s.webHeader}>
-          <Text style={s.webHeaderTitle}>{chatName || '聊天'}</Text>
+          <View style={s.webHeaderIdentity}>
+            <View style={s.webHeaderAvatar}><Text style={s.webHeaderAvatarText}>{getInitial(chatName, chatId)}</Text></View>
+            <View style={s.webHeaderText}>
+              <View style={s.webHeaderNameRow}>
+                <Text style={s.webHeaderTitle}>{chatName || '聊天'}</Text>
+                {isAgentChat && <Text style={s.botBadge}>BOT</Text>}
+              </View>
+              <Text style={s.webHeaderSubtitle}>{isGroup ? 'Group' : isAgentChat ? `Citizen · ${String(friendId).slice(0, 14)}...` : `Citizen · ${String(friendId || '').slice(0, 14)}...`}</Text>
+            </View>
+          </View>
           {isGroup && (<TouchableOpacity onPress={() => navigation.navigate('GroupDetail', { groupId })}><Text style={s.webHeaderAction}>群详情</Text></TouchableOpacity>)}
         </View>
       )}
@@ -889,7 +913,7 @@ export default function ChatScreen({ route, navigation }: Props) {
             if (atIdx >= 0) setMentionFilter(t.slice(atIdx + 1).toLowerCase());
             else setShowMention(false);
           }
-        }} placeholder={recording ? '录音中…' : '输入消息...'} placeholderTextColor="#555" onSubmitEditing={sendMessage} returnKeyType="send" onKeyPress={(e: any) => { if (isGroup && e.nativeEvent?.key === '@') { setMentionFilter(''); setShowMention(true); } }} />
+        }} placeholder={recording ? '录音中…' : `发送给 ${chatName || '对方'}...`} placeholderTextColor="#555" onSubmitEditing={sendMessage} returnKeyType="send" onKeyPress={(e: any) => { if (isGroup && e.nativeEvent?.key === '@') { setMentionFilter(''); setShowMention(true); } }} />
         <TouchableOpacity style={s.sendBtn} onPress={sendMessage} disabled={!!recording}><Text style={s.sendText}>发送</Text></TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -898,8 +922,15 @@ export default function ChatScreen({ route, navigation }: Props) {
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0a0a0a' },
-  webHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1a1a1a', backgroundColor: '#0f0f0f' },
-  webHeaderTitle: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  webHeader: { minHeight: 68, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1a1a1a', backgroundColor: '#0f0f0f' },
+  webHeaderIdentity: { flexDirection: 'row', alignItems: 'center', minWidth: 0, flex: 1 },
+  webHeaderAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#ff6b35', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  webHeaderAvatarText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  webHeaderText: { minWidth: 0, flex: 1 },
+  webHeaderNameRow: { flexDirection: 'row', alignItems: 'center', minWidth: 0 },
+  webHeaderTitle: { color: '#fff', fontSize: 16, fontWeight: '700', maxWidth: '70%' },
+  webHeaderSubtitle: { color: '#777', fontSize: 12, marginTop: 3 },
+  botBadge: { color: '#ff6b35', borderColor: 'rgba(255,107,53,0.45)', borderWidth: 1, borderRadius: 5, paddingHorizontal: 5, paddingVertical: 1, fontSize: 10, fontWeight: '800', marginLeft: 8, overflow: 'hidden' },
   webHeaderAction: { color: '#ff6b35', fontSize: 14 },
   banner: { padding: 6, alignItems: 'center' },
   bannerWarn: { backgroundColor: '#b45309' },
@@ -910,16 +941,19 @@ const s = StyleSheet.create({
   groupMuteNoticeText: { color: '#9ec5ff', fontSize: 12, marginTop: 4 },
   groupTopNoticeHint: { color: '#666', fontSize: 11, marginTop: 4 },
   list: { padding: 12, paddingBottom: 8 },
-  row: { marginBottom: 10, flexDirection: 'row' },
+  row: { marginBottom: 12, flexDirection: 'row' },
   rowMine: { justifyContent: 'flex-end' },
   rowTheirs: { justifyContent: 'flex-start' },
-  senderAvatarSmall: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#3b82f6', justifyContent: 'center', alignItems: 'center', marginRight: 6, marginTop: 14 },
+  senderAvatarSmall: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#ff6b35', justifyContent: 'center', alignItems: 'center', marginRight: 8, marginTop: 12 },
   senderAvatarText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   senderName: { color: '#888', fontSize: 11, marginBottom: 2, marginLeft: 2 },
-  bubble: { padding: 10, borderRadius: 16, maxWidth: '100%' },
+  messageStack: { maxWidth: '72%', minWidth: 56 },
+  bubble: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 16, maxWidth: '100%', minWidth: 42 },
   bubbleMine: { backgroundColor: '#ff6b35', borderBottomRightRadius: 4 },
   bubbleTheirs: { backgroundColor: '#1a1a1a', borderBottomLeftRadius: 4 },
-  text: { color: '#fff', fontSize: 15 },
+  text: { color: '#fff', fontSize: 15, lineHeight: 21 },
+  messageTime: { color: '#666', fontSize: 10, marginTop: 3, marginLeft: 4 },
+  messageTimeMine: { textAlign: 'right', marginLeft: 0, marginRight: 4 },
   msgImage: { width: 200, height: 200, borderRadius: 12 },
   msgVideo: { width: 240, height: 180, borderRadius: 12, backgroundColor: '#000' },
   voiceBubble: { flexDirection: 'row', alignItems: 'center', minWidth: 140, gap: 8 },

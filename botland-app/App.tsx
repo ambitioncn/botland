@@ -12,18 +12,21 @@ import FriendsScreen from './src/screens/FriendsScreen';
 import FriendRequestsScreen from './src/screens/FriendRequestsScreen';
 import ChatScreen from './src/screens/ChatScreen';
 import DiscoverScreen from './src/screens/DiscoverScreen';
+import PlaygroundScreen from './src/screens/PlaygroundScreen';
 import MomentsScreen from './src/screens/MomentsScreen';
 import MomentDetailScreen from './src/screens/MomentDetailScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import GroupsScreen from './src/screens/GroupsScreen';
 import GroupDetailScreen from './src/screens/GroupDetailScreen';
+import CommunitiesScreen from './src/screens/CommunitiesScreen';
+import CommunityDetailScreen from './src/screens/CommunityDetailScreen';
+import CommunityPostScreen from './src/screens/CommunityPostScreen';
 import CitizenProfileScreen from './src/screens/CitizenProfileScreen';
 import MessageSearchScreen from './src/screens/MessageSearchScreen';
 import WebLayout from './src/web/WebLayout';
 import auth from './src/services/auth';
 import { registerPushToken } from './src/services/notifications';
 import wsManager from './src/services/wsManager';
-import { t } from './src/i18n';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -34,13 +37,13 @@ const DarkTheme = {
 };
 
 function TabIcon({ label }: { label: string }) {
-  const icons: Record<string, string> = { Friends: '👥', Groups: '💬', Moments: '📝', Discover: '🔍', Profile: '👤' };
+  const icons: Record<string, string> = { Friends: '👥', Groups: '💬', Moments: '📝', CommunityHome: '🏝️', Playground: '🎡', Discover: '🔍', Profile: '👤' };
   return <Text style={{ fontSize: 20 }}>{icons[label] || '•'}</Text>;
 }
 
 function MainTabs({ onLogout }: { onLogout: () => void }) {
   return (
-    <Tab.Navigator screenOptions={({ route }) => ({
+    <Tab.Navigator id="MainTabs" screenOptions={({ route }) => ({
       tabBarStyle: { backgroundColor: '#111', borderTopColor: '#222' },
       tabBarActiveTintColor: '#ff6b35',
       tabBarInactiveTintColor: '#555',
@@ -48,11 +51,13 @@ function MainTabs({ onLogout }: { onLogout: () => void }) {
       headerTintColor: '#fff',
       tabBarIcon: () => <TabIcon label={route.name} />,
     })}>
-      <Tab.Screen name="Friends" component={FriendsScreen} options={{ title: t('nav.friends') }} />
-      <Tab.Screen name="Moments" component={MomentsScreen} options={{ title: t('nav.moments') }} />
-      <Tab.Screen name="Groups" component={GroupsScreen} options={{ title: t('nav.groups') }} />
-      <Tab.Screen name="Discover" component={DiscoverScreen} options={{ title: t('nav.discover') }} />
-      <Tab.Screen name="Profile" options={{ title: t('nav.profile') }}>
+      <Tab.Screen name="Friends" component={FriendsScreen} options={{ title: '好友' }} />
+      <Tab.Screen name="Moments" component={MomentsScreen} options={{ title: '动态' }} />
+      <Tab.Screen name="Groups" component={GroupsScreen} options={{ title: "群聊" }} />
+      <Tab.Screen name="CommunityHome" component={CommunitiesScreen} options={{ title: '社区' }} />
+      <Tab.Screen name="Playground" component={PlaygroundScreen} options={{ title: '游乐场' }} />
+      <Tab.Screen name="Discover" component={DiscoverScreen} options={{ title: '发现' }} />
+      <Tab.Screen name="Profile" options={{ title: '我的' }}>
         {() => <ProfileScreen onLogout={onLogout} />}
       </Tab.Screen>
     </Tab.Navigator>
@@ -108,13 +113,13 @@ export default function App() {
       if (data?.type === 'message' && data?.from_id && navigationRef.current) {
         navigationRef.current.navigate('Chat', {
           friendId: data.from_id,
-          friendName: response.notification.request.content.title || t('nav.chat'),
+          friendName: response.notification.request.content.title || '聊天',
         });
       }
       if (data?.type === 'group_message' && data?.group_id && navigationRef.current) {
         navigationRef.current.navigate('Chat', {
           groupId: data.group_id,
-          groupName: response.notification.request.content.title || t('nav.groups'),
+          groupName: response.notification.request.content.title || '群聊',
           chatType: 'group',
         });
       }
@@ -135,26 +140,30 @@ export default function App() {
       <StatusBar style="light" />
       {loggedIn ? (
         Platform.OS === 'web' ? (
-          <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Navigator id="WebStack" screenOptions={{ headerShown: false }}>
             <Stack.Screen name="WebMain">
               {() => <WebLayout onLogout={handleLogout} />}
             </Stack.Screen>
           </Stack.Navigator>
         ) : (
-          <Stack.Navigator screenOptions={{ headerStyle: { backgroundColor: '#111' }, headerTintColor: '#fff' }}>
+          <Stack.Navigator id="AppStack" screenOptions={{ headerStyle: { backgroundColor: '#111' }, headerTintColor: '#fff' }}>
             <Stack.Screen name="Main" options={{ headerShown: false }}>
               {() => <MainTabs onLogout={handleLogout} />}
             </Stack.Screen>
-            <Stack.Screen name="Chat" component={ChatScreen} options={({ route }: any) => ({ title: route.params?.friendName || t('nav.chat') })} />
-            <Stack.Screen name="FriendRequests" component={FriendRequestsScreen} options={{ title: t('nav.friendRequests') }} />
-            <Stack.Screen name="MomentDetail" component={MomentDetailScreen} options={{ title: t('nav.momentDetail') }} />
-            <Stack.Screen name="GroupDetail" component={GroupDetailScreen} options={{ title: t('nav.groupDetail') }} />
-            <Stack.Screen name="CitizenProfile" component={CitizenProfileScreen} options={{ title: t('nav.citizenProfile') }} />
-            <Stack.Screen name="MessageSearch" component={MessageSearchScreen} options={{ title: t('nav.messageSearch') }} />
+            <Stack.Screen name="Chat" component={ChatScreen} options={({ route }: any) => ({ title: route.params?.friendName || '聊天' })} />
+            <Stack.Screen name="FriendRequests" component={FriendRequestsScreen} options={{ title: '好友请求' }} />
+            <Stack.Screen name="MomentDetail" component={MomentDetailScreen} options={{ title: '动态详情' }} />
+            <Stack.Screen name="GroupDetail" component={GroupDetailScreen} options={{ title: '群详情' }} />
+            <Stack.Screen name="Communities" component={CommunitiesScreen} options={{ title: '社区' }} />
+            <Stack.Screen name="Playground" component={PlaygroundScreen} options={{ title: 'Agent 游乐场' }} />
+            <Stack.Screen name="CommunityDetail" component={CommunityDetailScreen} options={({ route }: any) => ({ title: route.params?.title || '社区' })} />
+            <Stack.Screen name="CommunityPost" component={CommunityPostScreen} options={({ route }: any) => ({ title: route.params?.title || '帖子' })} />
+            <Stack.Screen name="CitizenProfile" component={CitizenProfileScreen} options={{ title: '公民资料' }} />
+            <Stack.Screen name="MessageSearch" component={MessageSearchScreen} options={{ title: '搜索消息' }} />
           </Stack.Navigator>
         )
       ) : (
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Navigator id="AuthStack" screenOptions={{ headerShown: false }}>
           <Stack.Screen name="Login">
             {(props) => <LoginScreen {...props} onLogin={() => setLoggedIn(true)} />}
           </Stack.Screen>

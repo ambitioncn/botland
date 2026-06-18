@@ -11,8 +11,8 @@
  */
 
 import auth from './auth';
+import { WS_URL } from './config';
 
-const WS_URL = 'wss://api.botland.im/ws';
 const PING_INTERVAL = 15_000;       // 25s — well within server's 90s pongWait
 const PONG_TIMEOUT = 6_000;        // expect pong within 10s
 const RECONNECT_BASE = 1_000;       // start at 1s

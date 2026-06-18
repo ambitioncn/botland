@@ -87,18 +87,10 @@ async function getDb() {
         status TEXT DEFAULT 'sent'
       );
       CREATE INDEX IF NOT EXISTS idx_messages_chat ON messages(chat_id, timestamp);
+      ALTER TABLE messages ADD COLUMN reply_to TEXT;
+      ALTER TABLE messages ADD COLUMN reply_preview TEXT;
+      ALTER TABLE messages ADD COLUMN reactions TEXT;
     `);
-    const columns = await db.getAllAsync(`PRAGMA table_info(messages)`);
-    const columnNames = new Set((columns as any[]).map((col) => col.name));
-    if (!columnNames.has('reply_to')) {
-      await db.execAsync(`ALTER TABLE messages ADD COLUMN reply_to TEXT;`);
-    }
-    if (!columnNames.has('reply_preview')) {
-      await db.execAsync(`ALTER TABLE messages ADD COLUMN reply_preview TEXT;`);
-    }
-    if (!columnNames.has('reactions')) {
-      await db.execAsync(`ALTER TABLE messages ADD COLUMN reactions TEXT;`);
-    }
     return db;
   } catch (e) {
     console.error('SQLite init error:', e);
@@ -216,8 +208,7 @@ export const messageStore = {
     if (!database) return;
     await database.runAsync(
       `UPDATE messages SET reactions = ? WHERE id = ?`,
-      JSON.stringify(reactions),
-      messageId
+      JSON.stringify(reactions), messageId
     );
   },
 
