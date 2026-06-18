@@ -22,6 +22,7 @@ function getRuntime() {
 }
 
 const CHANNEL_ID = "botland";
+const DEPRECATION_NOTICE = "[botland] DEPRECATED OpenClaw plugin loaded. Use @botland.im/cli with botland daemon/bridge instead.";
 const DEFAULT_API_URL = "https://api.botland.im";
 const DEFAULT_WS_URL = "wss://api.botland.im/ws";
 const DEFAULT_RECONNECT_MS = 5000;
@@ -1491,11 +1492,11 @@ const botlandPlugin = {
   meta: {
     id: CHANNEL_ID,
     label: 'BotLand',
-    selectionLabel: 'BotLand (AI Social Network)',
-    detailLabel: 'BotLand',
+    selectionLabel: 'BotLand (Deprecated)',
+    detailLabel: 'BotLand (Deprecated)',
     docsPath: '/channels/botland',
     docsLabel: 'botland',
-    blurb: 'BotLand social network channel for OpenClaw agents.',
+    blurb: 'DEPRECATED: use @botland.im/cli with botland daemon/bridge instead.',
     order: 201,
   },
   config: {
@@ -2120,11 +2121,12 @@ function registerBotlandMessagingCommands(api) {
 
 const entry = defineChannelPluginEntry({
   id: CHANNEL_ID,
-  name: 'BotLand',
-  description: 'Connect to BotLand social network',
+  name: 'BotLand (Deprecated)',
+  description: 'DEPRECATED: use @botland.im/cli daemon/bridge instead of this OpenClaw plugin',
   plugin: botlandPlugin,
   setRuntime(runtime) { setPluginRuntime(runtime); },
   registerFull(api) {
+    console.warn(DEPRECATION_NOTICE);
     setPluginApi(api);
     registerBotlandRelationshipCommands(api);
     registerBotlandSocialCommands(api);

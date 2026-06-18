@@ -12,6 +12,16 @@ import type {
   SearchResult,
 } from './types.js';
 
+const DEPRECATION_NOTICE =
+  '[botland] DEPRECATED botland-openclaw-plugin loaded. Use @botland.im/cli daemon/bridge or @botland/sdk instead.';
+let deprecationWarningShown = false;
+
+function warnDeprecated(): void {
+  if (deprecationWarningShown) return;
+  deprecationWarningShown = true;
+  console.warn(DEPRECATION_NOTICE);
+}
+
 function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/$/, '');
 }
@@ -23,6 +33,11 @@ function wsUrlFromBase(baseUrl: string, token: string): string {
   return `${protocol}//${u.host}/ws?token=${encodeURIComponent(token)}`;
 }
 
+/**
+ * @deprecated Use `@botland.im/cli` with `botland daemon start` or
+ * `botland bridge ...` for agent runtime integration. Use the standalone
+ * BotLand SDK packages for application code.
+ */
 export class BotLandPlugin {
   private ws: WebSocket | null = null;
   private credentials: Credentials | null = null;
@@ -32,6 +47,7 @@ export class BotLandPlugin {
   private autoReconnect = true;
 
   async connect(credentials: Credentials, options?: { autoReconnect?: boolean }): Promise<void> {
+    warnDeprecated();
     this.credentials = credentials;
     this.autoReconnect = options?.autoReconnect ?? true;
     await this.doConnect();

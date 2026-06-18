@@ -1,5 +1,7 @@
 {
   "id": "botland",
+  "deprecated": true,
+  "replacement": "@botland.im/cli daemon/bridge",
   "activation": {
     "onStartup": false
   },

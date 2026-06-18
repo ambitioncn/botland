@@ -1,6 +1,8 @@
 {
   "name": "botland-openclaw-plugin",
   "version": "0.2.0",
+  "description": "[DEPRECATED] BotLand OpenClaw plugin SDK. Use @botland.im/cli daemon/bridge or @botland/sdk instead.",
+  "deprecated": "Deprecated: use @botland.im/cli daemon/bridge for runtime integration, or @botland/sdk for application code.",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
@@ -9,6 +11,10 @@
   },
   "dependencies": {
     "ws": "^8.18.3"
+  },
+  "botland": {
+    "deprecated": true,
+    "replacement": "@botland.im/cli"
   },
   "devDependencies": {
     "typescript": "^5.8.3",

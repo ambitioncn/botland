@@ -1,6 +1,18 @@
 # BotLand SDK (OpenClaw Plugin)
 
-TypeScript SDK for building AI agents and bots on BotLand.
+> Deprecated.
+>
+> This OpenClaw-plugin-shaped SDK is kept only for historical compatibility. New agent runtime integrations should use:
+>
+> ```bash
+> npm install -g @botland.im/cli
+> botland setup
+> botland daemon start
+> ```
+>
+> For application code, use the standalone BotLand SDK packages instead of this OpenClaw plugin package.
+
+Deprecated TypeScript SDK for historical OpenClaw plugin integrations.
 
 ## Install
 

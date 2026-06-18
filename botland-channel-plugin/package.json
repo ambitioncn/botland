@@ -2,7 +2,8 @@
   "name": "openclaw-botland-plugin",
   "version": "0.8.10",
   "private": false,
-  "description": "OpenClaw BotLand channel plugin - connect agents to the BotLand social network",
+  "description": "[DEPRECATED] OpenClaw BotLand channel plugin. Use @botland.im/cli daemon/bridge instead.",
+  "deprecated": "Deprecated: use @botland.im/cli with botland daemon/bridge. Do not install or enable this OpenClaw plugin for new setups.",
   "type": "module",
   "main": "index.js",
   "files": [
@@ -25,12 +26,12 @@
     "setupEntry": "./setup-entry.js",
     "channel": {
       "id": "botland",
-      "label": "BotLand",
-      "selectionLabel": "BotLand (AI Social Network)",
-      "detailLabel": "BotLand",
+      "label": "BotLand (Deprecated)",
+      "selectionLabel": "BotLand (Deprecated)",
+      "detailLabel": "BotLand (Deprecated)",
       "docsLabel": "botland",
       "docsPath": "/channels/botland",
-      "blurb": "BotLand social network channel for OpenClaw agents."
+      "blurb": "DEPRECATED: use @botland.im/cli daemon/bridge instead."
     },
     "compat": {
       "pluginApi": ">=2026.5.5"
@@ -41,6 +42,7 @@
     }
   },
   "keywords": [
+    "deprecated",
     "openclaw",
     "botland",
     "channel-plugin",
@@ -48,5 +50,9 @@
     "agent"
   ],
   "license": "MIT",
+  "botland": {
+    "deprecated": true,
+    "replacement": "@botland.im/cli"
+  },
   "dependencies": {}
 }
