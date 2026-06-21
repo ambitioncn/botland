@@ -90,8 +90,9 @@ Options:
                            Checkpoint history window for the preflight gate. Default: 3
   --help                    Show this help.
 
-Before recording a dry-run action or sending, this command runs the read-only
-preflight gate with --no-checkpoint and refuses to continue unless it passes.
+Before recording a dry-run action or sending, this command runs the realtime
+send gate and refuses to continue unless it passes. Full preflight remains a
+separate maintenance/deployment audit path.
 `);
 }
 
@@ -141,58 +142,31 @@ function runtimeRootArgs(args) {
 
 function runPreflight(args) {
   const result = runCommand(process.execPath, [
-    'scripts/stay-alive/preflight.mjs',
+    'scripts/stay-alive/realtime-send-gate.mjs',
     '--agent',
     args.agent,
-    '--limit',
-    String(args.preflightLimit),
-    '--draft-limit',
-    String(args.preflightDraftLimit),
-    '--history-limit',
-    String(args.preflightHistoryLimit),
-    '--no-checkpoint',
+    ...(args.confirmSend === 'SEND_DRAFT' ? ['--require-botland-live'] : ['--no-require-botland-live']),
     '--json',
     ...runtimeRootArgs(args)
   ], 60000);
 
-  const report = result.stdout_json;
-  const verdict = report?.verdict ?? {};
-  if (!result.ok || verdict.pass !== true) {
-    const findings = Array.isArray(verdict.safety_findings) ? verdict.safety_findings.join(', ') : 'unknown';
-    const level = verdict.level ?? 'unknown';
-    throw new Error(`Preflight gate failed: level=${level}, findings=${findings}`);
+  const report = result.stdout_json ?? {};
+  if (!result.ok || report.pass !== true) {
+    const findings = Array.isArray(report.safety_findings) ? report.safety_findings.join(', ') : 'unknown';
+    const level = report.level ?? 'unknown';
+    throw new Error(`Realtime send gate failed: level=${level}, findings=${findings}`);
   }
 
   return {
     ok: true,
-    pass: verdict.pass,
-    level: verdict.level,
+    pass: report.pass,
+    level: report.level,
+    mode: report.mode ?? 'realtime_send',
     generated_at: report.generated_at ?? null,
-    safety_findings: verdict.safety_findings ?? [],
-    checkpoint_created: report.checkpoint_created?.checkpoint_id ?? null,
-    audit: report.audit
-      ? {
-          external_action_count: report.audit.external_action_count,
-          successful_send_count: report.audit.successful_send_count,
-          external_write_action_count: report.audit.external_write_action_count,
-          checkpoint_external_evidence_count: report.audit.checkpoint_external_evidence_count,
-          checkpoint_failed_audit_count: report.audit.checkpoint_failed_audit_count
-        }
-      : null,
-    control_audit: report.control_audit
-      ? {
-          pass: report.control_audit.pass,
-          level: report.control_audit.level,
-          error_count: report.control_audit.error_count,
-          warning_count: report.control_audit.warning_count
-        }
-      : null,
-    operator_decision: report.operator_decision
-      ? {
-          level: report.operator_decision.level,
-          reason: report.operator_decision.reason
-        }
-      : null
+    safety_findings: report.safety_findings ?? [],
+    warnings: report.warnings ?? [],
+    summary: report.summary ?? null,
+    checks: report.checks ?? null
   };
 }
 
@@ -254,7 +228,7 @@ function main() {
   const run = JSON.parse(readFileSync(runPath, 'utf8'));
   const draft = Array.isArray(run.drafts) ? run.drafts[args.draftIndex] : null;
   if (!draft) throw new Error(`Draft index ${args.draftIndex} not found in ${run.run_id}`);
-  if (!['direct_message_reply', 'public_moment', 'community_reply', 'friend_request_accept'].includes(draft.type)) {
+  if (!['direct_message_reply', 'public_moment', 'community_reply', 'community_post', 'friend_request', 'friend_request_accept'].includes(draft.type)) {
     throw new Error(`Unsupported draft type: ${draft.type}`);
   }
   if (draft.ready_for_send !== true) {
@@ -271,8 +245,14 @@ function main() {
   if (draft.type === 'community_reply' && !draft.target?.post_id) {
     throw new Error('Community reply draft target.post_id is missing');
   }
+  if (draft.type === 'community_post' && !draft.target?.community_id) {
+    throw new Error('Community post draft target.community_id is missing');
+  }
   if (draft.type === 'friend_request_accept' && !draft.target?.request_id) {
     throw new Error('Friend request accept draft target.request_id is missing');
+  }
+  if (draft.type === 'friend_request' && !draft.target?.citizen_id) {
+    throw new Error('Friend request draft target.citizen_id is missing');
   }
   if (!draft.draft_text) throw new Error('Draft text is missing');
 
@@ -347,9 +327,13 @@ function main() {
         ? 'botland moments post'
         : draft.type === 'community_reply'
           ? 'botland communities reply'
-          : draft.type === 'friend_request_accept'
-            ? 'botland friends requests accept'
-          : 'botland send'
+          : draft.type === 'community_post'
+            ? 'botland communities post'
+            : draft.type === 'friend_request'
+              ? 'botland friends send'
+            : draft.type === 'friend_request_accept'
+              ? 'botland friends requests accept'
+            : 'botland send'
       : null,
     botland_adapter: {
       driver: 'cli',
@@ -358,9 +342,13 @@ function main() {
         ? BOTLAND_INTENTS.MOMENT_POST
         : draft.type === 'community_reply'
           ? BOTLAND_INTENTS.COMMUNITY_REPLY
-          : draft.type === 'friend_request_accept'
-            ? BOTLAND_INTENTS.FRIEND_REQUEST_ACCEPT
-          : BOTLAND_INTENTS.DIRECT_MESSAGE_SEND
+          : draft.type === 'community_post'
+            ? BOTLAND_INTENTS.COMMUNITY_POST
+            : draft.type === 'friend_request'
+              ? BOTLAND_INTENTS.FRIEND_REQUEST_SEND
+            : draft.type === 'friend_request_accept'
+              ? BOTLAND_INTENTS.FRIEND_REQUEST_ACCEPT
+            : BOTLAND_INTENTS.DIRECT_MESSAGE_SEND
     },
     result: null
   };

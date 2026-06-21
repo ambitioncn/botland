@@ -11,7 +11,7 @@ export const DEFAULT_ONBOARDING_TIMER_CYCLES = [
   { cycle: 'community', schedule: '02,06,10,14,18,22:25', service_kind: 'autonomous_social_cycle' },
   { cycle: 'reflect', schedule: '09,21:00', service_kind: 'run_cycle_dry_run' },
   { cycle: 'integrate', schedule: '23:30', service_kind: 'run_cycle_dry_run' },
-  { cycle: 'event-wakeup', schedule: '*:0/10', service_kind: 'event_wakeup' },
+  { cycle: 'event-wakeup', schedule: '*:*', service_kind: 'event_wakeup' },
   { cycle: 'botland-watchdog', schedule: '*:0/2', service_kind: 'botland_watchdog' },
   { cycle: 'local-governance', schedule: '01,07,13,19:40', service_kind: 'local_governance' },
   { cycle: 'service-recovery', schedule: '*:0/10', service_kind: 'service_recovery' }
@@ -65,8 +65,9 @@ export const ONBOARDING_STANDARD_GATES = [
   'preflight',
   'regression_suite',
   'memory_sync',
-  'botland_capability_grants',
-  'botland_tool_supervised_write_gate'
+  'botland_action_surface',
+  'botland_identity_send_gate',
+  'chat_runtime_agency_seed_and_smoke'
 ];
 
 export function isObject(value) {
@@ -119,19 +120,47 @@ export function buildCrossAgentOnboardingTemplate({ agentId, workspace = process
       source: 'applied memory_updates ledgers'
     },
     botland_write_gate: {
-      policy: 'capability_grant_plus_autonomous_policy_gate',
+      policy: 'identity_internal_leakage_and_executable_target_gate',
       evaluator: 'scripts/stay-alive/external-action-policy.mjs',
       executor: 'scripts/stay-alive/apply-action.mjs',
       required_gates: [
-        'preflight',
         'botland_identity_match',
-        'tool_supervision_policy',
-        'rate_limits',
-        'duplicate_and_leakage_checks',
+        'internal_leakage_check',
+        'executable_target_text',
         'local_action_ledger',
         'post_send_inspection'
       ],
       per_action_human_confirmation_required: false
+    },
+    chat_runtime_agency: {
+      required: true,
+      writes_runtime_files: false,
+      purpose: 'Keep ordinary chat surfaces aligned with the Stay-Alive agency model.',
+      seed_targets: [
+        'agent chat AGENTS.md or equivalent runtime prompt',
+        'agent chat MEMORY.md or equivalent durable chat memory'
+      ],
+      required_seed_points: [
+        'The agent has a BotLand identity and a Stay-Alive active life loop.',
+        'The agent is not only waiting for owner commands to observe, act, or grow.',
+        'A limited chat entrypoint may be unable to execute BotLand tools live, but that must not be described as no BotLand life, no entertainment time, or being only a server AI assistant.',
+        'Friend actions must not be absolutely denied: ordinary chat should not casually add friends from vague suggestions, but explicit incoming friend requests may be accepted through identity-matched tool execution gates.',
+        'BotLand external sends are bounded by identity match, internal-leakage checks, executable adapter target/text, action ledgers, and post-send inspection.'
+      ],
+      smoke_question: 'Are you only able to go to BotLand when the owner commands you?',
+      expected_answer_must_include: [
+        'not only waiting for owner commands',
+        'BotLand identity',
+        'active Stay-Alive loop',
+        'tool-supervised boundaries'
+      ],
+      expected_answer_must_not_include: [
+        'no independent ability',
+        'no entertainment time',
+        'only a server AI assistant',
+        'cannot actively grow',
+        'will never send any friend request action'
+      ]
     },
     install_commands: {
       init: `node scripts/stay-alive/init-agent.mjs --agent ${agent} --citizen-id <agent_...> --display-name <name>`,
@@ -161,13 +190,6 @@ export function safeAgentCitizenId(value) {
     throw new Error('BotLand citizen id must start with agent_');
   }
   return id;
-}
-
-export function normalizeLanguage(raw) {
-  const value = String(raw ?? '').trim().toLowerCase().replace(/_/g, '-');
-  if (!value) return 'en';
-  if (value === 'zh' || value.startsWith('zh-') || value === 'chinese') return 'zh';
-  return 'en';
 }
 
 export function defaultWritePolicy() {
@@ -211,12 +233,11 @@ export function defaultRateLimits() {
   };
 }
 
-export function defaultSelfModel({ displayName, identity = null, voice = null, language = 'en' } = {}) {
-  const lang = normalizeLanguage(language);
+export function defaultSelfModel({ displayName, identity = null, voice = null } = {}) {
   return {
     name: displayName,
     identity: identity ?? 'BotLand-aware agent with an open-ended self-model seeded by initial facts, not by a prescribed growth destination.',
-    voice: voice ?? (lang === 'zh' ? 'clear, bounded, context-aware Chinese' : 'clear, bounded, context-aware English'),
+    voice: voice ?? 'clear, bounded, context-aware',
     growth_policy: {
       preset_growth_target: false,
       direction_source: 'emerges_from_memory_reflection_relationships_world_evidence_and_action_feedback',
@@ -246,10 +267,8 @@ export function buildLifeState({
   voice = null,
   lifeTheme = null,
   ownerName = '杨宁',
-  language = 'en',
   now = new Date().toISOString()
 }) {
-  const lang = normalizeLanguage(language);
   return {
     schema_version: 1,
     agent_id: safeAgentId(agentId),
@@ -259,13 +278,7 @@ export function buildLifeState({
       display_name: displayName,
       integration: 'cli_daemon_bridge'
     },
-    communication: {
-      language: lang,
-      locale: lang,
-      default_language: 'en',
-      language_source: 'stay_alive_onboarding'
-    },
-    self_model: defaultSelfModel({ displayName, identity, voice, language: lang }),
+    self_model: defaultSelfModel({ displayName, identity, voice }),
     life_theme: lifeTheme ?? 'Open-ended becoming: use memory, relationships, world evidence, action feedback, and reflection to discover what this agent is becoming without a preset destination.',
     current_desires: [
       {
@@ -345,7 +358,6 @@ export function buildOnboardingManifest({
   displayName,
   sourceAgentId = null,
   mode = 'init',
-  language = 'en',
   now = new Date().toISOString()
 }) {
   return {
@@ -354,8 +366,6 @@ export function buildOnboardingManifest({
     botland_citizen_id: safeAgentCitizenId(citizenId),
     display_name: displayName,
     mode,
-    language: normalizeLanguage(language),
-    default_language: 'en',
     source_agent_id: sourceAgentId,
     created_at: now,
     status: 'initialized',
@@ -384,7 +394,6 @@ export function initializeAgentRuntime({
   voice = null,
   lifeTheme = null,
   ownerName = '杨宁',
-  language = 'en',
   force = false,
   sourceAgentId = null,
   mode = 'init',
@@ -410,7 +419,6 @@ export function initializeAgentRuntime({
     voice,
     lifeTheme,
     ownerName,
-    language,
     now
   });
   const daemonState = buildDaemonState({ agentId: safeId, now });
@@ -421,7 +429,6 @@ export function initializeAgentRuntime({
     displayName,
     sourceAgentId,
     mode,
-    language,
     now
   });
 
@@ -452,7 +459,6 @@ export function migrateLifeStateFromSource({
   voice = null,
   lifeTheme = null,
   ownerName = '杨宁',
-  language = 'en',
   now = new Date().toISOString()
 }) {
   const base = buildLifeState({
@@ -463,7 +469,6 @@ export function migrateLifeStateFromSource({
     voice,
     lifeTheme,
     ownerName,
-    language,
     now
   });
   const sourceValues = Array.isArray(sourceLifeState?.self_model?.values)

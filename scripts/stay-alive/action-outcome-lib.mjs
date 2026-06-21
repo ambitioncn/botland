@@ -75,6 +75,7 @@ export function inferDraftType(sendAction) {
   const command = sendAction.command ?? '';
   const target = sendAction.target ?? {};
   if (command === 'botland moments post' || target.visibility) return 'public_moment';
+  if (command === 'botland communities post' || target.community_id && target.title) return 'community_post';
   if (command === 'botland communities reply' || target.post_id) return 'community_reply';
   return 'direct_message_reply';
 }

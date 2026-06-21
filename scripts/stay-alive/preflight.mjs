@@ -50,7 +50,7 @@ function parseArgs(argv) {
     throw new Error('--limit must be a positive integer');
   }
   if (args.draftLimit === null) {
-    args.draftLimit = Math.max(args.limit, 200);
+    args.draftLimit = Math.max(args.limit, 300);
   }
   if (!Number.isInteger(args.draftLimit) || args.draftLimit < 1) {
     throw new Error('--draft-limit must be a positive integer');
@@ -74,7 +74,7 @@ function printHelp() {
 Options:
   --agent <id>             Agent id. Default: badclaw
   --limit <n>              Recent run/audit window. Default: 50
-  --draft-limit <n>        Recent run window for draft lookup. Default: max(limit, 200)
+  --draft-limit <n>        Recent run window for draft lookup. Default: max(limit, 300)
   --verify-limit <n>       Number of checkpoints to verify. Default: 20
   --history-limit <n>      Number of checkpoints to summarize. Default: 3
   --runtime-root <dir>     Runtime agents directory.
@@ -195,11 +195,12 @@ function buildPreflight(args) {
     args.agent,
     ...runtimeArgs
   ];
+  const verificationWindow = String(Math.max(args.draftLimit, 200));
   const actionVerifyArgs = [
     '--agent',
     args.agent,
     '--limit',
-    '200',
+    verificationWindow,
     ...runtimeArgs
   ];
   const lifeStateVerifyArgs = [

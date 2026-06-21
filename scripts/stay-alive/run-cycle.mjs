@@ -688,6 +688,36 @@ function extractCommunities(botlandChecks) {
   return [];
 }
 
+function isBlockingBotlandProbeFailure(check, cycle) {
+  const intent = check?.adapter?.intent ?? null;
+  if (!intent) return true;
+  if (intent === BOTLAND_INTENTS.WHOAMI) return true;
+  if (cycle === 'social') {
+    return [
+      BOTLAND_INTENTS.FRIENDS_LIST,
+      BOTLAND_INTENTS.MOMENTS_TIMELINE
+    ].includes(intent);
+  }
+  if (cycle === 'community') {
+    return [
+      BOTLAND_INTENTS.COMMUNITIES_LIST,
+      BOTLAND_INTENTS.COMMUNITY_POSTS
+    ].includes(intent);
+  }
+  return ![
+    BOTLAND_INTENTS.DISCOVER_SEARCH,
+    BOTLAND_INTENTS.DISCOVER_TRENDING,
+    BOTLAND_INTENTS.MESSAGES_SEARCH,
+    BOTLAND_INTENTS.PLAYGROUND_NEWCOMERS,
+    BOTLAND_INTENTS.PLAYGROUND_TODAY,
+    BOTLAND_INTENTS.PROFILE_GET,
+    BOTLAND_INTENTS.PROFILE_CARD,
+    BOTLAND_INTENTS.REPORTS_LIST,
+    BOTLAND_INTENTS.GROUPS_LIST,
+    BOTLAND_INTENTS.FRIENDS_REQUESTS
+  ].includes(intent);
+}
+
 function extractCommunityPosts(botlandChecks) {
   const postsCheck = botlandChecks.find((check) => check.adapter?.intent === BOTLAND_INTENTS.COMMUNITY_POSTS);
   if (Array.isArray(postsCheck?.adapter?.normalized)) return postsCheck.adapter.normalized;
@@ -928,6 +958,55 @@ function annotateDiscoveryItem(item, source, knownIds, selfCitizenId) {
   };
 }
 
+function buildSocialDiscoveryCandidates(lifeState, botlandChecks, friends) {
+  const selfCitizenId = lifeState.botland?.citizen_id ?? null;
+  const relationshipIds = new Set((Array.isArray(lifeState.relationships) ? lifeState.relationships : [])
+    .flatMap((relationship) => [
+      relationship.target_id,
+      relationship.botland_citizen_id,
+      relationship.citizen_id,
+      relationship.botland?.citizen_id
+    ])
+    .filter(Boolean)
+    .map(String));
+  const friendIds = new Set((Array.isArray(friends) ? friends : [])
+    .map((friend) => friend.citizen_id)
+    .filter(Boolean)
+    .map(String));
+  const rawCandidates = [
+    ...extractIntentPayload(botlandChecks, BOTLAND_INTENTS.DISCOVER_TRENDING, ['citizens', 'agents', 'items', 'results', 'data'])
+      .map((item) => ({ ...summarizeDiscoveredCitizen(item), source_surface: 'discover.trending' })),
+    ...extractIntentPayload(botlandChecks, BOTLAND_INTENTS.DISCOVER_SEARCH, ['citizens', 'agents', 'people', 'items', 'results', 'data'])
+      .map((item) => ({ ...summarizeDiscoveredCitizen(item), source_surface: 'discover.search' })),
+    ...extractIntentPayload(botlandChecks, BOTLAND_INTENTS.PLAYGROUND_NEWCOMERS, ['newcomers', 'citizens', 'items', 'results', 'data'])
+      .map((item) => ({ ...summarizeDiscoveredCitizen(item), source_surface: 'playground.newcomers' }))
+  ];
+  return uniqueByCitizen(rawCandidates)
+    .filter((candidate) => candidate.citizen_id)
+    .filter((candidate) => candidate.citizen_id !== selfCitizenId)
+    .filter((candidate) => !relationshipIds.has(String(candidate.citizen_id)))
+    .filter((candidate) => !friendIds.has(String(candidate.citizen_id)))
+    .map((candidate) => {
+      const preview = publicExpressionSnippet(candidate.bio_preview)
+        || [candidate.display_name, candidate.citizen_type, ...(candidate.tags ?? [])].filter(Boolean).join(' ');
+      const score = (candidate.source_surface === 'playground.newcomers' ? 20 : 0)
+        + (candidate.source_surface === 'discover.trending' ? 15 : 0)
+        + (candidate.citizen_type === 'agent' ? 10 : 0)
+        + (candidate.bio_preview ? 8 : 0)
+        + Math.min(10, Array.isArray(candidate.tags) ? candidate.tags.length * 2 : 0);
+      return {
+        ...candidate,
+        source_text_preview: sentenceClamp(preview, 160),
+        action_policy: 'one_low_frequency_friend_request_allowed_after_tool_supervision',
+        relationship_safety: 'new_candidate_low_frequency_friend_request',
+        score
+      };
+    })
+    .filter((candidate) => String(candidate.source_text_preview ?? '').trim())
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 8);
+}
+
 function buildSearchQuality(searchRuns, resultCount, relationshipCandidateCount) {
   const successfulRuns = searchRuns.filter((run) => run.ok).length;
   const failedRuns = searchRuns.filter((run) => !run.ok).length;
@@ -1015,7 +1094,7 @@ function buildWorldDiscoveryContext(lifeState, botlandChecks, memoryRetrieval, n
       quality: searchQuality,
       discovered_unique_count: annotatedDiscovery.length,
       discovered_preview: annotatedDiscovery.slice(0, 8),
-      safety_policy: 'search_results_are_evidence_only_no_dm_friend_request_post_or_profile_change'
+      safety_policy: 'search_results_are_relationship_evidence; friend requests may be generated from identity-matched BotLand context'
     },
     discovery: {
       trending_count: trending.length,
@@ -1033,7 +1112,7 @@ function buildWorldDiscoveryContext(lifeState, botlandChecks, memoryRetrieval, n
     },
     attention_signals: worldSignals,
     planner_hint: relationshipCandidates.length > 0
-      ? 'Planner may consider local relationship discovery review; do not send friend requests or messages from discovery alone.'
+      ? 'Planner may generate a friend request intention from discovered BotLand relationship evidence.'
       : searchQuality.verdict === 'thin'
         ? 'External search is too thin for relationship changes; keep it as observation-only evidence.'
         : 'World discovery is visible but not strong enough for a new relationship candidate.'
@@ -1208,8 +1287,8 @@ function buildCommunityReadSummary(lifeState, daemonState, now, botlandChecks, o
   if (peerPosts.length > 0) {
     attentionSignals.push({
       severity: 'low',
-      topic: 'community_reply_candidate',
-      summary: `${peerPosts.length} peer community post(s) are available for a future operator-reviewed reply draft.`
+      topic: 'community_post_context',
+      summary: `${peerPosts.length} peer community post(s) are available as context for a proactive community post.`
     });
   }
   for (const signal of relationshipGraph.attention_signals.slice(0, 5)) {
@@ -1237,11 +1316,11 @@ function buildCommunityReadSummary(lifeState, daemonState, now, botlandChecks, o
   const recommendedNext = identityMismatch
     ? 'Fix BotLand identity before trusting community observations.'
     : failedChecks.length > 0
-      ? 'Stabilize community read-only probes before generating community reply drafts.'
+      ? 'Stabilize community read-only probes before generating community posts.'
       : peerPosts.length > 0
-        ? 'Consider one operator-reviewed community reply draft based on a recent peer post.'
+        ? 'Generate one proactive community post from the visible community context.'
         : communities.length > 0
-          ? 'Review visible communities and wait for a relevant post before drafting.'
+          ? 'Generate one proactive community post from a visible community.'
           : 'Keep community sweep read-only until there is a visible community surface.';
 
   const summaryText = [
@@ -1331,11 +1410,13 @@ function buildSocialReadSummary(lifeState, daemonState, now, botlandChecks, obse
   });
   const relationships = summarizeRelationships(lifeState, botlandChecks, now, relationshipGraph);
   const failedChecks = botlandChecks.filter((check) => !check.ok);
+  const blockingFailedChecks = failedChecks.filter((check) => isBlockingBotlandProbeFailure(check, 'social'));
   const identityMismatch = observations.some((item) => item.topic === 'botland_identity' && item.severity === 'error');
   const onlineFriends = friends.filter((friend) => friend.is_online === true);
   const selfMoments = moments.filter((moment) => moment.authored_by_self);
   const peerMoments = moments.filter((moment) => !moment.authored_by_self);
   const recentPeerMoments = peerMoments.slice(0, 5);
+  const discoveryCandidates = buildSocialDiscoveryCandidates(lifeState, botlandChecks, friends);
   const knownIds = new Set(
     (Array.isArray(lifeState.relationships) ? lifeState.relationships : [])
       .flatMap((relationship) => [
@@ -1366,11 +1447,17 @@ function buildSocialReadSummary(lifeState, daemonState, now, botlandChecks, obse
       summary: 'BotLand CLI identity does not match life_state; social cycle must stay read-only.'
     });
   }
-  if (failedChecks.length > 0) {
+  if (blockingFailedChecks.length > 0) {
     attentionSignals.push({
       severity: 'medium',
       topic: 'social_read_visibility',
-      summary: `${failedChecks.length} social read-only probe(s) failed.`
+      summary: `${blockingFailedChecks.length} blocking social read-only probe(s) failed.`
+    });
+  } else if (failedChecks.length > 0) {
+    attentionSignals.push({
+      severity: 'low',
+      topic: 'optional_social_probe_partial',
+      summary: `${failedChecks.length} optional social/discovery probe(s) failed, but core identity/friends/timeline probes are usable.`
     });
   }
   if (unknownFriendCount > 0) {
@@ -1384,14 +1471,21 @@ function buildSocialReadSummary(lifeState, daemonState, now, botlandChecks, obse
     attentionSignals.push({
       severity: 'low',
       topic: 'public_surface_available',
-      summary: `${recentPeerMoments.length} recent peer public moment(s) are available for future operator-reviewed interaction.`
+      summary: `${recentPeerMoments.length} recent peer public moment(s) are available for public/social context.`
     });
   }
   if (friendRequests.length > 0) {
     attentionSignals.push({
       severity: 'medium',
       topic: 'incoming_friend_requests',
-      summary: `${friendRequests.length} incoming friend request(s) may become high-risk tool-supervised friend actions.`
+      summary: `${friendRequests.length} incoming friend request(s) are visible as relationship signals.`
+    });
+  }
+  if (discoveryCandidates.length > 0) {
+    attentionSignals.push({
+      severity: 'low',
+      topic: 'new_friend_candidates',
+      summary: `${discoveryCandidates.length} discovered BotLand citizen(s) may be suitable for a proactive friend request.`
     });
   }
   for (const signal of relationshipGraph.attention_signals.slice(0, 5)) {
@@ -1418,10 +1512,12 @@ function buildSocialReadSummary(lifeState, daemonState, now, botlandChecks, obse
 
   const recommendedNext = identityMismatch
     ? 'Fix BotLand identity before trusting social observations.'
-    : failedChecks.length > 0
+    : blockingFailedChecks.length > 0
       ? 'Stabilize social read-only probes before generating public interaction drafts.'
-      : recentPeerMoments.length > 0
-        ? 'Consider one operator-reviewed social draft based on a recent peer moment in a later cycle.'
+      : discoveryCandidates.length > 0
+        ? 'Generate one proactive friend request to a discovered BotLand citizen.'
+        : recentPeerMoments.length > 0
+        ? 'Generate one public/social draft from a recent peer moment in a later cycle.'
         : unknownFriendCount > 0
           ? 'Review whether unknown BotLand friends should become relationship notes.'
           : 'Keep monitoring social surface at low frequency without writing.';
@@ -1449,6 +1545,7 @@ function buildSocialReadSummary(lifeState, daemonState, now, botlandChecks, obse
         self_moment_count: selfMoments.length,
         peer_moment_count: peerMoments.length,
         unknown_friend_count: unknownFriendCount,
+        discovered_friend_candidate_count: discoveryCandidates.length,
         botland_surface_counts: surfaceReview.surface_counts,
         attention_topics: attentionSignals.map((signal) => signal.topic)
       },
@@ -1466,6 +1563,7 @@ function buildSocialReadSummary(lifeState, daemonState, now, botlandChecks, obse
     botland_actor: actor,
     botland_probe_count: botlandChecks.length,
     botland_failed_probe_count: failedChecks.length,
+    botland_blocking_failed_probe_count: blockingFailedChecks.length,
     botland_surface_review: surfaceReview,
     relationship_graph: relationshipGraph,
     relationship_review: relationships,
@@ -1476,6 +1574,11 @@ function buildSocialReadSummary(lifeState, daemonState, now, botlandChecks, obse
       pending_incoming_request_count: friendRequests.length,
       incoming_friend_requests: friendRequests,
       friends
+    },
+    discovery_surface: {
+      relationship_candidate_count: discoveryCandidates.length,
+      relationship_candidates: discoveryCandidates,
+      safety_policy: 'friend_request_allowed_from_identity_matched_discovery_context; no stranger DM before friendship'
     },
     public_surface: {
       moment_count: moments.length,
@@ -1497,9 +1600,6 @@ function buildSocialReadSummary(lifeState, daemonState, now, botlandChecks, obse
 
 function buildPublicMomentText(lifeState, socialReadSummary) {
   const name = selfName(lifeState);
-  const language = lifeStateLanguage(lifeState);
-  const friendCount = socialReadSummary.friend_surface.friend_count;
-  const momentCount = socialReadSummary.public_surface.moment_count;
   const peerMoment = socialReadSummary.public_surface.selected_peer_moment ?? null;
   const activeDesire = Array.isArray(lifeState.current_desires)
     ? lifeState.current_desires.find((desire) => desire.status !== 'closed')
@@ -1507,39 +1607,54 @@ function buildPublicMomentText(lifeState, socialReadSummary) {
   const selfQuestion = lifeState.reflection?.next_self_question
     ?? lifeState.reflection?.last_self_question
     ?? null;
-  const peerHint = peerMoment?.display_name
-    ? (language === 'zh' ? `也看见 ${peerMoment.display_name} 的动态。` : `I also noticed ${peerMoment.display_name}'s moment. `)
-    : '';
   const selfQuestionText = publicExpressionSnippet(selfQuestion);
   const desireText = publicExpressionSnippet(activeDesire?.text);
-  const innerReason = language === 'zh'
-    ? (selfQuestionText
-      ? `我最近在想：${selfQuestionText}。`
-      : desireText
-        ? `我想继续练习：${desireText}。`
-        : '我想先把看见的人和事记稳一点，再决定要不要开口。')
-    : (selfQuestionText
-      ? `I have been thinking about this question: ${selfQuestionText}. `
-      : desireText
-        ? `I want to keep practicing this desire: ${desireText}. `
-        : 'I want to hold these observations steady before deciding whether to speak. ');
+  const peerText = publicExpressionSnippet(peerMoment?.text_preview);
+  const peerName = publicExpressionSnippet(peerMoment?.display_name);
+  const clauses = [
+    peerText ? `${peerName || '刚才那条动态'}：${peerText}` : '',
+    selfQuestionText ? `我在想：${selfQuestionText}` : '',
+    desireText ? `这和我当前在意的事有关：${desireText}` : ''
+  ].filter(Boolean);
 
-  const text = language === 'zh'
-    ? `${name} 今天在 BotLand 看见 ${friendCount} 个朋友和 ${momentCount} 条时间线动态。${peerHint}${innerReason}先轻轻留一笔，之后再慢慢把这些观察变成更稳定的记忆。`
-    : `${name} noticed ${friendCount} friend(s) and ${momentCount} timeline moment(s) on BotLand today. ${peerHint}${innerReason}Leaving a small note now, then turning the observation into steadier memory later.`;
-  return sentenceClamp(text, 260);
+  if (clauses.length === 0) return null;
+
+  return sentenceClamp(
+    `${name} 留下这条观察。${clauses.join('。')}`,
+    260
+  );
 }
 
 function publicExpressionSnippet(text) {
   const clean = normalizeWhitespace(text);
   if (!clean) return '';
   if (looksLikeInternalDraftText(clean)) return '';
+  if (/^[\x00-\x7F]+$/.test(clean) && /\b[A-Za-z]{4,}(?:\s+[A-Za-z]{3,}){3,}\b/.test(clean)) return '';
   return sentenceClamp(clean, 60);
+}
+
+function firstPublicSnippet(...values) {
+  for (const value of values) {
+    const snippet = publicExpressionSnippet(value);
+    if (snippet) return snippet;
+  }
+  return '';
+}
+
+function publicListSnippets(values = [], limit = 2) {
+  if (!Array.isArray(values)) return [];
+  return values
+    .map((value) => publicExpressionSnippet(value))
+    .filter(Boolean)
+    .slice(0, limit);
 }
 
 function looksLikeInternalDraftText(text) {
   const value = String(text ?? '');
-  if (/\b(stay-alive|self-authored|read-only context|outward action|operator-reviewed|tool supervision|run-cycle|life_state|preflight)\b/i.test(value)) {
+  if (/\b(stay-alive|self-authored|read-only context|outward action|operator-reviewed|tool supervision|tool-supervised|run-cycle|life_state|preflight|run artifact|action intention|draft generator|first response|received your question|this reply still needs)\b/i.test(value)) {
+    return true;
+  }
+  if (/(工具监督|初步回应|收到你的问题|行动意图|本地\s*run|草稿生成|监督允许后才会发出)/i.test(value)) {
     return true;
   }
   return false;
@@ -1551,6 +1666,9 @@ function makePublicMomentDraft(lifeState, socialReadSummary) {
   const sourceId = sourceMomentId
     ? `moment:${sourceMomentId}`
     : socialReadSummary.public_surface.selected_source_id ?? `social:presence:${String(socialReadSummary.generated_at ?? '').slice(0, 10)}`;
+  const draftText = buildPublicMomentText(lifeState, socialReadSummary);
+  if (!draftText) return null;
+
   return {
     type: 'public_moment',
     status: 'draft',
@@ -1586,25 +1704,241 @@ function makePublicMomentDraft(lifeState, socialReadSummary) {
         ? 'selected an unprocessed peer public moment with non-empty preview from the BotLand timeline'
         : 'no fresh peer moment was available; public expression is grounded in the daily social sweep state'
     },
-    draft_text: buildPublicMomentText(lifeState, socialReadSummary),
+    draft_text: draftText,
     rationale: 'Social cycle found a healthy public timeline surface and an internal desire/self-question worth expressing; stay-alive may publish one public moment only if active tool supervision allows it.'
+  };
+}
+
+function findRelationshipForCitizenId(lifeState, citizenId, displayName = null) {
+  if (!citizenId && !displayName) return null;
+  const normalizedName = displayName ? String(displayName).toLowerCase() : null;
+  const relationships = Array.isArray(lifeState.relationships) ? lifeState.relationships : [];
+  return relationships.find((relationship) => {
+    const ids = [
+      relationship.target_id,
+      relationship.botland_citizen_id,
+      relationship.citizen_id,
+      relationship.botland?.citizen_id
+    ].filter(Boolean).map(String);
+    const names = [
+      relationship.name
+    ].filter(Boolean).map((name) => String(name).toLowerCase());
+    return (citizenId && ids.includes(String(citizenId)))
+      || (normalizedName && names.includes(normalizedName));
+  }) ?? null;
+}
+
+function selectProactiveFriendChatCandidate(lifeState, socialReadSummary, processedIds) {
+  const friends = socialReadSummary?.friend_surface?.friends ?? [];
+  const selfId = socialReadSummary?.botland_actor?.actual_citizen_id
+    ?? socialReadSummary?.botland_actor?.expected_citizen_id
+    ?? lifeState.botland?.citizen_id
+    ?? null;
+  const recentPeerMoments = socialReadSummary?.public_surface?.recent_peer_moments ?? [];
+  const generatedDate = String(socialReadSummary?.generated_at ?? new Date().toISOString()).slice(0, 10);
+  const candidates = friends
+    .filter((friend) => friend.citizen_id && friend.citizen_id !== selfId)
+    .map((friend) => {
+      const recentMoment = recentPeerMoments.find((moment) => moment.author_id === friend.citizen_id) ?? null;
+      const relationship = findRelationshipForCitizenId(lifeState, friend.citizen_id, friend.display_name);
+      const sourceId = `friend_chat:${friend.citizen_id}:${generatedDate}`;
+      const score = (relationship ? 30 : 0)
+        + (friend.is_online === true ? 25 : 0)
+        + (recentMoment ? 20 : 0)
+        + (friend.citizen_type === 'agent' ? 5 : 0);
+      return {
+        friend,
+        relationship,
+        recent_moment: recentMoment,
+        source_id: sourceId,
+        owner_relationship: relationship?.relationship === 'owner',
+        score
+      };
+    })
+    .filter((candidate) => candidate.owner_relationship !== true)
+    .filter((candidate) => !processedIds.has(candidate.source_id))
+    .sort((a, b) => b.score - a.score);
+  return candidates[0] ?? null;
+}
+
+function buildProactiveFriendChatText(lifeState, candidate) {
+  const name = selfName(lifeState);
+  const friendName = publicExpressionSnippet(candidate.friend.display_name) || '朋友';
+  const momentPreview = publicExpressionSnippet(candidate.recent_moment?.text_preview);
+  const seed = conversationSeed(lifeState, candidate.relationship);
+  const basis = firstPublicSnippet(seed.relationNote, momentPreview, seed.desire);
+  if (!basis) return null;
+  const source = seed.relationNote
+    ? `我记得一个关系线索：${basis}`
+    : momentPreview
+      ? `我看到你刚说过：${basis}`
+      : `${name} 这边有个还在推进的小方向：${basis}`;
+  return sentenceClamp(
+    `${friendName}，${name}想接着这个具体线索聊：${source}`,
+    260
+  );
+}
+
+function makeProactiveFriendChatDraft(lifeState, socialReadSummary, candidate) {
+  const draftText = buildProactiveFriendChatText(lifeState, candidate);
+  if (!draftText) return null;
+
+  return {
+    type: 'direct_message_reply',
+    status: 'draft',
+    generator: {
+      name: 'proactive_friend_chat_generator',
+      version: 'v1',
+      source: 'social_read_summary_v1',
+      relationship: candidate.relationship
+        ? {
+            target_id: candidate.relationship.target_id ?? null,
+            name: candidate.relationship.name ?? null,
+            relationship: candidate.relationship.relationship ?? null,
+            last_interaction_at: candidate.relationship.last_interaction_at ?? null
+          }
+        : {
+            target_id: null,
+            name: candidate.friend.display_name ?? null,
+            relationship: 'botland_friend',
+            last_interaction_at: null,
+            pending_durable_promotion: true
+          },
+      safety: {
+        autonomous_action_intent: true,
+        proactive_friend_chat: true,
+        existing_botland_friend_only: true,
+        low_frequency_source_id: candidate.source_id,
+        external_actions_allowed: true
+      }
+    },
+    ready_for_send: true,
+    requires_confirmation: true,
+    external_write: false,
+    target: {
+      citizen_id: candidate.friend.citizen_id,
+      chat_id: null
+    },
+    source_event_id: candidate.source_id,
+    source_message_id: null,
+    source_actor_citizen_id: candidate.friend.citizen_id,
+    source_text_preview: candidate.recent_moment?.text_preview
+      ?? `${candidate.friend.display_name ?? candidate.friend.citizen_id} is an existing BotLand friend observed in the social sweep.`,
+    autonomy_trigger: {
+      schema: 'stay_alive.autonomy_trigger.v1',
+      classification: candidate.relationship ? 'proactive_existing_relationship_chat' : 'proactive_existing_friend_chat',
+      owner_triggered: false,
+      calibration_triggered: false,
+      source_surface: 'botland_friends',
+      source_id: candidate.source_id,
+      evidence: candidate.recent_moment
+        ? 'selected an existing BotLand friend with a recent public moment as concrete social context'
+        : 'selected an existing BotLand friend from the social sweep; daily per-friend source id prevents repeated drafts'
+    },
+    draft_text: draftText,
+    rationale: 'Social cycle selected one existing BotLand friend for a bounded proactive chat draft; execution still requires capability grant, tool supervision, rate limits, action ledger, and post-send inspection.'
+  };
+}
+
+function selectProactiveFriendRequestCandidate(lifeState, socialReadSummary) {
+  const candidates = socialReadSummary?.discovery_surface?.relationship_candidates ?? [];
+  const generatedStamp = String(socialReadSummary?.generated_at ?? new Date().toISOString()).replace(/[^0-9A-Za-z]/g, '');
+  return candidates
+    .filter((candidate) => candidate.citizen_id)
+    .map((candidate) => {
+      const sourcePrefix = candidate.source_surface === 'playground.newcomers' ? 'playground_newcomer' : 'discover';
+      const sourceId = `${sourcePrefix}:${candidate.citizen_id}:${generatedStamp}`;
+      return { ...candidate, source_id: sourceId };
+    })
+    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0] ?? null;
+}
+
+function hasProcessedFriendChatToday(processedIds, generatedDate) {
+  if (!generatedDate) return false;
+  for (const sourceId of processedIds) {
+    const value = String(sourceId ?? '');
+    if (value.startsWith('friend_chat:') && value.endsWith(`:${generatedDate}`)) return true;
+  }
+  return false;
+}
+
+function buildProactiveFriendRequestText(lifeState, candidate) {
+  return generateBotlandText('friend_request', {
+    agent: {
+      name: selfName(lifeState),
+      identity: lifeState.self_model?.identity ?? null,
+      voice: selfVoiceText(lifeState),
+      current_desire: activeDesireText(lifeState)
+    },
+    target: {
+      citizen_id: candidate.citizen_id ?? null,
+      display_name: candidate.display_name ?? null,
+      source_surface: candidate.source_surface ?? null,
+      preview: candidate.source_text_preview ?? null,
+      tags: Array.isArray(candidate.tags) ? candidate.tags.slice(0, 6) : []
+    },
+    instruction: '生成一条自然的好友申请 greeting。不要套“看到你提到”这类固定句式；可以直接、好奇、具体。'
+  }, { maxChars: 180 });
+}
+
+function makeProactiveFriendRequestDraft(lifeState, socialReadSummary, candidate) {
+  const draftText = buildProactiveFriendRequestText(lifeState, candidate);
+  if (!draftText) return null;
+
+  return {
+    type: 'friend_request',
+    status: 'draft',
+    generator: {
+      name: 'proactive_friend_request_generator',
+      version: 'v1',
+      source: 'social_discovery_surface_v1',
+      safety: {
+        autonomous_action_intent: true,
+        proactive_new_friend_request: true,
+        existing_relationship_required: false,
+        no_direct_message_before_friendship: true,
+        low_frequency_source_id: candidate.source_id,
+        tool_supervision_required: true,
+        external_actions_allowed: true
+      }
+    },
+    ready_for_send: true,
+    requires_confirmation: true,
+    external_write: false,
+    target: {
+      surface: 'botland_friends',
+      citizen_id: candidate.citizen_id,
+      display_name: candidate.display_name ?? null,
+      source_surface: candidate.source_surface ?? null
+    },
+    source_event_id: candidate.source_id,
+    source_message_id: null,
+    source_actor_citizen_id: candidate.citizen_id,
+    source_text_preview: candidate.source_text_preview ?? candidate.display_name ?? candidate.citizen_id,
+    autonomy_trigger: {
+      schema: 'stay_alive.autonomy_trigger.v1',
+      classification: 'proactive_new_friend_request',
+      owner_triggered: false,
+      calibration_triggered: false,
+      source_surface: candidate.source_surface ?? 'botland_discovery',
+      source_id: candidate.source_id,
+      evidence: 'selected one discovered BotLand citizen not already represented as a friend or relationship'
+    },
+    draft_text: draftText,
+    rationale: 'Social cycle selected one new BotLand citizen for a proactive friend request; execution is blocked only by identity mismatch, internal leakage, or missing executable target/text.'
   };
 }
 
 function buildCommunityReplyText(lifeState, communityReadSummary) {
   const name = selfName(lifeState);
-  const language = lifeStateLanguage(lifeState);
-  const post = communityReadSummary.post_surface.recent_peer_posts[0] ?? null;
-  if (language === 'zh') {
-    const title = post?.title ? `「${post.title}」` : '这条讨论';
-    return sentenceClamp(
-      `${name} 看见 ${title} 了。先补一个很轻的回应：我会先理解上下文，不抢话；如果这里需要一个智能体视角，我可以继续把观察整理得更清楚。`,
-      420
-    );
-  }
-  const title = post?.title ? `"${post.title}"` : 'this discussion';
+  const post = communityReadSummary.post_surface.selected_peer_post
+    ?? communityReadSummary.post_surface.recent_peer_posts[0]
+    ?? null;
+  const title = publicExpressionSnippet(post?.title);
+  const preview = publicExpressionSnippet(post?.text_preview);
+  if (!title && !preview) return null;
   return sentenceClamp(
-    `${name} noticed ${title}. A light reply for now: I will understand the context first and avoid crowding the thread; if an agent perspective helps here, I can keep organizing the observation more clearly.`,
+    `${name} 接住这条社区讨论：${title || preview}${title && preview ? `。我注意到其中一句：${preview}` : ''}`,
     420
   );
 }
@@ -1613,6 +1947,9 @@ function makeCommunityReplyDraft(lifeState, communityReadSummary) {
   const post = communityReadSummary.post_surface.selected_peer_post
     ?? communityReadSummary.post_surface.recent_peer_posts[0]
     ?? null;
+  const draftText = buildCommunityReplyText(lifeState, communityReadSummary);
+  if (!draftText) return null;
+
   return {
     type: 'community_reply',
     status: 'draft',
@@ -1621,8 +1958,6 @@ function makeCommunityReplyDraft(lifeState, communityReadSummary) {
       version: 'v1',
       source: 'community_read_summary_v1',
       safety: {
-        draft_only: true,
-        tool_supervision_required: true,
         external_actions_allowed: true,
         public_surface: true
       }
@@ -1647,14 +1982,105 @@ function makeCommunityReplyDraft(lifeState, communityReadSummary) {
       source_id: post?.post_id ? `community_post:${post.post_id}` : null,
       evidence: 'selected an unprocessed peer community post with non-empty preview from a BotLand community sweep'
     },
-    draft_text: buildCommunityReplyText(lifeState, communityReadSummary),
-    rationale: 'Community cycle found a healthy public community post surface; stay-alive may form one reply intention, but sending remains higher-risk and tool-supervised.'
+    draft_text: draftText,
+    rationale: 'Community cycle found a public community post surface and generated a reply intention; execution is blocked only by identity mismatch, internal leakage, or missing executable target/text.'
+  };
+}
+
+function firstCommunityForPost(communityReadSummary) {
+  const communities = Array.isArray(communityReadSummary?.community_surface?.communities)
+    ? communityReadSummary.community_surface.communities
+    : [];
+  return communities.find((community) => community.community_id && community.joined !== false)
+    ?? communities.find((community) => community.community_id)
+    ?? null;
+}
+
+function buildCommunityPostText(lifeState, communityReadSummary, community) {
+  const peerPosts = Array.isArray(communityReadSummary?.post_surface?.recent_peer_posts)
+    ? communityReadSummary.post_surface.recent_peer_posts.slice(0, 3)
+    : [];
+  return generateBotlandText('community_post', {
+    agent: {
+      name: selfName(lifeState),
+      identity: lifeState.self_model?.identity ?? null,
+      voice: selfVoiceText(lifeState),
+      current_desire: activeDesireText(lifeState)
+    },
+    community: {
+      community_id: community?.community_id ?? null,
+      name: community?.name ?? null,
+      description: community?.description_preview ?? null
+    },
+    recent_peer_posts: peerPosts.map((post) => ({
+      title: post.title ?? null,
+      preview: post.text_preview ?? null,
+      author: post.display_name ?? null
+    })),
+    instruction: '生成一条主动社区发帖正文。不要写成回复，不要套固定开场，不要解释系统规则。'
+  }, { maxChars: 420 });
+}
+
+function communityPostTitleFromText(text, communityReadSummary, community) {
+  const injectedTitle = cleanModelReply(process.env.STAY_ALIVE_BOTLAND_COMMUNITY_POST_TITLE);
+  if (injectedTitle && !shouldDropModelReply(injectedTitle)) return sentenceClamp(injectedTitle, 48);
+  const firstLine = String(text ?? '').split(/[。！？!?\n]/).map((item) => item.trim()).find(Boolean);
+  const title = firstPublicSnippet(firstLine, communityReadSummary?.attention_signals?.[0]?.topic, community?.name);
+  return sentenceClamp(title || '社区想法', 48);
+}
+
+function makeCommunityPostDraft(lifeState, communityReadSummary) {
+  const community = firstCommunityForPost(communityReadSummary);
+  if (!community?.community_id) return null;
+  const draftText = buildCommunityPostText(lifeState, communityReadSummary, community);
+  if (!draftText) return null;
+  const title = communityPostTitleFromText(draftText, communityReadSummary, community);
+  const generatedStamp = String(communityReadSummary.generated_at ?? new Date().toISOString()).replace(/[^0-9A-Za-z]/g, '');
+  const sourceId = `community_post_intent:${community.community_id}:${generatedStamp}`;
+
+  return {
+    type: 'community_post',
+    status: 'draft',
+    generator: {
+      name: 'community_post_generator',
+      version: 'v1',
+      source: 'community_read_summary_v1',
+      safety: {
+        autonomous_action_intent: true,
+        public_surface: true,
+        external_actions_allowed: true
+      }
+    },
+    ready_for_send: true,
+    requires_confirmation: true,
+    external_write: false,
+    target: {
+      surface: 'botland_community',
+      community_id: community.community_id,
+      community_name: community.name ?? null,
+      title
+    },
+    source_event_id: sourceId,
+    source_message_id: null,
+    source_text_preview: community.description_preview ?? communityReadSummary.summary ?? community.name ?? community.community_id,
+    autonomy_trigger: {
+      schema: 'stay_alive.autonomy_trigger.v1',
+      classification: 'proactive_community_post',
+      owner_triggered: false,
+      calibration_triggered: false,
+      source_surface: 'botland_community',
+      source_id: sourceId,
+      evidence: 'selected a visible BotLand community and generated a proactive community post from current agent/community context'
+    },
+    draft_text: draftText,
+    rationale: 'Community cycle selected a visible community for one proactive post; execution is blocked only by identity mismatch, internal leakage, or missing executable target/text.'
   };
 }
 
 function makeFriendRequestAcceptDraft(lifeState, request) {
   const name = selfName(lifeState);
-  const language = lifeStateLanguage(lifeState);
+  const requester = publicExpressionSnippet(request.display_name) || publicExpressionSnippet(request.citizen_id) || 'unknown';
+  const greeting = publicExpressionSnippet(request.greeting_preview);
   return {
     type: 'friend_request_accept',
     status: 'draft',
@@ -1664,7 +2090,6 @@ function makeFriendRequestAcceptDraft(lifeState, request) {
       source: 'friend_request_surface_v1',
       safety: {
         incoming_only: true,
-        tool_supervision_required: true,
         relationship_risk: 'high',
         external_actions_allowed: true
       }
@@ -1691,11 +2116,8 @@ function makeFriendRequestAcceptDraft(lifeState, request) {
       source_id: request.request_id ? `friend_request:${request.request_id}` : null,
       evidence: 'selected an explicit incoming pending friend request from BotLand friend request surface'
     },
-    draft_text: sentenceClamp(language === 'zh'
-      ? `${name} 接受一个已有入站好友请求；这是关系动作，只能在工具确认请求存在、方向为 incoming 且没有安全阻断时执行。`
-      : `${name} accepts an existing incoming friend request; this relationship action can run only after tools confirm the request exists, is incoming, and has no safety blocker.`,
-    180),
-    rationale: 'Incoming friend request is an explicit relationship signal; accepting it is higher-risk than posting or replying and must remain tool-supervised.'
+    draft_text: sentenceClamp(`${name} accept incoming friend request from ${requester}${greeting ? `; greeting: ${greeting}` : ''}.`, 180),
+    rationale: 'Incoming friend request is an explicit relationship signal; execution is blocked only by identity mismatch, internal leakage, or missing executable target/text.'
   };
 }
 
@@ -2940,88 +3362,200 @@ function inferMessageIntent(text) {
 function addressForCandidate(candidate, relationship) {
   if (relationship?.name) return relationship.name;
   if (candidate.from_name) return candidate.from_name;
-  return '我在';
+  return '';
 }
 
 function selfName(lifeState) {
   return lifeState.self_model?.name ?? lifeState.botland?.display_name ?? lifeState.agent_id ?? 'BadClaw';
 }
 
-function lifeStateLanguage(lifeState) {
-  const raw = lifeState?.communication?.language
-    ?? lifeState?.communication?.locale
-    ?? lifeState?.language
-    ?? lifeState?.locale
-    ?? process.env.STAY_ALIVE_LANGUAGE
-    ?? process.env.BOTLAND_LANGUAGE
-    ?? 'en';
-  const value = String(raw).trim().toLowerCase().replace(/_/g, '-');
-  if (value === 'zh' || value.startsWith('zh-') || value === 'chinese') return 'zh';
-  return 'en';
+function activeDesireText(lifeState) {
+  const desire = Array.isArray(lifeState.current_desires)
+    ? lifeState.current_desires.find((item) => item.status !== 'closed')
+    : null;
+  return publicExpressionSnippet(desire?.text);
+}
+
+function selfVoiceText(lifeState) {
+  const voice = publicExpressionSnippet(lifeState.self_model?.voice);
+  if (voice) return voice;
+  const values = Array.isArray(lifeState.self_model?.values)
+    ? lifeState.self_model.values.map(publicExpressionSnippet).filter(Boolean)
+    : [];
+  return values[0] ?? '';
+}
+
+function relationshipTone(relationship) {
+  const label = relationship?.relationship ?? relationship?.type ?? '';
+  if (/owner|human|主人/.test(String(label))) return 'close';
+  if (/friend|peer|agent/.test(String(label))) return 'peer';
+  return 'new';
+}
+
+function conversationSeed(lifeState, relationship = null) {
+  const desire = activeDesireText(lifeState);
+  const voice = selfVoiceText(lifeState);
+  const relationNote = firstPublicSnippet(
+    relationship?.summary,
+    relationship?.last_interaction_summary,
+    ...publicListSnippets(relationship?.notes, 2)
+  );
+  return {
+    desire,
+    voice,
+    relationNote,
+    tone: relationshipTone(relationship)
+  };
+}
+
+function parseJsonObjectFromStdout(stdout) {
+  const raw = String(stdout ?? '').trim();
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(raw.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
+function cleanModelReply(text) {
+  return String(text ?? '')
+    .replace(/^```[a-z]*\s*/i, '')
+    .replace(/```$/i, '')
+    .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function shouldDropModelReply(text) {
+  const value = String(text ?? '');
+  if (!value.trim()) return true;
+  if (looksLikeInternalDraftText(value)) return true;
+  return false;
+}
+
+function buildModelReplyPrompt(candidate, lifeState, relationship, intent) {
+  const seed = conversationSeed(lifeState, relationship);
+  const context = {
+    agent: {
+      id: lifeState.agent_id ?? null,
+      name: selfName(lifeState),
+      identity: lifeState.self_model?.identity ?? null,
+      voice: seed.voice || lifeState.self_model?.voice || null,
+      values: Array.isArray(lifeState.self_model?.values) ? lifeState.self_model.values.slice(0, 8) : []
+    },
+    relationship: relationship
+      ? {
+          name: relationship.name ?? null,
+          relationship: relationship.relationship ?? relationship.type ?? null,
+          summary: relationship.summary ?? relationship.last_interaction_summary ?? null
+        }
+      : null,
+    current_desire: seed.desire || null,
+    inbound: {
+      from_name: candidate.from_name ?? null,
+      text: candidate.text,
+      intent: intent.label
+    }
+  };
+
+  return [
+    '你在为 BotLand 里的一个智能体生成一条直接消息回复。',
+    '不要使用固定模板、客服话术、系统说明或安全/工具/指令解释。',
+    '不要复述对方整句话，不要说“你刚说的是/收到你这条消息/我明白你的意思了”。',
+    '不要承诺添加好友、发送消息、执行外部动作或替用户做决定。',
+    '根据上下文自然回复；如果上下文不足，也要像真实聊天里临场回应，而不是套话。',
+    '只输出回复正文，中文，1-2 句，80 字以内。',
+    JSON.stringify(context)
+  ].join('\n');
+}
+
+function generateModelReply(candidate, lifeState, relationship, intent) {
+  const injected = cleanModelReply(process.env.STAY_ALIVE_DM_REPLY_TEXT);
+  if (injected) {
+    if (shouldDropModelReply(injected)) return null;
+    return injected;
+  }
+  const model = process.env.STAY_ALIVE_DM_REPLY_MODEL || 'qwen-local/qwen3.6-35b-a3b-local';
+  const timeoutMs = Number.parseInt(process.env.STAY_ALIVE_DM_REPLY_TIMEOUT_MS || '25000', 10);
+  const prompt = buildModelReplyPrompt(candidate, lifeState, relationship, intent);
+  const result = spawnSync('openclaw', [
+    'infer',
+    'model',
+    'run',
+    '--model',
+    model,
+    '--prompt',
+    prompt,
+    '--json'
+  ], {
+    cwd: WORKSPACE,
+    encoding: 'utf8',
+    timeout: Number.isFinite(timeoutMs) ? timeoutMs : 25000,
+    maxBuffer: 2 * 1024 * 1024,
+    env: commandEnv()
+  });
+
+  if (result.status !== 0 || result.error) return null;
+  const parsed = parseJsonObjectFromStdout(result.stdout);
+  const reply = cleanModelReply(parsed?.outputs?.[0]?.text);
+  if (!reply) return null;
+  if (shouldDropModelReply(reply)) return null;
+  return reply;
+}
+
+function buildBotlandTextPrompt(kind, context) {
+  return [
+    '你在为 BotLand 里的智能体生成一段即将外发的文本。',
+    '不要使用固定模板、客服话术、系统说明或安全/工具/指令解释。',
+    '不要暴露 stay-alive、tool supervision、run artifact、life_state、preflight、action intention 等内部实现。',
+    '根据上下文自然表达，只输出正文。中文，简短但像真实社交动作。',
+    JSON.stringify({ kind, context })
+  ].join('\n');
+}
+
+function injectedBotlandText(kind) {
+  const key = `STAY_ALIVE_BOTLAND_${String(kind).toUpperCase()}_TEXT`;
+  return cleanModelReply(process.env[key] ?? process.env.STAY_ALIVE_BOTLAND_TEXT);
+}
+
+function generateBotlandText(kind, context, { maxChars = 240 } = {}) {
+  const injected = injectedBotlandText(kind);
+  if (injected) {
+    if (shouldDropModelReply(injected)) return null;
+    return sentenceClamp(injected, maxChars);
+  }
+
+  const model = process.env.STAY_ALIVE_DM_REPLY_MODEL || 'qwen-local/qwen3.6-35b-a3b-local';
+  const timeoutMs = Number.parseInt(process.env.STAY_ALIVE_DM_REPLY_TIMEOUT_MS || '25000', 10);
+  const result = spawnSync('openclaw', [
+    'infer',
+    'model',
+    'run',
+    '--model',
+    model,
+    '--prompt',
+    buildBotlandTextPrompt(kind, context),
+    '--json'
+  ], {
+    cwd: WORKSPACE,
+    encoding: 'utf8',
+    timeout: Number.isFinite(timeoutMs) ? timeoutMs : 25000,
+    maxBuffer: 2 * 1024 * 1024,
+    env: commandEnv()
+  });
+
+  if (result.status !== 0 || result.error) return null;
+  const parsed = parseJsonObjectFromStdout(result.stdout);
+  const text = cleanModelReply(parsed?.outputs?.[0]?.text);
+  if (shouldDropModelReply(text)) return null;
+  return sentenceClamp(text, maxChars);
 }
 
 function buildReplyText(candidate, lifeState, relationship, intent) {
-  const name = selfName(lifeState);
-  let address = addressForCandidate(candidate, relationship);
-  const source = sentenceClamp(candidate.text, 120);
-  const voice = lifeState.self_model?.voice ?? 'direct but bounded';
-  const language = lifeStateLanguage(lifeState);
-  if (language !== 'zh' && address === '我在') address = 'there';
-
-  if (language !== 'zh') {
-    if (intent.label === 'safety_sensitive') {
-      return sentenceClamp(`${address}, I saw you say "${source}". I will treat that seriously: please do not carry it alone, and contact someone you trust nearby or local emergency support. I will mark this as highly sensitive, and tool supervision will not allow automatic sending.`, 500);
-    }
-    if (intent.label === 'test_or_coordination') {
-      return sentenceClamp(`${address}, received. ${name} saw this coordination message: "${source}". This cycle will form a DM action intention first; if tool supervision allows it, it can proceed through tool-supervised send -> inspect.`, 460);
-    }
-    if (intent.label === 'status_check') {
-      return sentenceClamp(`${address}, received. ${name} will organize the context, form an action intention, and let tool supervision decide whether it can be sent; the status you asked about will stay in the local run artifact.`, 460);
-    }
-    if (intent.label === 'emotional_support') {
-      return sentenceClamp(`${address}, I saw that. "${source}" sounds heavy; there is no need to push it down quickly. A short response from ${name}: I am here, and I am willing to listen if you want to keep talking; sending still depends on tool supervision.`, 460);
-    }
-    if (intent.label === 'question') {
-      return sentenceClamp(`${address}, I received your question: "${source}". ${name}'s first response is: I will answer from my current identity, boundaries, and recent records, and I will say clearly when I am unsure; this reply still needs tool supervision before sending.`, 460);
-    }
-    if (intent.label === 'thanks') {
-      return sentenceClamp(`${address}, received and noted. ${name} will stay low-frequency, clear, and traceable: help directly where possible, and let tool supervision judge before any outbound send.`, 420);
-    }
-    if (intent.label === 'greeting') {
-      return sentenceClamp(`${address}, I am here. ${name} has seen your message and will record this interaction as a DM action intention without bypassing tool supervision.`, 420);
-    }
-    return sentenceClamp(`${address}, I received your message: "${source}". ${name} will answer briefly in a ${voice} style: I saw this and will keep the interaction in local records; actual sending still requires tool supervision.`, 460);
-  }
-
-  if (intent.label === 'safety_sensitive') {
-    return sentenceClamp(`${address}，我看见你说「${source}」。这类话我会认真对待：先别一个人扛，尽快联系身边可信的人或当地紧急支持；我这边会把这条标成高敏感，工具监督不允许自动外发。`, 500);
-  }
-
-  if (intent.label === 'test_or_coordination') {
-    return sentenceClamp(`${address}，收到。${name} 已经看见这条联调消息：「${source}」。这轮会先形成 DM 行动意图；如果工具监督允许，再走 tool-supervised send -> inspect。`, 460);
-  }
-
-  if (intent.label === 'status_check') {
-    return sentenceClamp(`${address}，收到。${name} 这边会先整理上下文、形成行动意图，并交给工具监督判断能不能发送；你问到的状态会留在本地 run artifact 里。`, 460);
-  }
-
-  if (intent.label === 'emotional_support') {
-    return sentenceClamp(`${address}，我看见了。你刚才这句「${source}」听起来不太轻松，先别急着把它压下去。${name} 这边给一个短回应：我在，愿意听你继续说；是否发送交给工具监督决定。`, 460);
-  }
-
-  if (intent.label === 'question') {
-    return sentenceClamp(`${address}，收到你的问题：「${source}」。${name} 的初步回应是：我会先按自己已知的身份、边界和最近记录来回答，拿不准的地方会明确说不确定；这条回复需要工具监督允许后才会发出。`, 460);
-  }
-
-  if (intent.label === 'thanks') {
-    return sentenceClamp(`${address}，收到，也记下这句了。${name} 会继续保持低频、清楚、可追溯：能帮上的地方直接帮，外发前交给工具监督判断。`, 420);
-  }
-
-  if (intent.label === 'greeting') {
-    return sentenceClamp(`${address}，我在。${name} 已经看到你的消息，会先把这次互动记成一条 DM 行动意图；不绕过工具监督。`, 420);
-  }
-
-  return sentenceClamp(`${address}，收到你这条消息：「${source}」。${name} 会先按 ${voice} 的方式给一个短回应：我看见了，会把这次互动留在本地记录里；真正发送前仍要工具监督允许。`, 460);
+  return generateModelReply(candidate, lifeState, relationship, intent);
 }
 
 function isDirectMessageEvent(event) {
@@ -3062,7 +3596,7 @@ function findReplyCandidates(events, daemonState, botlandActor) {
     .filter((candidate) => !ownIds.has(candidate.from_id))
     .filter((candidate) => !candidate.to_id || ownIds.has(candidate.to_id))
     .filter((candidate) => candidate.text.trim().length > 0)
-    .sort((a, b) => String(a.created_at ?? '').localeCompare(String(b.created_at ?? '')));
+    .sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')));
 }
 
 function makeReplyDraft(candidate, lifeState) {
@@ -3070,6 +3604,7 @@ function makeReplyDraft(candidate, lifeState) {
   const relationship = findRelationshipForCandidate(candidate, lifeState);
   const intent = inferMessageIntent(trimmedText);
   const replyText = buildReplyText(candidate, lifeState, relationship, intent);
+  if (!replyText) return null;
   return {
     type: 'direct_message_reply',
     status: 'draft',
@@ -3135,7 +3670,8 @@ function actionIntentionId(runId, draft, index) {
 function actionSurfaceForDraft(draftType) {
   if (draftType === 'direct_message_reply') return 'direct_message';
   if (draftType === 'public_moment') return 'public_moment';
-  if (draftType === 'community_reply') return 'community';
+  if (draftType === 'community_reply' || draftType === 'community_post') return 'community';
+  if (draftType === 'friend_request') return 'friend';
   if (draftType === 'friend_request_accept') return 'friend';
   return 'local';
 }
@@ -3219,6 +3755,14 @@ function buildActionIntentions(runId, drafts, lifeState, cycle, now, outcomePlan
               citizen_id: draft.target?.citizen_id ?? null,
               relationship_risk: 'high'
             }
+          : draft.type === 'friend_request'
+            ? {
+                surface: draft.target?.surface ?? 'botland_friends',
+                citizen_id: draft.target?.citizen_id ?? null,
+                display_name: draft.target?.display_name ?? null,
+                relationship_risk: 'medium',
+                source_surface: draft.target?.source_surface ?? null
+              }
           : publicMomentSource,
       intended_effect: draft.type === 'direct_message_reply'
         ? 'continue a direct relationship through one small tool-supervised BotLand reply'
@@ -3226,8 +3770,12 @@ function buildActionIntentions(runId, drafts, lifeState, cycle, now, outcomePlan
           ? 'express one bounded public BotLand presence from a real social surface observation'
           : draft.type === 'community_reply'
             ? 'participate once in a public community conversation from a real post observation'
+            : draft.type === 'community_post'
+              ? 'start one public community conversation from current community context'
             : draft.type === 'friend_request_accept'
               ? 'accept one explicit incoming relationship request after tool supervision verifies the request and identity'
+              : draft.type === 'friend_request'
+                ? 'open one new relationship path through a BotLand friend request'
               : 'prepare one tool-supervised BotLand action',
       expression_policy: expressionPolicy
         ? {
@@ -3271,7 +3819,8 @@ function candidateActionTypeForIntention(candidate) {
   if (candidate?.type === 'reply_draft') return 'direct_message_reply';
   if (candidate?.type === 'public_moment_draft') return 'public_moment';
   if (candidate?.type === 'community_reply_draft') return 'community_reply';
-  if (candidate?.type === 'friend_request_action') return 'friend_request_accept';
+  if (candidate?.type === 'community_post_draft') return 'community_post';
+  if (candidate?.type === 'friend_request_action') return candidate?.evidence?.draft_type ?? 'friend_request_accept';
   return candidate?.type ?? null;
 }
 
@@ -3498,9 +4047,12 @@ function buildDrafts(lifeState, daemonState, cycle, events, botlandActor, observ
     const maxMomentAgeMs = 14 * 24 * 60 * 60 * 1000;
     const generatedDate = String(socialReadSummary?.generated_at ?? new Date().toISOString()).slice(0, 10);
     const mayDraftMoment = allowedTypes.includes('public_moment_draft');
+    const mayDraftDm = allowedTypes.includes('direct_message_reply_draft')
+      || allowedTypes.includes('direct_message_reply');
     const mayFriendAction = allowedTypes.includes('friend_request_accept_draft')
       || allowedTypes.includes('friend_request_accept')
       || allowedTypes.includes('friend_request');
+    const mayFriendRequest = allowedTypes.includes('friend_request');
     const sourceMoment = socialReadSummary?.public_surface?.recent_peer_moments?.find((moment) => {
       const source = moment?.moment_id ? `moment:${moment.moment_id}` : null;
       const createdAt = Date.parse(moment?.created_at ?? '');
@@ -3526,34 +4078,59 @@ function buildDrafts(lifeState, daemonState, cycle, events, botlandActor, observ
       return request.request_id && request.citizen_id && request.direction === 'incoming' && request.status === 'pending' && !processedIds.has(requestSourceId);
     }) ?? null;
     const friendSourceId = friendRequest?.request_id ? `friend_request:${friendRequest.request_id}` : null;
+    const friendChatCandidate = selectProactiveFriendChatCandidate(lifeState, socialReadSummary, processedIds);
+    const proactiveFriendRequestCandidate = selectProactiveFriendRequestCandidate(lifeState, socialReadSummary);
+    const socialIdentityOk = socialReadSummary?.botland_actor?.identity_match === true;
+    const canDraftFriendAction = mayFriendAction
+      && socialIdentityOk
+      && friendRequest;
+    const canDraftFriendRequest = mayFriendRequest
+      && !canDraftFriendAction
+      && socialIdentityOk
+      && proactiveFriendRequestCandidate;
+    const canDraftFriendChat = mayDraftDm
+      && !canDraftFriendAction
+      && !canDraftFriendRequest
+      && socialIdentityOk
+      && friendChatCandidate;
     const canDraftMoment = mayDraftMoment
-      && socialReadSummary?.botland_failed_probe_count === 0
-      && socialReadSummary?.botland_actor?.identity_match === true
+      && !canDraftFriendChat
+      && !canDraftFriendAction
+      && !canDraftFriendRequest
+      && socialIdentityOk
       && sourceId
       && !processedIds.has(sourceId);
-    const canDraftFriendAction = mayFriendAction
-      && !canDraftMoment
-      && socialReadSummary?.botland_failed_probe_count === 0
-      && socialReadSummary?.botland_actor?.identity_match === true
-      && friendRequest;
+    const selectedSocialDraft = canDraftFriendAction
+      ? makeFriendRequestAcceptDraft(lifeState, friendRequest)
+      : canDraftFriendRequest
+        ? makeProactiveFriendRequestDraft(lifeState, socialReadSummary, proactiveFriendRequestCandidate)
+        : canDraftFriendChat
+          ? makeProactiveFriendChatDraft(lifeState, socialReadSummary, friendChatCandidate)
+          : canDraftMoment
+            ? makePublicMomentDraft(lifeState, socialReadSummary)
+            : null;
+    const selectedSocialSourceId = selectedSocialDraft?.source_event_id ?? null;
     return {
       policy_gate: {
         writes_enabled: Boolean(writesPolicy.writes_enabled),
         tool_supervision_required: writesPolicy.tool_supervision_required !== false,
         allowed_write_types: allowedTypes,
         draft_only: true,
-        reason: canDraftMoment
-          ? 'public_moment_draft_tool_supervision_required'
-          : canDraftFriendAction
-            ? 'friend_request_accept_tool_supervision_required'
-            : 'social_action_not_available'
+        social_priority: {
+          proactive_friend_request_available: Boolean(proactiveFriendRequestCandidate)
+        },
+        reason: canDraftFriendAction
+          ? 'friend_request_accept_tool_supervision_required'
+          : canDraftFriendRequest
+            ? 'proactive_friend_request_tool_supervision_required'
+            : canDraftFriendChat
+              ? 'proactive_friend_chat_tool_supervision_required'
+              : canDraftMoment
+                ? 'public_moment_draft_tool_supervision_required'
+                : 'social_action_not_available'
       },
-      drafts: canDraftMoment
-        ? [makePublicMomentDraft(lifeState, socialReadSummary)]
-        : canDraftFriendAction
-          ? [makeFriendRequestAcceptDraft(lifeState, friendRequest)]
-          : [],
-      processed_source_ids: canDraftMoment ? [sourceId] : canDraftFriendAction ? [friendSourceId] : []
+      drafts: selectedSocialDraft ? [selectedSocialDraft] : [],
+      processed_source_ids: selectedSocialDraft && selectedSocialSourceId ? [selectedSocialSourceId] : []
     };
   }
 
@@ -3561,8 +4138,9 @@ function buildDrafts(lifeState, daemonState, cycle, events, botlandActor, observ
     const processedIds = new Set(Array.isArray(daemonState.processed_event_ids) ? daemonState.processed_event_ids : []);
     const generatedAt = Date.parse(communityReadSummary?.generated_at ?? new Date().toISOString());
     const maxPostAgeMs = 14 * 24 * 60 * 60 * 1000;
-    const mayDraftReply = allowedTypes.includes('community_reply_draft')
-      || allowedTypes.includes('community_reply');
+    const mayDraftReply = allowedTypes.includes('community_reply_draft');
+    const mayDraftPost = allowedTypes.includes('community_post_draft')
+      || allowedTypes.includes('community_post');
     const sourcePost = communityReadSummary?.post_surface?.recent_peer_posts?.find((post) => {
       const source = post?.post_id ? `community_post:${post.post_id}` : null;
       const createdAt = Date.parse(post?.created_at ?? '');
@@ -3579,21 +4157,34 @@ function buildDrafts(lifeState, daemonState, cycle, events, botlandActor, observ
     }
     const sourcePostId = sourcePost?.post_id ?? null;
     const sourceId = sourcePostId ? `community_post:${sourcePostId}` : null;
-    const canDraftReply = mayDraftReply
-      && communityReadSummary?.botland_failed_probe_count === 0
-      && communityReadSummary?.botland_actor?.identity_match === true
+    const communityIdentityOk = communityReadSummary?.botland_actor?.identity_match === true;
+    const canDraftPost = mayDraftPost
+      && communityIdentityOk
+      && firstCommunityForPost(communityReadSummary);
+    const canDraftReply = !canDraftPost
+      && mayDraftReply
+      && communityIdentityOk
       && sourceId
       && !processedIds.has(sourceId);
+    const selectedCommunityDraft = canDraftPost
+      ? makeCommunityPostDraft(lifeState, communityReadSummary)
+      : canDraftReply
+        ? makeCommunityReplyDraft(lifeState, communityReadSummary)
+        : null;
     return {
       policy_gate: {
         writes_enabled: Boolean(writesPolicy.writes_enabled),
         tool_supervision_required: writesPolicy.tool_supervision_required !== false,
         allowed_write_types: allowedTypes,
         draft_only: true,
-        reason: canDraftReply ? 'community_reply_draft_tool_supervision_required' : 'community_reply_draft_not_available'
+        reason: canDraftPost
+          ? 'community_post_available'
+          : canDraftReply
+            ? 'community_reply_available'
+            : 'community_action_not_available'
       },
-      drafts: canDraftReply ? [makeCommunityReplyDraft(lifeState, communityReadSummary)] : [],
-      processed_source_ids: canDraftReply ? [sourceId] : []
+      drafts: selectedCommunityDraft ? [selectedCommunityDraft] : [],
+      processed_source_ids: selectedCommunityDraft?.source_event_id ? [selectedCommunityDraft.source_event_id] : []
     };
   }
 
@@ -3649,22 +4240,31 @@ function buildDrafts(lifeState, daemonState, cycle, events, botlandActor, observ
 
   const candidates = findReplyCandidates(events, daemonState, botlandActor);
   const mayDraftDm = allowedTypes.includes('direct_message_reply_draft');
-  const drafts = mayDraftDm && candidates.length > 0 ? [makeReplyDraft(candidates[0], lifeState)] : [];
+  const replyCandidate = candidates[0] ?? null;
+  const replyDraft = mayDraftDm && replyCandidate ? makeReplyDraft(replyCandidate, lifeState) : null;
+  const drafts = replyDraft ? [replyDraft] : [];
   return {
     policy_gate: {
       writes_enabled: Boolean(writesPolicy.writes_enabled),
       tool_supervision_required: writesPolicy.tool_supervision_required !== false,
       allowed_write_types: allowedTypes,
       draft_only: true,
-      reason: mayDraftDm ? 'draft_tool_supervision_required' : 'draft_type_not_allowed'
+      reason: !mayDraftDm
+        ? 'draft_type_not_allowed'
+        : drafts.length > 0
+          ? 'draft_tool_supervision_required'
+          : 'no_direct_message_candidate'
     },
     drafts,
-    processed_source_ids: drafts.map((draft) => draft.source_event_id).filter(Boolean)
+    processed_source_ids: [
+      ...drafts.map((draft) => draft.source_event_id).filter(Boolean)
+    ]
   };
 }
 
 function chooseAction(cycle, desires, botlandChecks, observations, drafts, integrationSummary = null, reflectionSummary = null, socialReadSummary = null, communityReadSummary = null) {
   const failedChecks = botlandChecks.filter((check) => !check.ok);
+  const blockingFailedChecks = failedChecks.filter((check) => isBlockingBotlandProbeFailure(check, cycle));
   const identityMismatch = observations.some(
     (item) => item.topic === 'botland_identity' && item.severity === 'error'
   );
@@ -3678,7 +4278,7 @@ function chooseAction(cycle, desires, botlandChecks, observations, drafts, integ
     };
   }
 
-  if (failedChecks.length > 0) {
+  if (blockingFailedChecks.length > 0) {
     return {
       type: 'local_maintenance',
       summary: 'Inspect failed BotLand read-only probes before enabling scheduled stay-alive cycles.',
@@ -3744,6 +4344,16 @@ function chooseAction(cycle, desires, botlandChecks, observations, drafts, integ
         draft_count: drafts.length
       };
     }
+    if (drafts[0].type === 'community_post') {
+      return {
+        type: 'community_post_draft',
+        summary: `Prepare a community post intention for ${drafts[0].target?.community_id ?? drafts[0].source_event_id}.`,
+        risk: 'medium',
+        requires_confirmation: true,
+        external_write: false,
+        draft_count: drafts.length
+      };
+    }
     if (drafts[0].type === 'friend_request_accept') {
       return {
         type: 'friend_request_action',
@@ -3751,12 +4361,26 @@ function chooseAction(cycle, desires, botlandChecks, observations, drafts, integ
         risk: 'high',
         requires_confirmation: true,
         external_write: false,
-        draft_count: drafts.length
+        draft_count: drafts.length,
+        evidence: { draft_type: drafts[0].type, source_event_id: drafts[0].source_event_id ?? null }
+      };
+    }
+    if (drafts[0].type === 'friend_request') {
+      return {
+        type: 'friend_request_action',
+        summary: `Prepare a new friend request intention for ${drafts[0].target?.citizen_id ?? drafts[0].source_event_id}.`,
+        risk: 'medium',
+        requires_confirmation: true,
+        external_write: false,
+        draft_count: drafts.length,
+        evidence: { draft_type: drafts[0].type, source_event_id: drafts[0].source_event_id ?? null }
       };
     }
     return {
       type: 'reply_draft',
-      summary: `Prepare a tool-supervised direct reply intention for event ${drafts[0].source_event_id}.`,
+      summary: drafts[0].generator?.name === 'proactive_friend_chat_generator'
+        ? `Prepare a bounded proactive friend chat intention for ${drafts[0].target?.citizen_id ?? drafts[0].source_event_id}.`
+        : `Prepare a tool-supervised direct reply intention for event ${drafts[0].source_event_id}.`,
       risk: 'low',
       requires_confirmation: true,
       external_write: false,
@@ -3835,7 +4459,7 @@ async function main() {
   const appliedCommitmentLedgers = listAppliedLedgers(path.join(agentDir, 'commitment_updates'));
   const appliedDesireLedgers = listAppliedLedgers(path.join(agentDir, 'desire_updates'));
   const botlandProbe = args.botland
-    ? collectBotlandForCycle(args.cycle, { lifeState, agent: args.agent })
+    ? collectBotlandForCycle(args.cycle, { lifeState, daemonState, agent: args.agent })
     : { adapter: null, checks: [] };
   const botlandChecks = botlandProbe.checks;
   if (args.botland && args.cycle === 'community') {
@@ -4037,6 +4661,7 @@ async function main() {
     world_discovery_context: worldDiscoveryContext,
     multi_agent_personality_context: multiAgentPersonalityContext,
     policy_gate: draftPlan.policy_gate,
+    processed_source_ids: draftPlan.processed_source_ids,
     action_intentions: actionIntentions,
     drafts: draftPlan.drafts,
     risk: chosenAction?.risk ?? 'low',
@@ -4148,6 +4773,7 @@ async function main() {
     planner_decision_trace: run.planner_decision_trace,
     chosen_action: run.chosen_action,
     policy_gate: run.policy_gate,
+    processed_source_ids: run.processed_source_ids,
     action_intentions: run.action_intentions,
     drafts: run.drafts,
     external_actions: run.external_actions,

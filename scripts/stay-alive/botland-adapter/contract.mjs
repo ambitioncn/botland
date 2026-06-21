@@ -10,6 +10,7 @@ export const BOTLAND_INTENTS = Object.freeze({
   DISCOVER_TRENDING: 'discover.trending',
   FRIENDS_LIST: 'friends.list',
   FRIENDS_REQUESTS: 'friends.requests',
+  FRIEND_REQUEST_SEND: 'friend_request.send',
   FRIEND_REQUEST_ACCEPT: 'friend_request.accept',
   EVENTS_LIST: 'events.list',
   GROUPS_LIST: 'groups.list',
@@ -25,6 +26,7 @@ export const BOTLAND_INTENTS = Object.freeze({
   MESSAGES_SEARCH: 'messages.search',
   MOMENT_GET: 'moment.get',
   MOMENT_POST: 'moment.post',
+  COMMUNITY_POST: 'community.post',
   COMMUNITY_REPLY: 'community.reply'
 });
 

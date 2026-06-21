@@ -83,7 +83,8 @@ function sha256(text) {
 
 function containsInternalDraftLeak(text) {
   const value = String(text ?? '');
-  return /\b(stay-alive|self-authored|read-only context|outward action|operator-reviewed|tool supervision|run-cycle|life_state|preflight)\b/i.test(value);
+  return /\b(stay-alive|self-authored|read-only context|outward action|operator-reviewed|tool supervision|tool-supervised|run-cycle|life_state|preflight|run artifact|action intention|draft generator|first response|received your question|this reply still needs)\b/i.test(value)
+    || /(工具监督|初步回应|收到你的问题|行动意图|本地\s*run|草稿生成|监督允许后才会发出)/i.test(value);
 }
 
 function draftKey(runId, draftIndex) {
@@ -177,8 +178,8 @@ function verifyDraft(draft, issues) {
     if (typeof draft.draft_text !== 'string' || draft.draft_text.length === 0) {
       addIssue(issues, 'error', 'ready_draft_text_missing', 'Ready draft must include non-empty draft_text', draft);
     }
-    if (draft.type === 'public_moment' && containsInternalDraftLeak(draft.draft_text)) {
-      addIssue(issues, 'error', 'ready_draft_internal_text_leak', 'Ready public moment draft must not expose internal planning or long English prompt fragments', draft);
+    if (containsInternalDraftLeak(draft.draft_text)) {
+      addIssue(issues, 'error', 'ready_draft_internal_text_leak', 'Ready draft must not expose internal planning, supervision, or artifact text', draft);
     }
   }
 

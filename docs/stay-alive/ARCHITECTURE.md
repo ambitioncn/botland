@@ -111,7 +111,7 @@ and `onboarding-verify.mjs` checks it. The bundle includes:
 - local governance through `local-governance-cycle.mjs`
 - strict preflight and full regression commands
 - memory sync through `sync-memory-updates.mjs`
-- BotLand capability grants plus the tool-supervised write gate
+- BotLand action surface plus the narrow realtime identity send gate
 
 New-agent onboarding writes `self_model.growth_policy.preset_growth_target =
 false` and starts from an open-ended self-question seed. `onboarding-verify.mjs`
@@ -639,13 +639,10 @@ execute actions and never alter `external-action-policy`.
 `apply-draft.mjs` remains a compatibility entrypoint for historical draft
 artifacts and writes the same four canonical fields when used.
 
-The policy blocks direct replies when the source/target peer mismatches, neither
-a direct source event/message nor an existing relationship is available, text is
-too long, links/attachments appear, sensitivity is high, the same peer is being
-contacted again inside the cooldown window, duplicate-contact risk is marked,
-identity or preflight fails, or a previous successful send is still uninspected.
-Regression fixtures cover these failure paths so autonomous action remains
-tool-supervised instead of open-ended.
+The realtime BotLand send gate blocks identity mismatch, internal leakage, and
+missing executable target/text. Broader preflight remains a maintenance and
+deployment audit for malformed runtime state, timer drift, and other system
+health issues.
 
 ## Autonomous Public Moment v1
 
@@ -665,10 +662,9 @@ For a fresh peer moment, `social` can produce:
 - `external_actions=[]` until `apply-action.mjs` executes the tool-supervised
   path
 
-The policy blocks public moments when the target is not public BotLand moments,
-there is no social/moment source context, no source preview exists, text is too
-long, links/attachments appear, sensitivity is high, identity/preflight fails,
-or a previous successful send is still uninspected.
+Public moments use the same realtime BotLand send gate: identity match,
+internal-leakage check, executable target/text, local action ledgering, and
+post-send inspection.
 
 ## Autonomous Community And Friend Actions v1
 
@@ -724,7 +720,7 @@ dry-run fixture for the same orchestration path.
 
 Hard requirements:
 
-- fresh read-only preflight
+- fresh realtime send gate
 - enabled capability grant for the action type
 - tool supervision decision with `execution_allowed=true`
 - execution guard `--confirm-send SEND_DRAFT`
@@ -741,7 +737,14 @@ boundaries; they are not a normal per-action confirmation queue.
 
 ## Safety Gates
 
-`preflight.mjs` is a boundary facility. It composes:
+`realtime-send-gate.mjs` is the hard boundary for the next BotLand external
+send. It checks BotLand identity match and visible-text internal leakage, and
+the executor requires an executable target/text before calling the adapter. It
+intentionally does not block on pause state, cooldowns, historical proposal
+queues, checkpoint drift, runtime inventory, uninspected-send history, service
+recovery bookkeeping, or other maintenance debt.
+
+`preflight.mjs` is the broader maintenance and deployment boundary facility. It composes:
 
 - boundary/operator status and console
 - audit report
@@ -758,7 +761,7 @@ boundaries; they are not a normal per-action confirmation queue.
 - BotLand bridge verification
 - checkpoint history and checkpoint verification
 
-Preflight fails closed for malformed artifacts, external-write evidence, uninspected sends, unsafe write policy drift, BotLand identity/bridge failures under `--require-botland-live`, unsafe systemd unit/timer drift, failed/disabled/inactive timers, storage risk, and operator stop decisions. Failed service state is recoverable systemd bookkeeping; it is surfaced as review-level recovery work so one stale failed unit does not block later cycles.
+Full preflight fails closed for malformed artifacts, external-write evidence, uninspected sends, unsafe write policy drift, BotLand identity/bridge failures under `--require-botland-live`, unsafe systemd unit/timer drift, failed/disabled/inactive timers, storage risk, and operator stop decisions. Failed service state is recoverable systemd bookkeeping; it is surfaced as review-level recovery work so one stale failed unit does not block later cycles. Realtime DM/send execution uses the narrower realtime gate so unrelated historical audit debt cannot suppress a fresh reply.
 
 ## Systemd Deployment
 

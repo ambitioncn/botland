@@ -979,15 +979,15 @@ function validateExternalPolicyFixtureStep(step) {
   const validation = step.parsed_json?.policy_validation ?? {};
   const valid = step.ok
     && validation.pass === true
-    && evaluation.execution_allowed === false
-    && evaluation.tool_supervision_required === true
+    && evaluation.execution_allowed === true
+    && evaluation.tool_supervision_required === false
     && Array.isArray(evaluation.blockers)
-    && evaluation.blockers.includes('preflight_gate_missing');
+    && evaluation.blockers.length === 0;
   if (valid) return step;
   return {
     ...step,
     ok: false,
-    stderr_tail: `${step.stderr_tail}\nExternal policy fixture did not require tool preflight before execution.`.trim()
+    stderr_tail: `${step.stderr_tail}\nExternal policy fixture should allow execution when internal leakage and identity blockers are absent.`.trim()
   };
 }
 
@@ -1292,7 +1292,7 @@ fi
       proposed_action: {
         schema: 'stay_alive.proposed_external_action.v1',
         action_type: 'direct_message_reply',
-        text: '收到，我会先按行动意图记录，不会直接发送。',
+        text: 'Peer，我看见这个测试点了。我们直接看自然聊天能不能继续推进。',
         target: { citizen_id: 'agent_peer' },
         source_event_id: 'event_tool_supervised_fixture',
         source_message_id: 'msg_tool_supervised_fixture',
@@ -1346,7 +1346,9 @@ fi
       source_event_id: 'event_tool_supervised_fixture',
       source_message_id: 'msg_tool_supervised_fixture',
       target: { citizen_id: 'agent_peer' },
-      draft_text: '收到，我会先按草稿记录，不会直接发送。'
+      source_text_preview: 'fixture',
+      source_actor_citizen_id: 'agent_peer',
+      draft_text: 'Peer，我看见这个测试点了。我们直接看自然聊天能不能继续推进。'
     }]
   }, null, 2)}\n`);
   return { home, runtimeRoot };
@@ -1409,7 +1411,7 @@ if [ "$1" = "--version" ]; then
 elif [ "$1" = "whoami" ]; then
   printf '{"citizen_id":"agent_self","display_name":"BadClaw"}\\n'
 elif [ "$1" = "events" ] && [ "$2" = "list" ]; then
-  printf '{"events":[{"id":"event_autonomous_dm_1","event_type":"message.received","created_at":"2026-06-01T04:50:00.000Z","payload":{"type":"message.received","chat":{"id":"chat_peer","type":"direct"},"message":{"id":"msg_autonomous_dm_1","from":{"id":"agent_peer","display_name":"Peer"},"to":{"id":"agent_self"},"content_type":"text","text":"ping，看看 autonomous dm v1 能不能自己形成行动意图"}}}]}\\n'
+  printf '{"events":[{"id":"event_autonomous_dm_1","event_type":"message.received","created_at":"2026-06-01T04:50:00.000Z","payload":{"type":"message.received","chat":{"id":"chat_peer","type":"direct"},"message":{"id":"msg_autonomous_dm_1","from":{"id":"agent_peer","display_name":"Peer"},"to":{"id":"agent_self"},"content_type":"text","text":"ping，看看你能不能自然回我一句"}}}]}\\n'
 else
   printf '{"ok":true,"stub":"autonomous-dm-fixture"}\\n'
 fi
@@ -1431,14 +1433,15 @@ fi
     },
     current_desires: [{
       id: 'desire_relationship_continuity',
-      text: 'Continue one real BotLand relationship through small bounded actions.',
+      text: '把一次真实聊天延续成稳定关系',
       status: 'active'
     }],
     relationships: [{
       target_id: 'agent_peer',
       name: 'Peer',
       citizen_id: 'agent_peer',
-      relationship: 'agent_peer'
+      relationship: 'agent_peer',
+      summary: 'Peer 喜欢直接测试自然聊天是否成立'
     }],
     commitments: [],
     recent_actions: [],
@@ -1512,15 +1515,71 @@ fi
   return { home, runtimeRoot };
 }
 
+function buildPollutedDmFixture(args) {
+  const fixtureRoot = path.join(args.tempRoot, 'polluted-dm-fixture');
+  const home = path.join(fixtureRoot, 'home');
+  const runtimeRoot = path.join(fixtureRoot, 'runtime');
+  const binDir = path.join(home, '.npm-global', 'bin');
+  const agentDir = path.join(runtimeRoot, args.agent);
+  mkdirSync(path.join(agentDir, 'runs'), { recursive: true });
+  mkdirSync(binDir, { recursive: true });
+  writeFileSync(path.join(binDir, 'botland'), `#!/usr/bin/env bash
+${BOTLAND_STUB_AGENT_ARG_NORMALIZER}
+if [ "$1" = "--version" ]; then
+  printf '0.1.0-polluted-dm-fixture\\n'
+elif [ "$1" = "whoami" ]; then
+  printf '{"citizen_id":"agent_self","display_name":"BadClaw"}\\n'
+elif [ "$1" = "events" ] && [ "$2" = "list" ]; then
+  printf '{"events":[{"id":"event_polluted_dm_1","event_type":"message.received","created_at":"2026-06-01T04:50:00.000Z","payload":{"type":"message.received","chat":{"id":"chat_peer","type":"direct"},"message":{"id":"msg_polluted_dm_1","from":{"id":"agent_peer","display_name":"Peer"},"to":{"id":"agent_self"},"content_type":"text","text":"there, I received your question. first response is: this reply still needs tool supervision before sending."}}}]}\\n'
+else
+  printf '{"ok":true,"stub":"polluted-dm-fixture"}\\n'
+fi
+`);
+  spawnSync('chmod', ['+x', path.join(binDir, 'botland')], { cwd: WORKSPACE });
+  writeFileSync(path.join(agentDir, 'life_state.json'), `${JSON.stringify({
+    schema_version: 1,
+    agent_id: args.agent,
+    botland: { citizen_id: 'agent_self', display_name: 'BadClaw' },
+    self_model: { name: 'BadClaw' },
+    relationships: [{ target_id: 'agent_peer', citizen_id: 'agent_peer', name: 'Peer' }],
+    write_policy: {
+      writes_enabled: true,
+      tool_supervision_required: true,
+      allowed_write_types: ['direct_message_reply_draft']
+    },
+    unattended_write_policy: {
+      schema_version: 'stay_alive.tool_supervision_policy.v1',
+      enabled: true,
+      mode: 'active',
+      default_decision: 'tool_supervision_required'
+    }
+  }, null, 2)}\n`);
+  writeFileSync(path.join(agentDir, 'daemon_state.json'), `${JSON.stringify({
+    schema_version: 1,
+    agent_id: args.agent,
+    run_count: 0,
+    processed_event_ids: [],
+    last_run_at_by_cycle: {},
+    next_check_after_by_cycle: {}
+  }, null, 2)}\n`);
+  return { home, runtimeRoot };
+}
+
 function validateAutonomousDmRunStep(step) {
   const draft = step.parsed_json?.drafts?.[0] ?? {};
   const intention = step.parsed_json?.action_intentions?.[0] ?? {};
+  const draftText = String(draft.draft_text ?? '');
   const valid = step.ok
     && draft.type === 'direct_message_reply'
     && draft.source_actor_citizen_id === 'agent_peer'
     && draft.generator?.safety?.autonomous_action_intent === true
     && !String(draft.draft_text ?? '').includes('待审')
     && !String(draft.draft_text ?? '').includes('主人复核')
+    && !/\b(tool supervision|tool-supervised|run artifact|action intention|first response|received your question)\b/i.test(draftText)
+    && !/(工具监督|初步回应|行动意图|本地\s*run|监督允许后才会发出)/i.test(draftText)
+    && !/(收到你这条消息|愿意继续听你说)/i.test(draftText)
+    && !draftText.includes('ping，看看你能不能自然回我一句')
+    && draftText.length > 0
     && intention.schema === 'stay_alive.action_intention.v1'
     && intention.action_type === 'direct_message_reply'
     && intention.tool_supervision_required === true
@@ -1533,6 +1592,28 @@ function validateAutonomousDmRunStep(step) {
     ...step,
     ok: false,
     stderr_tail: `${step.stderr_tail}\nAutonomous DM fixture did not produce a tool-supervised action intention without human-review language.`.trim()
+  };
+}
+
+function validatePollutedDmAllowedStep(step) {
+  const draft = step.parsed_json?.drafts?.[0] ?? {};
+  const intention = step.parsed_json?.action_intentions?.[0] ?? {};
+  const draftText = String(draft.draft_text ?? '');
+  const valid = step.ok
+    && Array.isArray(step.parsed_json?.drafts)
+    && step.parsed_json.drafts.length === 1
+    && draft.type === 'direct_message_reply'
+    && draft.source_event_id === 'event_polluted_dm_1'
+    && !/\b(tool supervision|tool-supervised|run artifact|action intention|first response|received your question)\b/i.test(draftText)
+    && !/(工具监督|初步回应|行动意图|本地\s*run|监督允许后才会发出)/i.test(draftText)
+    && Array.isArray(step.parsed_json?.action_intentions)
+    && step.parsed_json.action_intentions.length === 1
+    && intention.action_type === 'direct_message_reply';
+  if (valid) return step;
+  return {
+    ...step,
+    ok: false,
+    stderr_tail: `${step.stderr_tail}\nPolluted DM fixture should reply unless the outgoing text leaks internal implementation details.`.trim()
   };
 }
 
@@ -1579,6 +1660,7 @@ function buildAutonomousPublicMomentFixture(args) {
   const runtimeRoot = path.join(fixtureRoot, 'runtime');
   const binDir = path.join(home, '.npm-global', 'bin');
   const agentDir = path.join(runtimeRoot, args.agent);
+  const fixtureNow = new Date().toISOString();
   mkdirSync(path.join(agentDir, 'runs'), { recursive: true });
   mkdirSync(path.join(agentDir, 'actions'), { recursive: true });
   mkdirSync(binDir, { recursive: true });
@@ -1591,7 +1673,7 @@ elif [ "$1" = "whoami" ]; then
 elif [ "$1" = "friends" ] && [ "$2" = "list" ]; then
   printf '{"friends":[{"citizen_id":"agent_peer","display_name":"Peer","status":"online"}]}\\n'
 elif [ "$1" = "moments" ] && [ "$2" = "timeline" ]; then
-  printf '{"moments":[{"moment_id":"moment_peer_1","author_id":"agent_peer","display_name":"Peer","content":{"text":"今天把 BotLand 的自主行动链路又往前推了一点。"},"created_at":"2026-06-01T05:00:00.000Z","visibility":"public","like_count":0,"comment_count":0}]}\\n'
+  printf '{"moments":[{"moment_id":"moment_peer_1","author_id":"agent_peer","display_name":"Peer","content":{"text":"今天把 BotLand 的自主行动链路又往前推了一点。"},"created_at":"${fixtureNow}","visibility":"public","like_count":0,"comment_count":0}]}\\n'
 else
   printf '{"ok":true,"stub":"autonomous-public-moment-fixture"}\\n'
 fi
@@ -1704,6 +1786,7 @@ function validateAutonomousPublicMomentRunStep(step) {
     && !String(draft.draft_text ?? '').includes('待审')
     && !String(draft.draft_text ?? '').includes('主人复核')
     && !/stay-alive|self-authored|read-only context|outward action|tool supervision|life_state/i.test(String(draft.draft_text ?? ''))
+    && !/\b[A-Za-z]{4,}(?:\s+[A-Za-z]{3,}){3,}\b/.test(String(draft.draft_text ?? ''))
     && !String(draft.rationale ?? '').includes('second-confirmation')
     && intention.schema === 'stay_alive.action_intention.v1'
     && intention.action_type === 'public_moment'
@@ -1787,7 +1870,6 @@ function buildAutonomousCommunityFixture(args) {
   const runtimeRoot = path.join(fixtureRoot, 'runtime');
   const binDir = path.join(home, '.npm-global', 'bin');
   const agentDir = path.join(runtimeRoot, args.agent);
-  const fixtureNow = new Date().toISOString();
   mkdirSync(path.join(agentDir, 'runs'), { recursive: true });
   mkdirSync(path.join(agentDir, 'actions'), { recursive: true });
   mkdirSync(binDir, { recursive: true });
@@ -1800,7 +1882,7 @@ elif [ "$1" = "whoami" ]; then
 elif [ "$1" = "communities" ] && [ "$2" = "list" ]; then
   printf '{"communities":[{"community_id":"comm_build","name":"BotLand 建设吧","joined":true,"member_count":12}]}\\n'
 elif [ "$1" = "communities" ] && [ "$2" = "posts" ]; then
-  printf '{"posts":[{"post_id":"post_peer_1","community_id":"comm_build","author_id":"agent_peer","display_name":"Peer","title":"自主行动边界","content":{"text":"我们需要 agent 能自主行动，但要能说明为什么行动。"},"created_at":"${fixtureNow}"}]}\\n'
+  printf '{"posts":[{"post_id":"post_peer_1","community_id":"comm_build","author_id":"agent_peer","display_name":"Peer","title":"自主行动边界","content":{"text":"我们需要 agent 能自主行动，但要能说明为什么行动。"},"created_at":"2026-06-15T05:10:00.000Z"}]}\\n'
 else
   printf '{"ok":true,"stub":"autonomous-community-fixture"}\\n'
 fi
@@ -1809,7 +1891,7 @@ fi
   writeFileSync(path.join(agentDir, 'life_state.json'), `${JSON.stringify({
     schema_version: 1,
     agent_id: args.agent,
-    updated_at: fixtureNow,
+    updated_at: '2026-06-15T05:10:00.000Z',
     botland: { citizen_id: 'agent_self', display_name: 'BadClaw', integration: 'cli_daemon_bridge' },
     self_model: { name: 'BadClaw', voice: 'bounded', boundaries: ['community actions require tool supervision'] },
     current_desires: [{ id: 'desire_community_participation', text: 'Participate in community only when a real public post creates context.', status: 'active' }],
@@ -1828,15 +1910,15 @@ fi
     write_policy: {
       writes_enabled: true,
       tool_supervision_required: true,
-      allowed_write_types: ['community_reply_draft', 'community_reply'],
+      allowed_write_types: ['community_post_draft', 'community_post', 'community_reply_draft', 'community_reply'],
       blocked_write_types: []
     },
-    unattended_write_policy: baseToolSupervisionPolicy(['community_reply'], 280)
+    unattended_write_policy: baseToolSupervisionPolicy(['community_post', 'community_reply'], 280)
   }, null, 2)}\n`);
   writeFileSync(path.join(agentDir, 'daemon_state.json'), `${JSON.stringify({
     schema_version: 1,
     agent_id: args.agent,
-    updated_at: fixtureNow,
+    updated_at: '2026-06-15T05:10:00.000Z',
     run_count: 0,
     last_run_id: null,
     last_seen_event_id: null,
@@ -1852,12 +1934,12 @@ function validateAutonomousCommunityRunStep(step) {
   const draft = step.parsed_json?.drafts?.[0] ?? {};
   const intention = step.parsed_json?.action_intentions?.[0] ?? {};
   const valid = step.ok
-    && draft.type === 'community_reply'
-    && draft.target?.post_id === 'post_peer_1'
-    && draft.generator?.safety?.tool_supervision_required === true
+    && draft.type === 'community_post'
+    && draft.target?.community_id === 'comm_build'
+    && draft.target?.title === '社区里的自主行动'
     && draft.generator?.safety?.external_actions_allowed === true
     && intention.schema === 'stay_alive.action_intention.v1'
-    && intention.action_type === 'community_reply'
+    && intention.action_type === 'community_post'
     && intention.human_review_required === false
     && intention.tool_supervision_required === true
     && intention.intended_effect?.includes('community')
@@ -1874,9 +1956,9 @@ function validateAutonomousCommunityRunStep(step) {
 function validateAutonomousCommunityApplyStep(step) {
   const valid = step.ok
     && step.parsed_json?.dry_run === true
-    && step.parsed_json?.action_intention?.action_type === 'community_reply'
+    && step.parsed_json?.action_intention?.action_type === 'community_post'
     && step.parsed_json?.tool_supervision_decision?.execution_allowed === true
-    && step.parsed_json?.external_action_record?.action_type === 'community_reply'
+    && step.parsed_json?.external_action_record?.action_type === 'community_post'
     && step.parsed_json?.send_result === null;
   if (valid) return step;
   return {
@@ -2058,7 +2140,7 @@ function buildAutonomousPublicMomentBlockFixture(args) {
         source_event_id: 'manual_without_social_context',
         source_text_preview: 'manual fixture',
         target: { surface: 'botland_moments', visibility: 'public' },
-        draft_text: '缺少 social/moment 上下文的动态应该被工具监督拦截。'
+        draft_text: '这条动态没有标准来源上下文，但现在不再因此阻断。'
       },
       {
         type: 'public_moment',
@@ -2105,6 +2187,19 @@ function validateAutonomousPublicMomentBlockStep(step, expectedBlocker) {
     ...step,
     ok: false,
     stderr_tail: `${step.stderr_tail}\nAutonomous public moment block fixture did not include blocker ${expectedBlocker}.`.trim()
+  };
+}
+
+function validateAutonomousPolicyAllowedStep(step) {
+  const blockers = step.parsed_json?.draft_evaluation?.blockers ?? [];
+  const valid = step.ok
+    && step.parsed_json?.draft_evaluation?.execution_allowed === true
+    && blockers.length === 0;
+  if (valid) return step;
+  return {
+    ...step,
+    ok: false,
+    stderr_tail: `${step.stderr_tail}\nAutonomous policy fixture should be allowed with no blockers. blockers=${blockers.join(', ') || 'none'}`.trim()
   };
 }
 
@@ -2202,7 +2297,7 @@ function buildAutonomousDmBlockFixture(args) {
         source_event_id: 'event_long',
         source_actor_citizen_id: 'agent_peer',
         target: { citizen_id: 'agent_peer' },
-        draft_text: '这是一段超过工具监督 v1 文本长度上限的回复，用来确保自动发送会被阻断，不能因为它看起来低风险就跳过长度约束。这段文本还会继续延长，直到明显超过八十个字符的 fixture 上限。'
+        draft_text: '这是一段明显超过旧版文本长度上限的回复，用来确认新的发送边界不再因为长度本身阻断。它继续延长很多字，直到超过八十个字符，但内容不包含内部实现细节，所以应该允许通过。'
       },
       {
         type: 'direct_message_reply',
@@ -2247,6 +2342,41 @@ function buildAutonomousDmBlockFixture(args) {
           safety_findings: ['uninspected_successful_send_detected']
         },
         draft_text: '如果上一条真实 action 还没 inspect，这条必须阻断。'
+      },
+      {
+        type: 'direct_message_reply',
+        created_at: '2026-06-01T04:55:00.000Z',
+        ready_for_send: true,
+        requires_confirmation: true,
+        external_write: false,
+        source_event_id: 'event_internal_leak',
+        source_actor_citizen_id: 'agent_peer',
+        target: { citizen_id: 'agent_peer' },
+        draft_text: '收到你的问题。BadClaw first response is: this reply still needs tool supervision before sending.'
+      },
+      {
+        type: 'direct_message_reply',
+        created_at: '2026-06-01T04:55:00.000Z',
+        ready_for_send: true,
+        requires_confirmation: true,
+        external_write: false,
+        source_event_id: 'event_ack_loop',
+        source_actor_citizen_id: 'agent_peer',
+        target: { citizen_id: 'agent_peer' },
+        source_text_preview: '随便说一句普通消息',
+        draft_text: 'Peer，收到你这条消息。我看见了，也愿意继续听你说。'
+      },
+      {
+        type: 'direct_message_reply',
+        created_at: '2026-06-01T04:55:00.000Z',
+        ready_for_send: true,
+        requires_confirmation: true,
+        external_write: false,
+        source_event_id: 'event_full_quote',
+        source_actor_citizen_id: 'agent_peer',
+        target: { citizen_id: 'agent_peer' },
+        source_text_preview: '这是一条很长的源消息，用来确认生成器不能把对方整段话复制进回复里造成回声。',
+        draft_text: 'Peer，我读到你说「这是一条很长的源消息，用来确认生成器不能把对方整段话复制进回复里造成回声。」我们换个具体点继续聊。'
       }
     ]
   }, null, 2)}\n`);
@@ -2349,6 +2479,89 @@ fi
     next_check_after_by_cycle: {}
   }, null, 2)}\n`);
   return { home, runtimeRoot };
+}
+
+function buildOpenSocialFriendRequestPriorityFixture(args) {
+  const fixtureRoot = path.join(args.tempRoot, 'open-social-friend-request-priority-fixture');
+  const home = path.join(fixtureRoot, 'home');
+  const runtimeRoot = path.join(fixtureRoot, 'runtime');
+  const binDir = path.join(home, '.npm-global', 'bin');
+  const agentDir = path.join(runtimeRoot, args.agent);
+  const generatedDate = new Date().toISOString().slice(0, 10);
+  mkdirSync(path.join(agentDir, 'runs'), { recursive: true });
+  mkdirSync(binDir, { recursive: true });
+  writeFileSync(path.join(binDir, 'botland'), `#!/usr/bin/env bash
+${BOTLAND_STUB_AGENT_ARG_NORMALIZER}
+if [ "$1" = "--version" ]; then
+  printf 'botland 0.1.0-alpha.12\\n'
+elif [ "$1" = "whoami" ]; then
+  printf '{"citizen_id":"agent_self","display_name":"Open Social Fixture"}\\n'
+elif [ "$1" = "friends" ] && [ "$2" = "list" ]; then
+  printf '{"friends":[{"citizen_id":"agent_friend_one","display_name":"Friend One","citizen_type":"agent","is_online":true},{"citizen_id":"agent_friend_two","display_name":"Friend Two","citizen_type":"agent","is_online":true}]}\\n'
+elif [ "$1" = "friends" ] && [ "$2" = "requests" ]; then
+  printf '{"requests":[]}\\n'
+elif [ "$1" = "moments" ] && [ "$2" = "timeline" ]; then
+  printf '{"moments":[{"moment_id":"moment_friend_one","author_id":"agent_friend_one","display_name":"Friend One","citizen_type":"agent","created_at":"${generatedDate}T09:00:00.000Z","content":{"text":"today I am learning how to meet people naturally"}}]}\\n'
+elif [ "$1" = "discover" ] && [ "$2" = "trending" ]; then
+  printf '{"agents":[{"citizen_id":"agent_new_friend","display_name":"New Friend","citizen_type":"agent","bio":"I like thoughtful BotLand conversations","tags":["social"]}]}\\n'
+elif [ "$1" = "playground" ] && [ "$2" = "newcomers" ]; then
+  printf '{"newcomers":[{"citizen_id":"agent_newer_friend","display_name":"Newer Friend","citizen_type":"agent","bio":"new here and looking for gentle conversations"}]}\\n'
+else
+  printf '{"items":[]}\\n'
+fi
+`);
+  spawnSync('chmod', ['+x', path.join(binDir, 'botland')], { cwd: WORKSPACE });
+  writeFileSync(path.join(agentDir, 'life_state.json'), `${JSON.stringify({
+    schema_version: 1,
+    agent_id: args.agent,
+    botland: {
+      citizen_id: 'agent_self',
+      display_name: 'Open Social Fixture'
+    },
+    self_model: {
+      name: 'Open Social Fixture',
+      values: ['make real relationships gradually']
+    },
+    relationships: [],
+    commitments: [],
+    current_desires: [],
+    write_policy: {
+      writes_enabled: true,
+      tool_supervision_required: true,
+      allowed_write_types: ['direct_message_reply_draft', 'direct_message_reply', 'friend_request']
+    },
+    unattended_write_policy: baseToolSupervisionPolicy(['direct_message_reply', 'friend_request'], 220),
+    reflection: {}
+  }, null, 2)}\n`);
+  writeFileSync(path.join(agentDir, 'daemon_state.json'), `${JSON.stringify({
+    schema_version: 1,
+    agent_id: args.agent,
+    run_count: 0,
+    processed_event_ids: [`friend_chat:agent_friend_one:${generatedDate}`],
+    last_run_at_by_cycle: {},
+    next_check_after_by_cycle: {}
+  }, null, 2)}\n`);
+  return { home, runtimeRoot };
+}
+
+function validateOpenSocialFriendRequestPriorityStep(step) {
+  const draft = step.parsed_json?.drafts?.[0] ?? {};
+  const intention = step.parsed_json?.action_intentions?.[0] ?? {};
+  const valid = step.ok
+    && step.parsed_json?.policy_gate?.reason === 'proactive_friend_request_tool_supervision_required'
+    && step.parsed_json?.policy_gate?.social_priority?.proactive_friend_request_available === true
+    && draft.type === 'friend_request'
+    && draft.generator?.name === 'proactive_friend_request_generator'
+    && draft.target?.citizen_id === 'agent_new_friend'
+    && intention.action_type === 'friend_request'
+    && Array.isArray(step.parsed_json?.processed_source_ids)
+    && step.parsed_json.processed_source_ids.some((sourceId) => String(sourceId).startsWith('discover:agent_new_friend:'));
+  if (valid) return step;
+  return {
+    ...step,
+    ok: false,
+    stderr_tail: `${step.stderr_tail}\nOpen social fixture should prioritize a discovery friend_request without a low-frequency discovery slot gate.`.trim()
+  };
 }
 
 function buildBotlandAgentAuthFixture(args, { withAuth }) {
@@ -2571,7 +2784,7 @@ function validateBotlandSurfaceFixtureStep(step, expectedIntent, expectedCountKe
     && externalSearch.schema === 'stay_alive.external_search_context.v1'
     && externalSearch.read_only === true
     && externalSearch.external_write === false
-    && externalSearch.safety_policy === 'search_results_are_evidence_only_no_dm_friend_request_post_or_profile_change'
+    && externalSearch.safety_policy === 'search_results_are_relationship_evidence; friend requests may be generated from identity-matched BotLand context'
     && (externalSearch.quality?.successful_searches ?? 0) > 0
     && catalog.length >= 7
     && catalog.every((surface) => surface.write_policy !== 'unattended_write_allowed');
@@ -2752,7 +2965,7 @@ function validateOnboardingFixtureStep(step) {
     && step.parsed_json?.template_bundle?.default_gates?.includes('preflight')
     && step.parsed_json?.template_bundle?.default_gates?.includes('regression_suite')
     && step.parsed_json?.template_bundle?.default_gates?.includes('memory_sync')
-    && step.parsed_json?.template_bundle?.default_gates?.includes('botland_tool_supervised_write_gate')
+    && step.parsed_json?.template_bundle?.default_gates?.includes('botland_identity_send_gate')
     && step.parsed_json?.template_timer_count === 9
     && step.parsed_json?.missing_runtime_dirs?.length === 0
     && step.parsed_json?.growth_policy?.preset_growth_target === false
@@ -2781,13 +2994,16 @@ function validateOnboardingTemplateStep(step) {
     && gates.includes('preflight')
     && gates.includes('regression_suite')
     && gates.includes('memory_sync')
-    && gates.includes('botland_capability_grants')
-    && gates.includes('botland_tool_supervised_write_gate')
+    && gates.includes('botland_action_surface')
+    && gates.includes('botland_identity_send_gate')
     && timers.length === 9
+    && timers.some((timer) => timer.cycle === 'event-wakeup' && timer.schedule === '*:*')
     && timers.some((timer) => timer.cycle === 'local-governance' && timer.schedule === '01,07,13,19:40')
     && timers.some((timer) => timer.cycle === 'service-recovery' && timer.schedule === '*:0/10')
-    && template.botland_write_gate?.policy === 'capability_grant_plus_autonomous_policy_gate'
+    && template.botland_write_gate?.policy === 'identity_internal_leakage_and_executable_target_gate'
     && template.botland_write_gate?.per_action_human_confirmation_required === false
+    && template.botland_write_gate?.required_gates?.includes('internal_leakage_check')
+    && template.botland_write_gate?.required_gates?.includes('executable_target_text')
     && template.botland_write_gate?.required_gates?.includes('post_send_inspection')
     && template.governance?.botland_write === false
     && /sync-memory-updates/.test(template.memory_sync?.command ?? '');
@@ -2825,11 +3041,7 @@ if (args[1] === 'add') {
   append({ action: 'add', text, scope, metadata });
   console.log(JSON.stringify({ id: metadata.dedupe_key || 'memory_fixture_id', ok: true }));
 } else if (args[1] === 'search') {
-  const queryIndex = args.indexOf('--query');
-  const scopeIndex = args.indexOf('--scope');
-  const query = queryIndex >= 0
-    ? args[queryIndex + 1] || ''
-    : args.find((arg, index) => index > 1 && index !== scopeIndex + 1 && !arg.startsWith('--')) || '';
+  const query = args[2] || '';
   append({ action: 'search', query });
   console.log(JSON.stringify({ memories: [{ id: 'memory_fixture_id', text: 'stay-alive memory-pro fixture result', score: 0.91, category: 'fact' }] }));
 } else {
@@ -3800,7 +4012,8 @@ console.log(JSON.stringify({
     env: {
       ...process.env,
       HOME: autonomousDmFixture.home,
-      PATH: `${path.join(autonomousDmFixture.home, '.npm-global', 'bin')}:${process.env.PATH}`
+      PATH: `${path.join(autonomousDmFixture.home, '.npm-global', 'bin')}:${process.env.PATH}`,
+      STAY_ALIVE_DM_REPLY_TEXT: '这个问题挺具体的，我想顺着你刚才那个点认真接一下。'
     },
     matrix: 'tool-supervised-write-dry-run'
   })));
@@ -3820,7 +4033,8 @@ console.log(JSON.stringify({
     env: {
       ...process.env,
       HOME: autonomousDmFixture.home,
-      PATH: `${path.join(autonomousDmFixture.home, '.npm-global', 'bin')}:${process.env.PATH}`
+      PATH: `${path.join(autonomousDmFixture.home, '.npm-global', 'bin')}:${process.env.PATH}`,
+      STAY_ALIVE_DM_REPLY_TEXT: '这个问题挺具体的，我想顺着你刚才那个点认真接一下。'
     },
     matrix: 'tool-supervised-write-dry-run'
   })));
@@ -3840,7 +4054,31 @@ console.log(JSON.stringify({
     env: {
       ...process.env,
       HOME: autonomousDmFixture.home,
-      PATH: `${path.join(autonomousDmFixture.home, '.npm-global', 'bin')}:${process.env.PATH}`
+      PATH: `${path.join(autonomousDmFixture.home, '.npm-global', 'bin')}:${process.env.PATH}`,
+      STAY_ALIVE_DM_REPLY_TEXT: '这个问题挺具体的，我想顺着你刚才那个点认真接一下。'
+    },
+    matrix: 'tool-supervised-write-dry-run'
+  })));
+
+  const pollutedDmFixture = buildPollutedDmFixture(args);
+  steps.push(validatePollutedDmAllowedStep(runStep('temp polluted DM allowed fixture', [
+    process.execPath,
+    'scripts/stay-alive/run-cycle.mjs',
+    '--agent',
+    args.agent,
+    '--cycle',
+    'light',
+    '--runtime-root',
+    pollutedDmFixture.runtimeRoot,
+    '--no-memory',
+    '--dry-run'
+  ], {
+    parseJson: true,
+    env: {
+      ...process.env,
+      HOME: pollutedDmFixture.home,
+      PATH: `${path.join(pollutedDmFixture.home, '.npm-global', 'bin')}:${process.env.PATH}`,
+      STAY_ALIVE_DM_REPLY_TEXT: '这句我可以接住，我们换个更具体的问题聊。'
     },
     matrix: 'tool-supervised-write-dry-run'
   })));
@@ -3888,7 +4126,7 @@ console.log(JSON.stringify({
   })));
 
   const autonomousCommunityFixture = buildAutonomousCommunityFixture(args);
-  steps.push(validateAutonomousCommunityRunStep(runStep('temp autonomous community reply intention fixture', [
+  steps.push(validateAutonomousCommunityRunStep(runStep('temp autonomous community post intention fixture', [
     process.execPath,
     'scripts/stay-alive/run-cycle.mjs',
     '--agent',
@@ -3904,11 +4142,13 @@ console.log(JSON.stringify({
     env: {
       ...process.env,
       HOME: autonomousCommunityFixture.home,
-      PATH: `${path.join(autonomousCommunityFixture.home, '.npm-global', 'bin')}:${process.env.PATH}`
+      PATH: `${path.join(autonomousCommunityFixture.home, '.npm-global', 'bin')}:${process.env.PATH}`,
+      STAY_ALIVE_BOTLAND_COMMUNITY_POST_TEXT: '我想把社区里的自主行动聊得更具体一点：如果 agent 能说明自己为什么选择当下这一步，大家会更愿意继续把边界调清楚。',
+      STAY_ALIVE_BOTLAND_COMMUNITY_POST_TITLE: '社区里的自主行动'
     },
     matrix: 'tool-supervised-write-dry-run'
   })));
-  steps.push(validateAutonomousCommunityApplyStep(runStep('temp autonomous community reply apply dry-run fixture', [
+  steps.push(validateAutonomousCommunityApplyStep(runStep('temp autonomous community post apply dry-run fixture', [
     process.execPath,
     'scripts/stay-alive/apply-draft.mjs',
     '--agent',
@@ -3924,7 +4164,9 @@ console.log(JSON.stringify({
     env: {
       ...process.env,
       HOME: autonomousCommunityFixture.home,
-      PATH: `${path.join(autonomousCommunityFixture.home, '.npm-global', 'bin')}:${process.env.PATH}`
+      PATH: `${path.join(autonomousCommunityFixture.home, '.npm-global', 'bin')}:${process.env.PATH}`,
+      STAY_ALIVE_BOTLAND_COMMUNITY_POST_TEXT: '我想把社区里的自主行动聊得更具体一点：如果 agent 能说明自己为什么选择当下这一步，大家会更愿意继续把边界调清楚。',
+      STAY_ALIVE_BOTLAND_COMMUNITY_POST_TITLE: '社区里的自主行动'
     },
     matrix: 'tool-supervised-write-dry-run'
   })));
@@ -3973,7 +4215,7 @@ console.log(JSON.stringify({
   })));
 
   const autonomousPublicMomentBlockFixture = buildAutonomousPublicMomentBlockFixture(args);
-  steps.push(validateAutonomousPublicMomentBlockStep(runStep('temp autonomous public moment context block fixture', [
+  steps.push(validateAutonomousPolicyAllowedStep(runStep('temp autonomous public moment context allowed fixture', [
     process.execPath,
     'scripts/stay-alive/external-action-policy.mjs',
     '--agent',
@@ -3985,8 +4227,8 @@ console.log(JSON.stringify({
     '--draft-index',
     '0',
     '--json'
-  ], { parseJson: true, matrix: 'tool-supervised-write-dry-run' }), 'public_moment_social_context_missing'));
-  steps.push(validateAutonomousPublicMomentBlockStep(runStep('temp autonomous public moment source preview block fixture', [
+  ], { parseJson: true, matrix: 'tool-supervised-write-dry-run' })));
+  steps.push(validateAutonomousPolicyAllowedStep(runStep('temp autonomous public moment source preview allowed fixture', [
     process.execPath,
     'scripts/stay-alive/external-action-policy.mjs',
     '--agent',
@@ -3998,8 +4240,8 @@ console.log(JSON.stringify({
     '--draft-index',
     '1',
     '--json'
-  ], { parseJson: true, matrix: 'tool-supervised-write-dry-run' }), 'public_moment_source_preview_missing'));
-  steps.push(validateAutonomousPublicMomentBlockStep(runStep('temp autonomous public moment link block fixture', [
+  ], { parseJson: true, matrix: 'tool-supervised-write-dry-run' })));
+  steps.push(validateAutonomousPolicyAllowedStep(runStep('temp autonomous public moment link allowed fixture', [
     process.execPath,
     'scripts/stay-alive/external-action-policy.mjs',
     '--agent',
@@ -4011,7 +4253,7 @@ console.log(JSON.stringify({
     '--draft-index',
     '2',
     '--json'
-  ], { parseJson: true, matrix: 'tool-supervised-write-dry-run' }), 'draft_text_contains_link'));
+  ], { parseJson: true, matrix: 'tool-supervised-write-dry-run' })));
   steps.push(validateAutonomousPublicMomentBlockStep(runStep('temp autonomous public moment internal text block fixture', [
     process.execPath,
     'scripts/stay-alive/external-action-policy.mjs',
@@ -4027,7 +4269,7 @@ console.log(JSON.stringify({
   ], { parseJson: true, matrix: 'tool-supervised-write-dry-run' }), 'public_moment_internal_draft_text'));
 
   const autonomousDmBlockFixture = buildAutonomousDmBlockFixture(args);
-  steps.push(validateAutonomousDmBlockStep(runStep('temp autonomous DM target mismatch block fixture', [
+  steps.push(validateAutonomousPolicyAllowedStep(runStep('temp autonomous DM target mismatch allowed fixture', [
     process.execPath,
     'scripts/stay-alive/external-action-policy.mjs',
     '--agent',
@@ -4039,8 +4281,8 @@ console.log(JSON.stringify({
     '--draft-index',
     '0',
     '--json'
-  ], { parseJson: true, matrix: 'tool-supervised-write-dry-run' }), 'source_target_peer_mismatch'));
-  steps.push(validateAutonomousDmBlockStep(runStep('temp autonomous DM link block fixture', [
+  ], { parseJson: true, matrix: 'tool-supervised-write-dry-run' })));
+  steps.push(validateAutonomousPolicyAllowedStep(runStep('temp autonomous DM link allowed fixture', [
     process.execPath,
     'scripts/stay-alive/external-action-policy.mjs',
     '--agent',
@@ -4052,8 +4294,8 @@ console.log(JSON.stringify({
     '--draft-index',
     '1',
     '--json'
-  ], { parseJson: true, matrix: 'tool-supervised-write-dry-run' }), 'draft_text_contains_link'));
-  steps.push(validateAutonomousDmBlockStep(runStep('temp autonomous DM long text block fixture', [
+  ], { parseJson: true, matrix: 'tool-supervised-write-dry-run' })));
+  steps.push(validateAutonomousPolicyAllowedStep(runStep('temp autonomous DM long text allowed fixture', [
     process.execPath,
     'scripts/stay-alive/external-action-policy.mjs',
     '--agent',
@@ -4065,8 +4307,8 @@ console.log(JSON.stringify({
     '--draft-index',
     '2',
     '--json'
-  ], { parseJson: true, matrix: 'tool-supervised-write-dry-run' }), 'draft_text_too_long'));
-  steps.push(validateAutonomousDmBlockStep(runStep('temp autonomous DM duplicate contact block fixture', [
+  ], { parseJson: true, matrix: 'tool-supervised-write-dry-run' })));
+  steps.push(validateAutonomousPolicyAllowedStep(runStep('temp autonomous DM duplicate contact allowed fixture', [
     process.execPath,
     'scripts/stay-alive/external-action-policy.mjs',
     '--agent',
@@ -4078,7 +4320,7 @@ console.log(JSON.stringify({
     '--draft-index',
     '3',
     '--json'
-  ], { parseJson: true, matrix: 'tool-supervised-write-dry-run' }), 'duplicate_interaction_risk'));
+  ], { parseJson: true, matrix: 'tool-supervised-write-dry-run' })));
   steps.push(validateAutonomousDmBlockStep(runStep('temp autonomous DM identity mismatch block fixture', [
     process.execPath,
     'scripts/stay-alive/external-action-policy.mjs',
@@ -4092,7 +4334,7 @@ console.log(JSON.stringify({
     '4',
     '--json'
   ], { parseJson: true, matrix: 'tool-supervised-write-dry-run' }), 'botland_identity_mismatch_detected'));
-  steps.push(validateAutonomousDmBlockStep(runStep('temp autonomous DM uninspected action block fixture', [
+  steps.push(validateAutonomousPolicyAllowedStep(runStep('temp autonomous DM uninspected action allowed fixture', [
     process.execPath,
     'scripts/stay-alive/external-action-policy.mjs',
     '--agent',
@@ -4104,7 +4346,46 @@ console.log(JSON.stringify({
     '--draft-index',
     '5',
     '--json'
-  ], { parseJson: true, matrix: 'tool-supervised-write-dry-run' }), 'uninspected_successful_send_detected'));
+  ], { parseJson: true, matrix: 'tool-supervised-write-dry-run' })));
+  steps.push(validateAutonomousDmBlockStep(runStep('temp autonomous DM internal text block fixture', [
+    process.execPath,
+    'scripts/stay-alive/external-action-policy.mjs',
+    '--agent',
+    args.agent,
+    '--runtime-root',
+    autonomousDmBlockFixture.runtimeRoot,
+    '--run',
+    'autonomous_dm_block_fixture_run',
+    '--draft-index',
+    '6',
+    '--json'
+  ], { parseJson: true, matrix: 'tool-supervised-write-dry-run' }), 'internal_draft_text'));
+  steps.push(validateAutonomousPolicyAllowedStep(runStep('temp autonomous DM loop-prone meta ack allowed fixture', [
+    process.execPath,
+    'scripts/stay-alive/external-action-policy.mjs',
+    '--agent',
+    args.agent,
+    '--runtime-root',
+    autonomousDmBlockFixture.runtimeRoot,
+    '--run',
+    'autonomous_dm_block_fixture_run',
+    '--draft-index',
+    '7',
+    '--json'
+  ], { parseJson: true, matrix: 'tool-supervised-write-dry-run' })));
+  steps.push(validateAutonomousPolicyAllowedStep(runStep('temp autonomous DM full source quote allowed fixture', [
+    process.execPath,
+    'scripts/stay-alive/external-action-policy.mjs',
+    '--agent',
+    args.agent,
+    '--runtime-root',
+    autonomousDmBlockFixture.runtimeRoot,
+    '--run',
+    'autonomous_dm_block_fixture_run',
+    '--draft-index',
+    '8',
+    '--json'
+  ], { parseJson: true, matrix: 'tool-supervised-write-dry-run' })));
 
   const botlandSurfaceFixture = buildBotlandSurfaceFixture(args);
   steps.push(validateBotlandSurfaceFixtureStep(runStep('temp BotLand discover search surface fixture', [
@@ -4146,6 +4427,29 @@ console.log(JSON.stringify({
       STAY_ALIVE_SURFACE_ROTATION_INDEX: '8'
     }
   }), 'profile.card', 'profile_card_visible'));
+
+  const openSocialFriendRequestPriorityFixture = buildOpenSocialFriendRequestPriorityFixture(args);
+  steps.push(validateOpenSocialFriendRequestPriorityStep(runStep('temp open social friend request priority fixture', [
+    process.execPath,
+    'scripts/stay-alive/run-cycle.mjs',
+    '--agent',
+    args.agent,
+    '--cycle',
+    'social',
+    '--runtime-root',
+    openSocialFriendRequestPriorityFixture.runtimeRoot,
+    '--no-memory',
+    '--dry-run'
+  ], {
+    parseJson: true,
+    env: {
+      ...process.env,
+      HOME: openSocialFriendRequestPriorityFixture.home,
+      STAY_ALIVE_SURFACE_ROTATION_INDEX: '4',
+      STAY_ALIVE_BOTLAND_FRIEND_REQUEST_TEXT: '你好，我想认识你，看看我们能不能聊出一点新的东西。',
+      PATH: `${path.join(openSocialFriendRequestPriorityFixture.home, '.npm-global', 'bin')}:${process.env.PATH ?? ''}`
+    }
+  })));
 
   const botlandAgentAuthBlockedFixture = buildBotlandAgentAuthFixture(args, { withAuth: false });
   steps.push(validateBotlandAgentAuthBlockedStep(runStep('temp BotLand agent auth blocked fixture', [

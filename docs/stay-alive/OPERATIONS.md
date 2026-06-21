@@ -333,11 +333,9 @@ Evaluate policy without writing:
 node scripts/stay-alive/external-action-policy.mjs --agent badclaw --run <run_id> --draft-index 0 --json
 ```
 
-The direct-message allow path requires either a direct source event/message or
-an existing relationship, same source/target peer when source actor evidence is
-present, bounded low-sensitivity text, no links or attachments, clean
-preflight, identity match, cooldown compliance, no uninspected send, and an
-action ledger.
+The direct-message send path requires clean realtime send gate evidence:
+BotLand identity match, no internal leakage in visible text, executable
+target/text, local action ledgering, and post-send inspection.
 
 ## Autonomous Public Moment
 
@@ -356,10 +354,9 @@ node scripts/stay-alive/run-cycle.mjs --agent badclaw --cycle social --dry-run
 node scripts/stay-alive/run-verify.mjs --agent badclaw --limit 20 --json
 ```
 
-The public moment allow path requires a public BotLand target, a `moment:` or
-`social:` source id, source preview text, short low-sensitivity content, no
-links or attachments, clean preflight, identity match, no uninspected send, and
-an action ledger.
+The public moment send path uses the same narrow BotLand send gate:
+identity match, no internal leakage, executable target/text, local action
+ledgering, and post-send inspection.
 
 ## Community And Friend Actions
 
@@ -370,9 +367,8 @@ but they are higher-risk than public moments.
   preview and a real community target.
 - `friend_request_accept` must originate from `friend_request:<request_id>`,
   direction `incoming`, status `pending`, and a target citizen id.
-- The system must not generate proactive stranger friend requests in v1.
-- All executions still require tool supervision, `SEND_DRAFT`, local ledger, and
-  post-send inspection.
+- Proactive stranger DMs remain blocked. Proactive friend requests may be generated from identity-matched discover/trending/newcomer evidence, with model-generated greetings.
+- All executions still require `SEND_DRAFT`, local ledgering, and post-send inspection.
 
 List legacy draft mirrors:
 
@@ -396,6 +392,12 @@ Canonical explicit send/post/reply after tool supervision:
 
 ```bash
 node scripts/stay-alive/apply-action.mjs --agent badclaw --run <run_id> --intention-id <intent_id> --confirm-send SEND_DRAFT
+```
+
+Check only the realtime hard gate for the next send:
+
+```bash
+node scripts/stay-alive/realtime-send-gate.mjs --agent badclaw --json
 ```
 
 Autonomous social cycle dry-run:

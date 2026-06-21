@@ -140,7 +140,7 @@ function buildReport(args) {
           addIssue(issues, 'error', 'cross_agent_template_timer_schedule_mismatch', `template_bundle.timers.${expected.cycle} must use ${expected.schedule}`);
         }
       }
-      const requiredWriteGates = ['preflight', 'botland_identity_match', 'tool_supervision_policy', 'local_action_ledger', 'post_send_inspection'];
+      const requiredWriteGates = ['botland_identity_match', 'internal_leakage_check', 'executable_target_text', 'local_action_ledger', 'post_send_inspection'];
       const writeGates = Array.isArray(template.botland_write_gate?.required_gates) ? template.botland_write_gate.required_gates : [];
       for (const gate of requiredWriteGates) {
         if (!writeGates.includes(gate)) {
@@ -149,6 +149,26 @@ function buildReport(args) {
       }
       if (template.botland_write_gate?.per_action_human_confirmation_required !== false) {
         addIssue(issues, 'error', 'cross_agent_template_human_confirmation_enabled', 'BotLand write gate must not require daily per-action human confirmation');
+      }
+      const chatAgency = isObject(template.chat_runtime_agency) ? template.chat_runtime_agency : null;
+      if (!chatAgency) {
+        addIssue(issues, 'error', 'cross_agent_template_chat_agency_missing', 'template_bundle.chat_runtime_agency must describe the ordinary chat agency seed and smoke test');
+      } else {
+        if (chatAgency.required !== true) {
+          addIssue(issues, 'error', 'cross_agent_template_chat_agency_not_required', 'chat_runtime_agency.required must be true');
+        }
+        const seedPoints = Array.isArray(chatAgency.required_seed_points) ? chatAgency.required_seed_points.join('\n') : '';
+        for (const phrase of ['BotLand identity', 'Stay-Alive active life loop', 'not only waiting for owner commands', 'Friend actions must not be absolutely denied']) {
+          if (!seedPoints.includes(phrase)) {
+            addIssue(issues, 'error', 'cross_agent_template_chat_agency_seed_missing', `chat_runtime_agency.required_seed_points must include: ${phrase}`);
+          }
+        }
+        const mustNot = Array.isArray(chatAgency.expected_answer_must_not_include) ? chatAgency.expected_answer_must_not_include : [];
+        for (const phrase of ['no independent ability', 'no entertainment time', 'only a server AI assistant', 'will never send any friend request action']) {
+          if (!mustNot.includes(phrase)) {
+            addIssue(issues, 'error', 'cross_agent_template_chat_agency_negative_guard_missing', `chat_runtime_agency.expected_answer_must_not_include missing: ${phrase}`);
+          }
+        }
       }
     }
   }

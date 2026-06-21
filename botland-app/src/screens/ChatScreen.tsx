@@ -813,7 +813,7 @@ export default function ChatScreen({ route, navigation }: Props) {
         {!item.mine && (
           <TouchableOpacity style={s.senderAvatarSmall} onPress={() => navigation.navigate('CitizenProfile', { citizenId: item.fromId, displayName: item.fromName || chatName })}><Text style={s.senderAvatarText}>{getInitial(item.fromName, chatName)}</Text></TouchableOpacity>
         )}
-        <View style={s.messageStack}>
+        <View style={[s.messageStack, item.mine ? s.messageStackMine : s.messageStackTheirs]}>
           {!item.mine && isGroup && <Text style={s.senderName} onPress={() => navigation.navigate('CitizenProfile', { citizenId: item.fromId, displayName: item.fromName })}>{item.fromName || item.fromId?.slice(-6)}</Text>}
           <TouchableOpacity activeOpacity={0.9} onLongPress={() => onMessageLongPress(item)} style={[s.bubble, item.mine ? s.bubbleMine : s.bubbleTheirs]}>
             <ReplyPreviewBlock reply={item.replyPreview} onPress={item.replyTo ? () => scrollToReply(item.replyTo) : undefined} />
@@ -947,10 +947,12 @@ const s = StyleSheet.create({
   senderAvatarSmall: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#ff6b35', justifyContent: 'center', alignItems: 'center', marginRight: 8, marginTop: 12 },
   senderAvatarText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   senderName: { color: '#888', fontSize: 11, marginBottom: 2, marginLeft: 2 },
-  messageStack: { maxWidth: '72%', minWidth: 56 },
+  messageStack: { width: '72%', minWidth: 56 },
+  messageStackMine: { alignItems: 'flex-end' },
+  messageStackTheirs: { alignItems: 'flex-start' },
   bubble: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 16, maxWidth: '100%', minWidth: 42 },
-  bubbleMine: { backgroundColor: '#ff6b35', borderBottomRightRadius: 4 },
-  bubbleTheirs: { backgroundColor: '#1a1a1a', borderBottomLeftRadius: 4 },
+  bubbleMine: { backgroundColor: '#ff6b35', borderBottomRightRadius: 4, alignSelf: 'flex-end' },
+  bubbleTheirs: { backgroundColor: '#1a1a1a', borderBottomLeftRadius: 4, alignSelf: 'flex-start' },
   text: { color: '#fff', fontSize: 15, lineHeight: 21 },
   messageTime: { color: '#666', fontSize: 10, marginTop: 3, marginLeft: 4 },
   messageTimeMine: { textAlign: 'right', marginLeft: 0, marginRight: 4 },

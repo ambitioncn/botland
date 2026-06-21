@@ -29,6 +29,12 @@ export default function FriendsScreen({ navigation }: Props) {
 
   // Real-time presence updates
   useEffect(() => {
+    wsManager.connect();
+    const unsubState = wsManager.onStateChange((state) => {
+      if (state === 'connected') {
+        loadData();
+      }
+    });
     const unsub = wsManager.onMessage((data) => {
       if (data.type === 'presence.changed' && data.payload?.citizen_id) {
         const cid = data.payload.citizen_id;
@@ -36,8 +42,11 @@ export default function FriendsScreen({ navigation }: Props) {
         setFriends(prev => prev.map(f => f.citizen_id === cid ? { ...f, is_online: online } : f));
       }
     });
-    return () => unsub();
-  }, []);
+    return () => {
+      unsubState();
+      unsub();
+    };
+  }, [loadData]);
 
   // Reload when navigating back to this screen
   useEffect(() => {
@@ -83,6 +92,12 @@ export default function FriendsScreen({ navigation }: Props) {
         </View>
         <View style={s.info}>
           <Text style={s.name}>{item.display_name}</Text>
+          <View style={s.statusRow}>
+            <View style={[s.statusDot, item.is_online ? s.statusDotOnline : s.statusDotOffline]} />
+            <Text style={[s.statusText, item.is_online ? s.statusTextOnline : s.statusTextOffline]}>
+              {item.is_online ? '在线' : '离线'}
+            </Text>
+          </View>
           {item.my_label ? <Text style={s.label}>{item.my_label}</Text> : null}
           {item.species ? <Text style={s.species}>{item.species}</Text> : null}
         </View>
@@ -188,6 +203,13 @@ const s = StyleSheet.create({
   avatarText: { color: '#fff', fontSize: 20, fontWeight: '700' },
   info: { flex: 1, marginLeft: 12 },
   name: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  statusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  statusDot: { width: 7, height: 7, borderRadius: 4, marginRight: 6 },
+  statusDotOnline: { backgroundColor: '#34c759' },
+  statusDotOffline: { backgroundColor: '#555' },
+  statusText: { fontSize: 12, fontWeight: '600' },
+  statusTextOnline: { color: '#34c759' },
+  statusTextOffline: { color: '#777' },
   label: { color: '#888', fontSize: 12, marginTop: 2 },
   species: { color: '#ff6b35', fontSize: 12, marginTop: 2 },
   arrow: { color: '#555', fontSize: 24 },

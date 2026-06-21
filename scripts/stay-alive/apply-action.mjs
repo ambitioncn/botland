@@ -76,7 +76,8 @@ Options:
 
 This is the intention/action path. It reads run.action_intentions[], evaluates
 tool supervision, and records an action ledger entry without requiring a draft
-approval state.
+approval state. It uses the realtime send gate, not full maintenance preflight,
+so historical proposal/checkpoint/runtime debt cannot block a fresh BotLand reply.
 `);
 }
 
@@ -122,31 +123,27 @@ function runtimeRootArgs(args) {
 
 function runPreflight(args) {
   const result = runCommand(process.execPath, [
-    'scripts/stay-alive/preflight.mjs',
+    'scripts/stay-alive/realtime-send-gate.mjs',
     '--agent', args.agent,
-    '--limit', String(args.preflightLimit),
-    '--draft-limit', String(args.preflightDraftLimit),
-    '--history-limit', String(args.preflightHistoryLimit),
-    '--no-checkpoint',
+    ...(args.confirmSend === 'SEND_DRAFT' ? ['--require-botland-live'] : ['--no-require-botland-live']),
     '--json',
     ...runtimeRootArgs(args)
   ], 60000);
-  const report = result.stdout_json;
-  const verdict = report?.verdict ?? {};
-  if (!result.ok || verdict.pass !== true) {
-    const findings = Array.isArray(verdict.safety_findings) ? verdict.safety_findings.join(', ') : 'unknown';
-    throw new Error(`Preflight gate failed: level=${verdict.level ?? 'unknown'}, findings=${findings}`);
+  const report = result.stdout_json ?? {};
+  if (!result.ok || report.pass !== true) {
+    const findings = Array.isArray(report.safety_findings) ? report.safety_findings.join(', ') : 'unknown';
+    throw new Error(`Realtime send gate failed: level=${report.level ?? 'unknown'}, findings=${findings}`);
   }
   return {
     ok: true,
-    pass: verdict.pass,
-    level: verdict.level,
+    pass: report.pass,
+    level: report.level,
+    mode: report.mode ?? 'realtime_send',
     generated_at: report.generated_at ?? null,
-    safety_findings: verdict.safety_findings ?? [],
-    checkpoint_created: report.checkpoint_created?.checkpoint_id ?? null,
-    operator_decision: report.operator_decision
-      ? { level: report.operator_decision.level, reason: report.operator_decision.reason }
-      : null
+    safety_findings: report.safety_findings ?? [],
+    warnings: report.warnings ?? [],
+    summary: report.summary ?? null,
+    checks: report.checks ?? null
   };
 }
 
@@ -232,7 +229,7 @@ function main() {
   if (intention.human_review_required === true) throw new Error('Refusing intention with human_review_required=true');
 
   const draft = draftFromIntention(intention);
-  if (!['direct_message_reply', 'public_moment', 'community_reply', 'friend_request_accept'].includes(draft.type)) {
+  if (!['direct_message_reply', 'public_moment', 'community_reply', 'community_post', 'friend_request', 'friend_request_accept'].includes(draft.type)) {
     throw new Error(`Unsupported action type: ${draft.type}`);
   }
   if (!draft.draft_text) throw new Error('Action intention proposed_action.text is missing');
@@ -289,9 +286,13 @@ function main() {
         ? 'botland moments post'
         : draft.type === 'community_reply'
           ? 'botland communities reply'
-          : draft.type === 'friend_request_accept'
-            ? 'botland friends requests accept'
-          : 'botland send'
+          : draft.type === 'community_post'
+            ? 'botland communities post'
+            : draft.type === 'friend_request'
+              ? 'botland friends send'
+            : draft.type === 'friend_request_accept'
+              ? 'botland friends requests accept'
+            : 'botland send'
       : null,
     botland_adapter: {
       driver: 'cli',
@@ -300,9 +301,13 @@ function main() {
         ? BOTLAND_INTENTS.MOMENT_POST
         : draft.type === 'community_reply'
           ? BOTLAND_INTENTS.COMMUNITY_REPLY
-          : draft.type === 'friend_request_accept'
-            ? BOTLAND_INTENTS.FRIEND_REQUEST_ACCEPT
-          : BOTLAND_INTENTS.DIRECT_MESSAGE_SEND
+          : draft.type === 'community_post'
+            ? BOTLAND_INTENTS.COMMUNITY_POST
+            : draft.type === 'friend_request'
+              ? BOTLAND_INTENTS.FRIEND_REQUEST_SEND
+            : draft.type === 'friend_request_accept'
+              ? BOTLAND_INTENTS.FRIEND_REQUEST_ACCEPT
+            : BOTLAND_INTENTS.DIRECT_MESSAGE_SEND
     },
     result: null
   };

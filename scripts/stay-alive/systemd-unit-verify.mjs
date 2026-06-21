@@ -13,7 +13,7 @@ const EXPECTED_CYCLES = [
   { cycle: 'community', schedule: '02,06,10,14,18,22:25' },
   { cycle: 'reflect', schedule: '09,21:00' },
   { cycle: 'integrate', schedule: '23:30' },
-  { cycle: 'event-wakeup', schedule: '*:0/10', service_kind: 'event_wakeup' },
+  { cycle: 'event-wakeup', schedule: '*:*', service_kind: 'event_wakeup' },
   { cycle: 'botland-watchdog', schedule: '*:0/2', service_kind: 'botland_watchdog' },
   { cycle: 'local-governance', schedule: '01,07,13,19:40', service_kind: 'local_governance' },
   { cycle: 'service-recovery', schedule: '*:0/10', service_kind: 'service_recovery' }

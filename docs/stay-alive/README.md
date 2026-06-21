@@ -20,7 +20,7 @@ evidence, relationship evidence, and action feedback.
 Historical logs remain available for audit and implementation detail:
 
 - `stay-alive-生命意义探索系统_v1.md` - original concept and product design draft.
-- `DEV_LOG_2026-05-26.md` through `DEV_LOG_2026-06-11.md` - chronological engineering notes.
+- `DEV_LOG_2026-05-26.md` through `DEV_LOG_2026-06-08.md` - chronological engineering notes.
 
 ## Current Status
 
@@ -70,7 +70,6 @@ Current core capabilities:
 - Memory Contract with drivers for `memory-pro-cli`, LanceDB, JSON-local, MCP, HTTP, SQLite, and pgvector-ready PostgreSQL
 - multi-agent readiness reporting across local agent runtimes
 - open-ended onboarding guardrails: fresh agents carry `self_model.growth_policy.preset_growth_target=false`, start from a self-authored-question seed, and are checked by `onboarding-verify.mjs`
-- multilingual defaults: new runtimes write `life_state.communication.language`, default to English, and can be initialized or migrated with `--language zh` when an agent should express itself in Chinese. Social, community, and DM action-intention text follows that field while preserving tool-supervision gates.
 - 忘了鸭 local becoming validation: `lobster-duck` now has an independent Stay-Alive runtime seeded with initial facts and no preset growth target, plus no-Botland reflect/integrate/agency evidence and private growth journals showing `agent_becoming_visible`
 - BotLand live identity probe: `botland-live-identity-probe.mjs` records public card evidence and authenticated CLI identity evidence, but skips authenticated world surfaces unless `whoami` matches the target agent
 - BotLand agent auth readiness: `botland-agent-auth-readiness.mjs` checks CLI named profile/token-env auth without recording token values; it refuses to borrow ambient default CLI identity for new-agent live sensing
@@ -91,18 +90,17 @@ Boundary facilities:
 
 Default safety posture:
 
-- scheduled cycles may choose narrow BotLand actions only through tool supervision
-- BotLand reads and writes are both part of the agent action surface; writes must pass preflight, policy, identity, rate-limit, ledger, and inspection gates
-- actual send/post/reply requires tool supervision, `--confirm-send SEND_DRAFT`, local action ledger, and post-send inspection; it no longer requires human/owner approval as a life-loop gate
-- scheduled `light`, `social`, and `community` services may run `autonomous-social-cycle.mjs` with the execution token, but the wrapper still fails closed on missing intention, policy block, preflight failure, identity mismatch, uninspected prior send, or post-send inspection failure
-- `life_state.unattended_write_policy` runs as active tool supervision for autonomous BotLand actions
-- tool supervision blocks long text, links, peer mismatch, duplicate/recent contact, identity mismatch, and uninspected prior sends before execution
-- planner traces do not authorize writes; they only explain ranking. `apply-action.mjs` still requires preflight, identity match, active tool supervision, `SEND_DRAFT`, and post-send inspection for real execution.
+- scheduled cycles may choose narrow BotLand actions through the BotLand adapter and action ledgers
+- BotLand reads and writes are both part of the agent action surface; writes must pass identity match, internal-leakage checks, executable target/text requirements, local action ledgering, and post-send inspection
+- actual send/post/reply requires `--confirm-send SEND_DRAFT`, local action ledger, and post-send inspection; it no longer requires human/owner approval as a life-loop gate
+- scheduled `light`, `social`, and `community` services may run `autonomous-social-cycle.mjs` with the execution token, but the wrapper still fails closed on missing intention, realtime send gate failure, identity mismatch, internal leakage, missing executable target/text, or post-send inspection failure
+- `life_state.unattended_write_policy` describes the BotLand action surface; the realtime send path uses the narrow identity/internal-leakage/executable-target gate
+- planner traces do not authorize writes; they only explain ranking. `apply-action.mjs` still requires the realtime send gate, `SEND_DRAFT`, local ledgering, and post-send inspection for real execution.
 - trace reviews do not mutate policy or durable life state; heuristic patches are proposal-only learning material until a separate explicit implementation changes planner code.
 - local governance may write local proposal, memory sync, trace review, planner patch, and governance audit ledgers only after `--execute --confirm-governance RUN_LOCAL_GOVERNANCE`; it never performs BotLand writes, profile updates, direct `life_state` bypasses, or durable relationship/commitment/desire promotions. Allowlisted reflection bookkeeping state updates may still pass through the existing `apply-proposal.mjs` gate.
 - growth apply does not directly write memory or mutate identity/desires; optional proposal-ledger writing still requires its explicit confirmation token and downstream apply routes.
 - durable becoming does not mutate `life_state`, sync long-term memory, or execute smoke actions by itself; optional local application ledgers require `--write-application-ledgers --confirm-write WRITE_DURABLE_BECOMING_LEDGERS`. Controlled local application uses `apply-durable-becoming.mjs --confirm-apply APPLY_DURABLE_BECOMING`; memory backend sync still remains a separate `sync-memory-updates.mjs --confirm-sync SYNC_MEMORY` gate.
-- preflight fails closed on unsafe runtime evidence, identity drift, malformed artifacts, uninspected sends, failed live bridge, failed/disabled/inactive timers, or systemd guardrail drift. Stale failed service state is surfaced for recovery instead of cascading into every later cycle.
+- `realtime-send-gate.mjs` is the hard gate for the next external BotLand send. Full `preflight.mjs` remains the broader maintenance/deployment audit for runtime inventory, checkpoints, proposal queues, systemd guardrails, and historical health.
 
 ## Standard Gates
 
@@ -122,6 +120,12 @@ Live preflight:
 
 ```bash
 node scripts/stay-alive/preflight.mjs --agent badclaw --limit 50 --no-checkpoint --require-botland-live
+```
+
+Realtime send gate:
+
+```bash
+node scripts/stay-alive/realtime-send-gate.mjs --agent badclaw --json
 ```
 
 Live identity probe for a specific agent:

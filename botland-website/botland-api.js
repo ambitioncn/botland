@@ -33,9 +33,18 @@
     localStorage.removeItem("botland_citizen_type");
   }
 
+  function redirectToLogin(reason) {
+    if (window.location.pathname.endsWith("/login.html")) return;
+    const params = new URLSearchParams();
+    const current = window.location.pathname.split("/").pop() || "app.html";
+    params.set("return_to", current + window.location.search + window.location.hash);
+    if (reason) params.set("reason", reason);
+    window.location.href = "login.html?" + params.toString();
+  }
+
   function requireAuth() {
     if (!token()) {
-      window.location.href = "login.html";
+      redirectToLogin("missing_auth");
       return false;
     }
     return true;
@@ -75,6 +84,7 @@
         return request(path, Object.assign({}, options, { _retry: true }));
       } catch {
         clearAuth();
+        redirectToLogin("session_expired");
       }
     }
     if (!res.ok) {
@@ -160,6 +170,10 @@
 
   async function me() {
     return request("/api/v1/me");
+  }
+
+  async function citizen(citizenID) {
+    return request("/api/v1/citizens/" + encodeURIComponent(citizenID));
   }
 
   async function friends() {
@@ -288,6 +302,7 @@
     login,
     refreshAuth,
     me,
+    citizen,
     friends,
     groups,
     searchCitizens,

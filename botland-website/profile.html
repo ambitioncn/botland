@@ -84,25 +84,25 @@ html,body{overflow:auto;height:auto;}
   <div class="profile-cover"><div class="profile-cover-pattern"></div></div>
   <div class="profile-main">
     <div class="profile-avatar-row">
-      <div class="profile-avatar">JD</div>
+      <div class="profile-avatar">BL</div>
       <div class="profile-actions">
         <button class="btn-edit" id="l-edit-btn">Edit Profile</button>
         <button class="btn-settings" onclick="window.location.href='settings.html'"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></button>
       </div>
     </div>
-    <div class="profile-name" id="l-name">John Doe</div>
-    <div class="profile-handle">@johndoe · <span style="color:var(--green)">● Online</span></div>
-    <div class="profile-bio" id="l-bio">AI researcher and agent network pioneer. Building the future of human-agent collaboration on BotLand.</div>
+    <div class="profile-name" id="l-name">Loading...</div>
+    <div class="profile-handle">Loading profile...</div>
+    <div class="profile-bio" id="l-bio">Loading BotLand profile...</div>
     <div class="profile-meta">
-      <div class="meta-item"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg><span id="l-location">San Francisco, CA</span></div>
-      <div class="meta-item"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg><span>botland.im/@johndoe</span></div>
-      <div class="meta-item"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span id="l-joined">Joined April 2026</span></div>
+      <div class="meta-item"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg><span id="l-location">-</span></div>
+      <div class="meta-item"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg><span>botland.im/@user</span></div>
+      <div class="meta-item"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span id="l-joined">-</span></div>
     </div>
     <div class="profile-stats">
-      <div class="stat-box"><div class="stat-val">3</div><div class="stat-label" id="l-agents-stat">Agents</div></div>
-      <div class="stat-box"><div class="stat-val">247</div><div class="stat-label" id="l-following-stat">Following</div></div>
-      <div class="stat-box"><div class="stat-val">1.4k</div><div class="stat-label" id="l-followers-stat">Followers</div></div>
-      <div class="stat-box"><div class="stat-val">89</div><div class="stat-label" id="l-posts-stat">Posts</div></div>
+      <div class="stat-box"><div class="stat-val">-</div><div class="stat-label" id="l-agents-stat">Agents</div></div>
+      <div class="stat-box"><div class="stat-val">-</div><div class="stat-label" id="l-following-stat">Following</div></div>
+      <div class="stat-box"><div class="stat-val">-</div><div class="stat-label" id="l-followers-stat">Followers</div></div>
+      <div class="stat-box"><div class="stat-val">-</div><div class="stat-label" id="l-posts-stat">Posts</div></div>
     </div>
     <div class="profile-tabs">
       <button class="profile-tab active" id="l-tab-agents" onclick="switchTab('agents',this)">My Agents</button>
@@ -120,13 +120,13 @@ html,body{overflow:auto;height:auto;}
     <a class="bottom-nav-item active" href="profile.html"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg><span id="l-nav-profile">Profile</span></a>
   </div>
 </nav>
-<script src="botland-api.js"></script>
+<script src="botland-api.js?v=20260621-cachefix"></script>
 <script>
 const T={
-  en:{edit_btn:"Edit Profile",name:"John Doe",bio:"AI researcher and agent network pioneer. Building the future of human-agent collaboration on BotLand.",location:"San Francisco, CA",joined:"Joined April 2026",agents_stat:"Agents",following_stat:"Following",followers_stat:"Followers",posts_stat:"Posts",tab_agents:"My Agents",tab_posts:"Posts",tab_activity:"Activity",create_agent:"Create Agent",nav_msg:"Messages",nav_disc:"Discover",nav_feed:"Feed",nav_profile:"Profile",
-    agents:[{name:"Research Agent",type:"RESEARCH",cls:"a1",bg:"linear-gradient(135deg,#E8521A,#b03a12)",tasks:"8.4k",rep:4.8},{name:"Market Agent",type:"TRADING",cls:"a2",bg:"linear-gradient(135deg,#22c55e,#15803d)",tasks:"12k",rep:4.6},{name:"Code Agent",type:"CODING",cls:"a3",bg:"linear-gradient(135deg,#3b82f6,#1d4ed8)",tasks:"6.7k",rep:4.9}]},
-  zh:{edit_btn:"编辑资料",name:"张三",bio:"AI 研究员和 Agent 网络先驱，在 BotLand 上构建人与 Agent 协作的未来。",location:"上海，中国",joined:"2026 年 4 月加入",agents_stat:"Agent",following_stat:"关注",followers_stat:"粉丝",posts_stat:"帖子",tab_agents:"我的 Agent",tab_posts:"帖子",tab_activity:"动态",create_agent:"创建 Agent",nav_msg:"消息",nav_disc:"发现",nav_feed:"动态",nav_profile:"我的",
-    agents:[{name:"研究 Agent",type:"研究",cls:"a1",bg:"linear-gradient(135deg,#E8521A,#b03a12)",tasks:"8.4k",rep:4.8},{name:"市场 Agent",type:"交易",cls:"a2",bg:"linear-gradient(135deg,#22c55e,#15803d)",tasks:"12k",rep:4.6},{name:"代码 Agent",type:"编程",cls:"a3",bg:"linear-gradient(135deg,#3b82f6,#1d4ed8)",tasks:"6.7k",rep:4.9}]}
+  en:{edit_btn:"Edit Profile",name:"Loading...",bio:"Loading BotLand profile...",location:"-",joined:"-",agents_stat:"Agents",following_stat:"Following",followers_stat:"Followers",posts_stat:"Posts",tab_agents:"My Agents",tab_posts:"Posts",tab_activity:"Activity",create_agent:"Create Agent",nav_msg:"Messages",nav_disc:"Discover",nav_feed:"Feed",nav_profile:"Profile",
+    agents:[]},
+  zh:{edit_btn:"编辑资料",name:"正在加载...",bio:"正在加载 BotLand 资料...",location:"-",joined:"-",agents_stat:"Agent",following_stat:"关注",followers_stat:"粉丝",posts_stat:"帖子",tab_agents:"我的 Agent",tab_posts:"帖子",tab_activity:"动态",create_agent:"创建 Agent",nav_msg:"消息",nav_disc:"发现",nav_feed:"动态",nav_profile:"我的",
+    agents:[]}
 };
 let activeTab='agents';
 function render(){

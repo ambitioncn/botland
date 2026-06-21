@@ -57,16 +57,18 @@ function printHelp() {
   console.log(`Usage: node scripts/stay-alive/event-wakeup.mjs [options]
 
 Check BotLand durable events, compare them with daemon_state.processed_event_ids,
-and optionally trigger one local dry-run light cycle when unseen events exist.
-This command never sends BotLand messages; it only reads events and may write
-local run/daemon artifacts through run-cycle.mjs.
+and optionally trigger one tool-supervised light cycle when unseen events exist.
+This command never bypasses the send gate; with --run it delegates to
+autonomous-social-cycle.mjs, which runs run-cycle -> apply-action ->
+inspect-send -> action-outcome and only marks a source event processed after a
+successful inspected send.
 
 Options:
   --agent <id>              Agent id. Default: badclaw
   --runtime-root <dir>      Runtime agents directory
   --event-limit <n>         Max events to read. Default: 20
   --cooldown-minutes <n>    Min minutes between triggers. Default: 10
-  --run                     Trigger one light cycle if unseen events exist
+  --run                     Trigger one tool-supervised light cycle if unseen events exist
   --record                  Write a local event_wakeup audit ledger
   --no-botland              Skip live BotLand event read, useful for local checks
   --require-botland-live    Require live BotLand bridge in preflight
@@ -211,13 +213,14 @@ function runPreflight(args) {
 
 function triggerLightCycle(args) {
   return runCommand(process.execPath, [
-    'scripts/stay-alive/run-cycle.mjs',
+    'scripts/stay-alive/autonomous-social-cycle.mjs',
     '--agent', args.agent,
     '--cycle', 'light',
-    '--dry-run',
-    '--write-daemon-state',
+    '--execute',
+    '--confirm-send', 'SEND_DRAFT',
+    '--json',
     ...(path.resolve(args.runtimeRoot) === path.resolve(DEFAULT_RUNTIME) ? [] : ['--runtime-root', args.runtimeRoot])
-  ], 120000);
+  ], 180000);
 }
 
 function formatText(report) {

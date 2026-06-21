@@ -401,7 +401,7 @@ Safety:
 
 - no unsupervised BotLand send/post/reply
 - no public posting, community action, friend action, profile update, report, or moderation without active tool supervision
-- no proactive stranger friend requests, join/report/moderation automation
+- no proactive stranger DMs, join/report/moderation automation; proactive friend requests stay limited to discovery/newcomer evidence plus low-frequency tool supervision
 - no task execution hidden inside commitment lifecycle
 - no direct mutation of relationships, commitments, desires, or memory from cycle output
 - no production BotLand test residue

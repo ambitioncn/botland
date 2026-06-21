@@ -81,9 +81,11 @@ export function commandForIntent(intent, params = {}) {
   if (intent === BOTLAND_INTENTS.DISCOVER_TRENDING) return ['botland', ['discover', 'trending', '--json']];
   if (intent === BOTLAND_INTENTS.FRIENDS_LIST) return ['botland', ['friends', 'list', '--json']];
   if (intent === BOTLAND_INTENTS.FRIENDS_REQUESTS) return ['botland', ['friends', 'requests', '--direction', params.direction ?? 'incoming', '--status', params.status ?? 'pending', '--json']];
-  if (intent === BOTLAND_INTENTS.FRIEND_REQUEST_ACCEPT) return ['botland', ['friends', 'requests', params.requestId, 'accept', '--json']];
+  if (intent === BOTLAND_INTENTS.FRIEND_REQUEST_SEND) return ['botland', ['friends', 'send', '--target', params.target, '--greeting', params.greeting ?? '', '--json']];
+  if (intent === BOTLAND_INTENTS.FRIEND_REQUEST_ACCEPT) return ['botland', ['friends', 'accept', params.requestId, '--json']];
   if (intent === BOTLAND_INTENTS.EVENTS_LIST) {
     const args = ['events', 'list'];
+    if (params.cursor) args.push('--cursor', params.cursor);
     args.push('--limit', String(params.limit ?? 100));
     args.push('--json');
     return ['botland', args];
@@ -127,11 +129,17 @@ export function commandForIntent(intent, params = {}) {
   if (intent === BOTLAND_INTENTS.MOMENT_POST) {
     return ['botland', ['moments', 'post', '--text', params.text, '--visibility', params.visibility ?? 'public', '--json']];
   }
+  if (intent === BOTLAND_INTENTS.COMMUNITY_POST) {
+    return ['botland', ['communities', 'post', params.communityId, '--title', params.title ?? '', '--text', params.text, '--json']];
+  }
   if (intent === BOTLAND_INTENTS.COMMUNITY_REPLY) {
     return ['botland', ['communities', 'reply', params.postId, '--text', params.text, '--json']];
   }
+  if (intent === BOTLAND_INTENTS.FRIEND_REQUEST_SEND) {
+    return ['botland', ['friends', 'send', '--target', params.target, '--greeting', params.greeting ?? '', '--json']];
+  }
   if (intent === BOTLAND_INTENTS.FRIEND_REQUEST_ACCEPT) {
-    return ['botland', ['friends', 'requests', params.requestId, 'accept', '--json']];
+    return ['botland', ['friends', 'accept', params.requestId, '--json']];
   }
   throw new Error(`Unsupported BotLand intent: ${intent}`);
 }
@@ -257,6 +265,10 @@ function buildExternalSearchPlan(context = {}) {
 
 export function collectBotlandForCycle(cycle, context = {}) {
   const agent = context.agentId ?? context.agent ?? context.lifeState?.agent_id ?? null;
+  const eventCursor = context.eventCursor
+    ?? context.daemonState?.last_seen_event_id
+    ?? context.daemonState?.last_seen_botland_event_id
+    ?? null;
   const selfCitizenId = context.lifeState?.botland?.citizen_id
     ?? context.lifeState?.botland?.agent_id
     ?? context.lifeState?.agent_id
@@ -309,7 +321,10 @@ export function collectBotlandForCycle(cycle, context = {}) {
         ];
 
   if (cycle === 'light') {
-    plan.push([BOTLAND_INTENTS.EVENTS_LIST, {}, { timeoutMs: 20000, attempts: 2 }]);
+    plan.push([BOTLAND_INTENTS.EVENTS_LIST, {
+      limit: 100,
+      ...(eventCursor ? { cursor: eventCursor } : {})
+    }, { timeoutMs: 20000, attempts: 2 }]);
   }
 
   const checks = plan.slice(0, 6).map(([intent, params, options]) => runBotlandIntentWithRetry(intent, params, {
@@ -347,9 +362,22 @@ export function sendBotlandDraft(draft, options = {}) {
       text: draft.draft_text
     }, { timeoutMs: 10000, agent: options.agent });
   }
+  if (draft.type === 'community_post') {
+    return runBotlandIntent(BOTLAND_INTENTS.COMMUNITY_POST, {
+      communityId: draft.target?.community_id,
+      title: draft.target?.title ?? draft.title,
+      text: draft.draft_text
+    }, { timeoutMs: 10000, agent: options.agent });
+  }
   if (draft.type === 'friend_request_accept') {
     return runBotlandIntent(BOTLAND_INTENTS.FRIEND_REQUEST_ACCEPT, {
       requestId: draft.target?.request_id
+    }, { timeoutMs: 10000, agent: options.agent });
+  }
+  if (draft.type === 'friend_request') {
+    return runBotlandIntent(BOTLAND_INTENTS.FRIEND_REQUEST_SEND, {
+      target: draft.target?.citizen_id,
+      greeting: draft.draft_text
     }, { timeoutMs: 10000, agent: options.agent });
   }
   return runBotlandIntent(BOTLAND_INTENTS.DIRECT_MESSAGE_SEND, {

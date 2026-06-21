@@ -54,6 +54,9 @@ stable and category-based; chronological implementation notes belong in
 - `external-action-policy-lib.mjs`: capability grants, unattended write policy,
   and tool-supervision checks.
 - `external-action-policy.mjs`: read-only policy evaluator.
+- `realtime-send-gate.mjs`: narrow hard gate for the next BotLand send; it
+  excludes proposal, checkpoint, runtime inventory, and historical maintenance
+  debt so realtime replies are blocked only by concrete send hazards.
 - `apply-action.mjs`: canonical executor for action intentions.
 - `autonomous-social-cycle.mjs`: scheduled wrapper for cycle -> apply ->
   inspect -> outcome.
@@ -99,7 +102,7 @@ stable and category-based; chronological implementation notes belong in
 
 ## Verification, Runtime, And Recovery
 
-- `preflight.mjs`: composed fail-closed safety gate.
+- `preflight.mjs`: composed maintenance/deployment safety gate.
 - `regression-suite.mjs`: default regression matrix.
 - `artifact-inventory.mjs`, `run-verify.mjs`, `action-verify.mjs`,
   `daemon-state-verify.mjs`: local artifact and state verifiers.

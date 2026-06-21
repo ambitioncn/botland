@@ -54,7 +54,7 @@ onboarding, BotLand identity, systemd timers, verification, and rollback.
 Stay-Alive separates local self-state from external writes:
 
 - no real runtime ledgers are shipped in this package
-- BotLand actions require capability grants plus tool supervision
+- BotLand sends require identity match, internal-leakage checks, executable target/text, action ledgers, and post-send inspection
 - durable `life_state` mutations must pass the mutation protocol gate
 - human review is not the daily life-loop gate; humans grant or revoke
   capabilities and handle high-risk boundary changes

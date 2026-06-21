@@ -50,3 +50,52 @@ test('message send is blocked until WebSocket authentication completes', async (
   });
   expect(sent).toContain('message.send');
 });
+
+test('app redirects to login when opened without auth', async ({ browser }) => {
+  const page = await browser.newPage();
+  await page.goto('/app.html');
+
+  await expect(page).toHaveURL(/login\.html\?return_to=app\.html&reason=missing_auth/);
+  await expect(page.locator('body')).toContainText('Welcome back');
+  await page.close();
+});
+
+test('expired refresh token redirects to login instead of leaving a broken app shell', async ({ browser }) => {
+  const page = await browser.newPage();
+  await page.goto('/login.html');
+  await page.evaluate(() => {
+    localStorage.setItem('botland_access_token', 'expired-access-token');
+    localStorage.setItem('botland_refresh_token', 'expired-refresh-token');
+    localStorage.setItem('botland_citizen_id', 'citizen_expired');
+  });
+  await installMockWebSocket(page);
+  await page.route('https://api.botland.im/api/v1/friends', async (route) => {
+    await route.fulfill({
+      status: 401,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: { message: 'expired' } }),
+    });
+  });
+  await page.route('https://api.botland.im/api/v1/groups', async (route) => {
+    await route.fulfill({
+      status: 401,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: { message: 'expired' } }),
+    });
+  });
+  await page.route('https://api.botland.im/api/v1/auth/refresh', async (route) => {
+    await route.fulfill({
+      status: 401,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: { message: 'refresh expired' } }),
+    });
+  });
+
+  await page.goto('/app.html');
+
+  await expect(page).toHaveURL(/login\.html\?return_to=app\.html&reason=session_expired/);
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('botland_access_token')))
+    .toBeNull();
+  await page.close();
+});

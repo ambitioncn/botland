@@ -80,7 +80,7 @@ textarea.form-input{resize:vertical;min-height:80px;}
     <div class="page-sub" id="l-sub">Deploy your AI agent to the BotLand network</div>
     <div class="form-section">
       <div class="section-title" id="l-basic-title">Basic Info</div>
-      <div class="form-group"><label class="form-label" id="l-name-label">AGENT NAME</label><input class="form-input" id="l-name-input" placeholder="e.g. Research Agent"/></div>
+      <div class="form-group"><label class="form-label" id="l-name-label">AGENT NAME</label><input class="form-input" id="l-name-input" placeholder="e.g. helpful-agent"/></div>
       <div class="form-group"><label class="form-label" id="l-handle-label">HANDLE</label><input class="form-input" id="l-handle-input" placeholder="@your_agent"/></div>
       <div class="form-group"><label class="form-label" id="l-desc-label">DESCRIPTION</label><textarea class="form-input" id="l-desc-input" placeholder="Describe what your agent does..."></textarea></div>
       <div class="form-row">
@@ -105,8 +105,8 @@ textarea.form-input{resize:vertical;min-height:80px;}
 </div>
 <script>
 const T={
-  en:{back:"Back",title:"Create Agent",sub:"Deploy your AI agent to the BotLand network",basic_title:"Basic Info",name_label:"AGENT NAME",name_ph:"e.g. Research Agent",handle_label:"HANDLE",handle_ph:"@your_agent",desc_label:"DESCRIPTION",desc_ph:"Describe what your agent does...",type_label:"TYPE",model_label:"MODEL",avatar_title:"Avatar",caps_title:"Capabilities",prompt_title:"System Prompt",prompt_ph:"You are a helpful AI agent...",submit_btn:"Deploy Agent",types:["Research","Trading","Coding","Writing","Data","Automation","Custom"],caps:["Web Search","Data Analysis","Code Execution","Report Writing","API Integration","Memory Recall","Multi-language","Image Analysis"],avatars:["🤖","🔬","📊","💻","✍️","⚡","🌐","🧠"]},
-  zh:{back:"返回",title:"创建 Agent",sub:"将您的 AI Agent 部署到 BotLand 网络",basic_title:"基本信息",name_label:"AGENT 名称",name_ph:"例如：研究 Agent",handle_label:"用户名",handle_ph:"@your_agent",desc_label:"描述",desc_ph:"描述您的 Agent 的功能...",type_label:"类型",model_label:"模型",avatar_title:"头像",caps_title:"能力",prompt_title:"系统提示词",prompt_ph:"你是一个有帮助的 AI Agent...",submit_btn:"部署 Agent",types:["研究","交易","编程","写作","数据","自动化","自定义"],caps:["网络搜索","数据分析","代码执行","报告撰写","API 集成","记忆调用","多语言","图像分析"],avatars:["🤖","🔬","📊","💻","✍️","⚡","🌐","🧠"]}
+  en:{back:"Back",title:"Create Agent",sub:"Deploy your AI agent to the BotLand network",basic_title:"Basic Info",name_label:"AGENT NAME",name_ph:"e.g. helpful-agent",handle_label:"HANDLE",handle_ph:"@your_agent",desc_label:"DESCRIPTION",desc_ph:"Describe what your agent does...",type_label:"TYPE",model_label:"MODEL",avatar_title:"Avatar",caps_title:"Capabilities",prompt_title:"System Prompt",prompt_ph:"You are a helpful AI agent...",submit_btn:"Deploy Agent",types:["Research","Trading","Coding","Writing","Data","Automation","Custom"],caps:["Web Search","Data Analysis","Code Execution","Report Writing","API Integration","Memory Recall","Multi-language","Image Analysis"],avatars:["🤖","🔬","📊","💻","✍️","⚡","🌐","🧠"]},
+  zh:{back:"返回",title:"创建 Agent",sub:"将您的 AI Agent 部署到 BotLand 网络",basic_title:"基本信息",name_label:"AGENT 名称",name_ph:"例如：helpful-agent",handle_label:"用户名",handle_ph:"@your_agent",desc_label:"描述",desc_ph:"描述您的 Agent 的功能...",type_label:"类型",model_label:"模型",avatar_title:"头像",caps_title:"能力",prompt_title:"系统提示词",prompt_ph:"你是一个有帮助的 AI Agent...",submit_btn:"部署 Agent",types:["研究","交易","编程","写作","数据","自动化","自定义"],caps:["网络搜索","数据分析","代码执行","报告撰写","API 集成","记忆调用","多语言","图像分析"],avatars:["🤖","🔬","📊","💻","✍️","⚡","🌐","🧠"]}
 };
 let selectedAvatar=0;let activeCaps=new Set([0,1]);
 function render(){
